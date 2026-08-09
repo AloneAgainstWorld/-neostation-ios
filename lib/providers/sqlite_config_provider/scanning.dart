@@ -716,6 +716,15 @@ extension SqliteConfigScanning on SqliteConfigProvider {
             }
           }
         }
+      } else if (Platform.isIOS) {
+        // iOS has no reliable equivalent of Android's SAF or desktop's free
+        // filesystem access, and folder bookmarks from the system document
+        // picker don't survive relaunches reliably. Use the app's own
+        // internal Documents/roms folder instead — it's exposed to the
+        // Files app (UIFileSharingEnabled/LSSupportsOpeningDocumentsInPlace
+        // in Info.plist), so the user can drop ROMs into it directly, no
+        // picker needed.
+        result = await ConfigService.getDefaultIOSRomsFolder();
       } else {
         // Desktop: Use standard file picker
         result = await FilePicker.getDirectoryPath(

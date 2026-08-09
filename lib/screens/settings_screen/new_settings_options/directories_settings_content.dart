@@ -501,6 +501,22 @@ class DirectoriesSettingsContentState
             }
           }
         }
+      } else if (Platform.isIOS) {
+        // Same internal-folder approach as the setup wizard — no external
+        // picker on iOS, see ConfigService.getDefaultIOSRomsFolder().
+        selected = await ConfigService.getDefaultIOSRomsFolder();
+        if (selected != null &&
+            configProvider.config.romFolders.contains(selected)) {
+          if (mounted) {
+            AppNotification.showNotification(
+              context,
+              'Already using the internal roms folder. Drop ROMs into it '
+                  'via the Files app under "On My iPhone > NeoStation > roms".',
+              type: NotificationType.info,
+            );
+          }
+          return;
+        }
       } else {
         selected = await FilePicker.getDirectoryPath(
           dialogTitle: AppLocale.selectRomsFolder.getString(context),

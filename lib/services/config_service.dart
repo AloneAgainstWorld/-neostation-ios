@@ -187,6 +187,33 @@ class ConfigService {
     return _computeDefaultUserDataPath();
   }
 
+  /// iOS-only: returns the app's internal default ROMs folder
+  /// (`<Documents>/roms`), creating it if it doesn't exist yet.
+  ///
+  /// iOS apps are sandboxed — there's no reliable equivalent of Android's
+  /// "pick any folder on the device" or desktop's arbitrary filesystem
+  /// access, and folder bookmarks picked via the system document picker
+  /// don't survive relaunches reliably. Instead, NeoStation exposes its own
+  /// Documents directory to the Files app (via `UIFileSharingEnabled` /
+  /// `LSSupportsOpeningDocumentsInPlace` in Info.plist), so the user can
+  /// drag ROMs in from a computer or the Files app under
+  /// "On My iPhone > NeoStation > roms", and the app always knows exactly
+  /// where to look — no picker, no lost permissions after a relaunch.
+  static Future<String> getDefaultIOSRomsFolder() async {
+    final documentsDir = await getApplicationDocumentsDirectory();
+    final romsPath = path.join(documentsDir.path, 'roms');
+
+    final romsDir = Directory(romsPath);
+    if (!await romsDir.exists()) {
+      try {
+        await romsDir.create(recursive: true);
+      } catch (e) {
+        _log.e('Failed to create default iOS roms directory: $e');
+      }
+    }
+    return romsPath;
+  }
+
   /// Platform-specific strategies:
   /// - Android: Application-specific external storage (`/Android/data/.../files/user-data`).
   /// - macOS: Standard application support directory (`~/Library/Application Support/...`).
