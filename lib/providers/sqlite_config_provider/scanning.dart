@@ -723,8 +723,16 @@ extension SqliteConfigScanning on SqliteConfigProvider {
         // internal Documents/roms folder instead — it's exposed to the
         // Files app (UIFileSharingEnabled/LSSupportsOpeningDocumentsInPlace
         // in Info.plist), so the user can drop ROMs into it directly, no
-        // picker needed.
-        result = await ConfigService.getDefaultIOSRomsFolder();
+        // picker needed. If it's already registered (very likely after the
+        // first run), rescan instead of silently doing nothing, so
+        // dropping new ROMs in via the Files app and tapping this button
+        // again actually picks them up.
+        final romsFolder = await ConfigService.getDefaultIOSRomsFolder();
+        if (_config.romFolders.contains(romsFolder)) {
+          await scanSystems();
+          return;
+        }
+        result = romsFolder;
       } else {
         // Desktop: Use standard file picker
         result = await FilePicker.getDirectoryPath(
