@@ -120,21 +120,17 @@ class GameLaunchService {
         GameSessionManager.registerGameLaunch(system, game, 'ios_share_sheet');
         await FavoritesService.recordGamePlayed(game);
 
-        // If this ROM lives inside a folder we've live-linked (e.g.
-        // RetroArch's own folder, via ConfigService.linkedExternalFolderPath
-        // + the external_folder_access plugin), it's already inside
-        // RetroArch's sandbox — sharing it again would just have RetroArch
-        // re-import a file it already has. Opening RetroArch directly skips
-        // that pointless round-trip; the user picks the game from
-        // RetroArch's own history/search, same as they would after a share.
-        final linkedFolder = ConfigService.linkedExternalFolderPath;
-        if (linkedFolder != null && path.isWithin(linkedFolder, game.romPath!)) {
-          final opened = await launchUrl(Uri.parse('retroarch://'));
-          if (opened) return GameLaunchResult.success();
-          // Fall through to the share sheet below if the direct open
-          // somehow failed (e.g. RetroArch got uninstalled) — better to
-          // still offer a working path than a dead end.
-        }
+        // NOTE: previously, ROMs living inside a live-linked external
+        // folder (e.g. RetroArch's own folder) skipped straight to
+        // `retroarch://` instead of sharing the file, on the assumption
+        // that sharing an already-known file would just trigger a pointless
+        // re-import. That assumption is untested for files RetroArch's own
+        // playlist already recognizes (matched by path/crc32, core already
+        // resolved via "DETECT") — sharing a *known* file may behave
+        // differently from sharing a brand new one. Always share the actual
+        // file now so we can find out; if it turns out to still just
+        // trigger an import/picker either way, this fast-path can come
+        // back.
 
         // share_plus requires a non-null sharePositionOrigin on iPad, or it
         // can crash / hang with no visible error. Best-effort from whatever
