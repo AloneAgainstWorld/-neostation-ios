@@ -43,6 +43,8 @@ import 'package:window_manager/window_manager.dart';
 import 'package:neostation/screens/secondary_screen/secondary_screen.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:external_folder_access/external_folder_access.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -290,6 +292,42 @@ void main() async {
     await fileProvider.initialize();
   } catch (e) {
     log.e('Error initializing FileProvider: $e');
+  }
+
+  // TEMPORARY iOS DIAGNOSTIC — remove once the media-display issue is
+  // resolved. Writes FileProvider's post-init state to a plain text file
+  // under the app's Documents folder (readable via the Files app, "On My
+  // iPhone > NeoStation > neostation_debug.txt") since there's no Xcode
+  // console access to check this from otherwise.
+  if (Platform.isIOS) {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final debugFile = File(path.join(docsDir.path, 'neostation_debug.txt'));
+      final buffer = StringBuffer();
+      buffer.writeln('--- NeoStation iOS debug: ${DateTime.now()} ---');
+      buffer.writeln('fileProvider.isInitialized: ${fileProvider.isInitialized}');
+      buffer.writeln('fileProvider.mediaPath: ${fileProvider.mediaPath}');
+      buffer.writeln('fileProvider.userDataPath: ${fileProvider.userDataPath}');
+      buffer.writeln('fileProvider.documentsPath: ${fileProvider.documentsPath}');
+      try {
+        final configMediaPath = await ConfigService.getMediaPath();
+        buffer.writeln('ConfigService.getMediaPath(): $configMediaPath');
+      } catch (e) {
+        buffer.writeln('ConfigService.getMediaPath() threw: $e');
+      }
+      if (fileProvider.mediaPath != null) {
+        final testDir = Directory(
+          path.join(fileProvider.mediaPath!, 'media'),
+        );
+        buffer.writeln(
+          'media dir exists at fileProvider.mediaPath/media: '
+          '${testDir.existsSync()} (${testDir.path})',
+        );
+      }
+      await debugFile.writeAsString(buffer.toString());
+    } catch (e) {
+      log.e('Failed to write iOS debug file: $e');
+    }
   }
 
   // Inicializar localizacion con idioma persistido
