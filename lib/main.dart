@@ -42,6 +42,7 @@ import 'package:fullscreen_window/fullscreen_window.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:neostation/screens/secondary_screen/secondary_screen.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:external_folder_access/external_folder_access.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -201,6 +202,15 @@ void main() async {
   // wait happens once (behind the loading screen) rather than once per caller.
   if (Platform.isAndroid) {
     await _awaitUserDataStorage();
+  }
+
+  // iOS: re-activate access to any previously-linked external folder (e.g.
+  // RetroArch's) before anything tries to scan it. Security-scoped bookmark
+  // access doesn't survive a relaunch on its own — it has to be resolved
+  // and re-started every cold boot. A no-op if nothing has been linked.
+  if (Platform.isIOS) {
+    ConfigService.linkedExternalFolderPath =
+        await ExternalFolderAccess.resolveBookmarkedFolder();
   }
 
   // Inicializar window_manager para desktop con tamano minimo 640x480

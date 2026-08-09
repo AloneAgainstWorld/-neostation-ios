@@ -4,6 +4,7 @@ description: Neotation - Emulation Hub
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
 workspace:
+  - packages/external_folder_access
   - packages/flutter_7zip
   - packages/gamepads
   - packages/gamepads_android
@@ -27,6 +28,8 @@ dependencies:
     path: packages/gamepads
   flutter_7zip:
     path: packages/flutter_7zip
+  external_folder_access:
+    path: packages/external_folder_access
     
   file_picker: ^12.0.0-beta.7
   device_info_plus: ^13.2.0

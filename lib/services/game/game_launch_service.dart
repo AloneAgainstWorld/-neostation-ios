@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -118,6 +119,22 @@ class GameLaunchService {
       if (Platform.isIOS) {
         GameSessionManager.registerGameLaunch(system, game, 'ios_share_sheet');
         await FavoritesService.recordGamePlayed(game);
+
+        // If this ROM lives inside a folder we've live-linked (e.g.
+        // RetroArch's own folder, via ConfigService.linkedExternalFolderPath
+        // + the external_folder_access plugin), it's already inside
+        // RetroArch's sandbox — sharing it again would just have RetroArch
+        // re-import a file it already has. Opening RetroArch directly skips
+        // that pointless round-trip; the user picks the game from
+        // RetroArch's own history/search, same as they would after a share.
+        final linkedFolder = ConfigService.linkedExternalFolderPath;
+        if (linkedFolder != null && path.isWithin(linkedFolder, game.romPath!)) {
+          final opened = await launchUrl(Uri.parse('retroarch://'));
+          if (opened) return GameLaunchResult.success();
+          // Fall through to the share sheet below if the direct open
+          // somehow failed (e.g. RetroArch got uninstalled) — better to
+          // still offer a working path than a dead end.
+        }
 
         // share_plus requires a non-null sharePositionOrigin on iPad, or it
         // can crash / hang with no visible error. Best-effort from whatever
