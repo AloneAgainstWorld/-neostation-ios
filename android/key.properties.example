@@ -1,0 +1,10 @@
+# Android release signing configuration.
+# Copy this file to android/key.properties and fill in your real values.
+# This file is gitignored and should NEVER be committed to version control.
+
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+# Path relative to the android/app/ directory.
+# If your keystore is at the project root, use: ../release.jks
+storeFile=release.jks

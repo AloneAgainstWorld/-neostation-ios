@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-Android-12 launch splash: solid app background. The logo itself is
+     drawn by Flutter's startup screen a moment later; keeping the native layer
+     to a matching solid color makes the handoff seamless. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+</layer-list>
