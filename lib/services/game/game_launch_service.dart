@@ -4,6 +4,7 @@ import 'package:neostation/l10n/app_locale.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -66,26 +67,6 @@ class GameLaunchService {
     GameModel game,
   ) async {
     try {
-      // TODO(ios-port): NeoStation's launch flow on Windows/macOS/Linux spawns
-      // the emulator as a separate OS process (dart:io Process), and on
-      // Android it fires a native Intent via MethodChannel to open the
-      // emulator app. Neither model exists on iOS — Process is unimplemented
-      // and there's no equivalent of Android's "send an Intent with a file to
-      // any installed app". Until an iOS-native launch path is built (most
-      // realistically: embedding libretro cores directly in NeoStation
-      // instead of shelling out to a separate app, the same approach
-      // RetroArch's own iOS build and Delta use), fail fast here with a clear
-      // message instead of letting Process.start throw an unhandled
-      // UnsupportedError further down.
-      if (Platform.isIOS) {
-        return GameLaunchResult.failure(
-          'Emulator launching is not implemented on iOS yet.',
-          'NeoStation can browse and manage your library on iOS, but '
-              'launching a game requires an iOS-native emulation core, which '
-              'is a separate piece of work from the frontend port.',
-        );
-      }
-
       if (Platform.isAndroid && (system.folderName == 'android')) {
         if (game.romPath == null) {
           return GameLaunchResult.failure(
@@ -123,6 +104,51 @@ class GameLaunchService {
           AppLocale.romFileNotFound.getString(context),
           game.romPath ?? AppLocale.noData.getString(context),
         );
+      }
+
+      // iOS: there's no equivalent of Android's "send an Intent with a file
+      // to any installed app", and dart:io Process is unimplemented. What
+      // *does* work — confirmed by hand on-device — is the standard iOS
+      // share sheet: RetroArch (and other emulators) register themselves as
+      // valid recipients for ROM files there. So instead of shelling out to
+      // a separate process, hand the ROM off through UIActivityViewController
+      // and let the user pick their emulator from the native share sheet.
+      // This needs one extra tap the first few times; iOS promotes
+      // frequently-used apps to the front of that list afterwards.
+      if (Platform.isIOS) {
+        GameSessionManager.registerGameLaunch(system, game, 'ios_share_sheet');
+        await FavoritesService.recordGamePlayed(game);
+
+        // share_plus requires a non-null sharePositionOrigin on iPad, or it
+        // can crash / hang with no visible error. Best-effort from whatever
+        // context we were handed; falls back to a small on-screen rect if
+        // the render tree isn't available for some reason.
+        Rect sharePositionOrigin = const Rect.fromLTWH(0, 0, 1, 1);
+        final renderObject = context.findRenderObject();
+        if (renderObject is RenderBox && renderObject.hasSize) {
+          sharePositionOrigin =
+              renderObject.localToGlobal(Offset.zero) & renderObject.size;
+        }
+
+        try {
+          final result = await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(game.romPath!)],
+              sharePositionOrigin: sharePositionOrigin,
+            ),
+          );
+          if (result.status == ShareResultStatus.success) {
+            return GameLaunchResult.success();
+          }
+          // `dismissed` just means the user closed the share sheet without
+          // picking anything — not an error worth surfacing as a failure.
+          return GameLaunchResult.success();
+        } catch (e) {
+          return GameLaunchResult.failure(
+            'Could not open the share sheet for this game.',
+            '$e',
+          );
+        }
       }
 
       final configFileName = '${system.folderName}.json';
