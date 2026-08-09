@@ -19,6 +19,17 @@ import '../repositories/system_repository.dart';
 class ConfigService {
   static final _log = LoggerService.instance;
 
+  /// iOS-only: absolute path of the externally-linked folder (e.g.
+  /// RetroArch's), resolved once at app startup via
+  /// ExternalFolderAccess.resolveBookmarkedFolder() and cached here for the
+  /// rest of the session. Null if nothing has been linked yet. Used by
+  /// GameLaunchService to decide whether a ROM already lives inside
+  /// RetroArch's own sandbox (in which case launching should just open
+  /// RetroArch directly) versus NeoStation's internal roms folder (in which
+  /// case launching goes through the share sheet, see
+  /// GameLaunchService.launchGame).
+  static String? linkedExternalFolderPath;
+
   /// Determines the base execution path for Windows installations.
   ///
   /// In development mode (`flutter run`), it targets the project root.
@@ -212,6 +223,66 @@ class ConfigService {
       }
     }
     return romsPath;
+  }
+
+  /// iOS-only: recursively copies every file found under [sourcePath] into
+  /// NeoStation's internal roms folder ([getDefaultIOSRomsFolder]),
+  /// preserving the relative folder structure (so a source layout like
+  /// `snes/Chrono Trigger.sfc` lands at `roms/snes/Chrono Trigger.sfc`).
+  ///
+  /// This is how NeoStation "reads" another app's ROM folder (e.g.
+  /// RetroArch's) on iOS: there's no reliable way to keep a live reference
+  /// to another app's sandboxed folder across relaunches (that needs
+  /// security-scoped bookmarks, native code NeoStation doesn't have yet), so
+  /// instead this does a one-time (repeatable) import — pick the folder via
+  /// the system picker, copy what's there in. RetroArch (and most iOS
+  /// emulators) already copy a ROM into their own sandbox the moment you
+  /// share/open it with them, so this isn't introducing extra duplication
+  /// beyond what iOS's sandboxing model already requires.
+  ///
+  /// Files that already exist at the destination (same relative path) are
+  /// skipped, so re-running an import after adding a few new ROMs to the
+  /// source folder is cheap and won't reprocess everything. Per-file
+  /// failures (permissions, unreadable files, etc.) are logged and skipped
+  /// rather than aborting the whole import.
+  ///
+  /// Returns the number of files actually copied.
+  static Future<int> importFilesFromExternalFolder(String sourcePath) async {
+    final destinationRoot = await getDefaultIOSRomsFolder();
+    final sourceDir = Directory(sourcePath);
+
+    if (!await sourceDir.exists()) {
+      _log.w('importFilesFromExternalFolder: source does not exist: $sourcePath');
+      return 0;
+    }
+
+    var copiedCount = 0;
+    try {
+      await for (final entity in sourceDir.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+
+        try {
+          final relativePath = path.relative(entity.path, from: sourcePath);
+          final destinationPath = path.join(destinationRoot, relativePath);
+
+          final destinationFile = File(destinationPath);
+          if (await destinationFile.exists()) continue;
+
+          await destinationFile.parent.create(recursive: true);
+          await entity.copy(destinationPath);
+          copiedCount++;
+        } catch (e) {
+          _log.w('importFilesFromExternalFolder: skipped ${entity.path}: $e');
+        }
+      }
+    } catch (e) {
+      _log.e('importFilesFromExternalFolder: failed to list $sourcePath: $e');
+    }
+
+    return copiedCount;
   }
 
   /// Platform-specific strategies:

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/providers/file_provider.dart';
@@ -63,6 +64,14 @@ class DirectoriesSettingsContentState
   List<String> _currentRomFolders = [];
   String? _currentUserDataPath;
   bool _isLoading = true;
+
+  // iOS-only: importing ROMs from another app's exposed folder (e.g.
+  // RetroArch's), see ConfigService.importFilesFromExternalFolder.
+  bool _isImportingFromExternal = false;
+
+  // iOS-only: live-linking an external folder (e.g. RetroArch's) via a
+  // persisted security-scoped bookmark, see external_folder_access.
+  bool _isLinkingExternalFolder = false;
 
   // Migration progress state (shown inline, no dialog).
   bool _isMigrating = false;
@@ -466,6 +475,216 @@ class DirectoriesSettingsContentState
   // ---------------------------------------------------------------------------
   // ROM folder picker
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // iOS: import ROMs from another app's exposed folder (e.g. RetroArch)
+  // ---------------------------------------------------------------------------
+
+  /// Lets the user pick a folder exposed by another app (via the system
+  /// document picker — this shows every app's "On My iPhone" location, e.g.
+  /// RetroArch's), and copies whatever's in there into NeoStation's own
+  /// internal roms folder. See [ConfigService.importFilesFromExternalFolder]
+  /// for why this is a one-time copy rather than a live link.
+  Future<void> _importFromExternalFolder() async {
+    if (_isImportingFromExternal) return;
+
+    final selected = await FilePicker.getDirectoryPath(
+      dialogTitle: 'Select a folder to import ROMs from',
+    );
+    if (selected == null || !mounted) return;
+
+    setState(() => _isImportingFromExternal = true);
+    try {
+      final copiedCount = await ConfigService.importFilesFromExternalFolder(
+        selected,
+      );
+      if (!mounted) return;
+
+      final configProvider = Provider.of<SqliteConfigProvider>(
+        context,
+        listen: false,
+      );
+      await configProvider.scanSystems();
+      if (!mounted) return;
+
+      await _loadCurrentPaths();
+      if (!mounted) return;
+
+      AppNotification.showNotification(
+        context,
+        copiedCount > 0
+            ? 'Imported $copiedCount file(s). Scanning your library now.'
+            : 'Nothing new to import — every file there is already in '
+                  'NeoStation.',
+        type: NotificationType.info,
+      );
+    } catch (e) {
+      _log.e('Import from external folder failed: $e');
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          'Import failed: $e',
+          type: NotificationType.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isImportingFromExternal = false);
+    }
+  }
+
+  /// Card shown only on iOS, offering the one-time import described above.
+  /// Deliberately built as a standalone widget rather than folded into
+  /// [_directoryItems] — that list drives index-sensitive section-header
+  /// placement ([_esdeSectionStart] etc.) that a new entry could easily
+  /// throw off without a way to compile-check the change end to end.
+  Widget _buildIOSImportSection(ThemeData theme) {
+    if (!Platform.isIOS) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 8.r),
+      child: Container(
+        padding: EdgeInsets.all(12.r),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.4,
+          ),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Symbols.drive_folder_upload_rounded,
+              color: theme.colorScheme.primary,
+              size: 22.r,
+            ),
+            SizedBox(width: 12.r),
+            Expanded(
+              child: Text(
+                'Import ROMs from another app (e.g. RetroArch)',
+                style: TextStyle(fontSize: 13.r),
+              ),
+            ),
+            SizedBox(width: 8.r),
+            if (_isImportingFromExternal)
+              SizedBox(
+                width: 20.r,
+                height: 20.r,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              TextButton(
+                onPressed: _importFromExternalFolder,
+                child: const Text('Import'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Live-links an external folder (e.g. RetroArch's) via a persisted
+  /// security-scoped bookmark instead of copying its contents in. See
+  /// ExternalFolderAccess and ConfigService.linkedExternalFolderPath.
+  Future<void> _linkExternalFolder() async {
+    if (_isLinkingExternalFolder) return;
+
+    setState(() => _isLinkingExternalFolder = true);
+    try {
+      final selected = await ExternalFolderAccess.pickAndBookmarkFolder();
+      if (selected == null || !mounted) return;
+
+      ConfigService.linkedExternalFolderPath = selected;
+
+      final configProvider = Provider.of<SqliteConfigProvider>(
+        context,
+        listen: false,
+      );
+      await configProvider.addRomFolder(selected, scan: true);
+      if (!mounted) return;
+
+      await _loadCurrentPaths();
+      if (!mounted) return;
+
+      AppNotification.showNotification(
+        context,
+        'Linked. NeoStation will scan this folder in place — no copy '
+            'needed. Launching a game found here will open RetroArch '
+            'directly.',
+        type: NotificationType.info,
+      );
+    } catch (e) {
+      _log.e('Link external folder failed: $e');
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          'Linking failed: $e',
+          type: NotificationType.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLinkingExternalFolder = false);
+    }
+  }
+
+  /// Card shown only on iOS, offering the live-link option described above.
+  /// Same standalone-widget reasoning as [_buildIOSImportSection].
+  Widget _buildIOSLinkSection(ThemeData theme) {
+    if (!Platform.isIOS) return const SizedBox.shrink();
+
+    final isLinked = ConfigService.linkedExternalFolderPath != null;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 4.r),
+      child: Container(
+        padding: EdgeInsets.all(12.r),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.4,
+          ),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isLinked
+                  ? Symbols.link_rounded
+                  : Symbols.add_link_rounded,
+              color: theme.colorScheme.primary,
+              size: 22.r,
+            ),
+            SizedBox(width: 12.r),
+            Expanded(
+              child: Text(
+                isLinked
+                    ? 'Linked to another app\'s folder — scanned in place, '
+                          'no copy'
+                    : 'Link RetroArch\'s folder directly (beta, no copy)',
+                style: TextStyle(fontSize: 13.r),
+              ),
+            ),
+            SizedBox(width: 8.r),
+            if (_isLinkingExternalFolder)
+              SizedBox(
+                width: 20.r,
+                height: 20.r,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              TextButton(
+                onPressed: _linkExternalFolder,
+                child: Text(isLinked ? 'Change' : 'Link'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _selectRomFolder() async {
     final configProvider = Provider.of<SqliteConfigProvider>(
@@ -888,6 +1107,8 @@ class DirectoriesSettingsContentState
             _buildScanProgress(theme, configProvider),
             _buildEsdeProgress(theme),
             _buildEsdeResultSummary(theme),
+            _buildIOSImportSection(theme),
+            _buildIOSLinkSection(theme),
             Expanded(
               child: Builder(
                 builder: (context) {
