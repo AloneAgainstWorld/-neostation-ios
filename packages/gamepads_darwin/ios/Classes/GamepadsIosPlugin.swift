@@ -22,7 +22,7 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
         // iOS-only: lets the on-screen virtual controller and MFi/Bluetooth
         // controllers coexist. Without this, GameController may not surface
         // physical controllers consistently on some iOS versions.
-        if #available(iOS 14.0, *) {
+        if #available(iOS 14.5, *) {
             GCController.shouldMonitorBackgroundEvents = true
         }
     }
