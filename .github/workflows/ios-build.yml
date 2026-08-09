@@ -1,0 +1,179 @@
+name: Build iOS (NeoStation)
+
+# Standalone workflow for the iOS port, kept separate from
+# build-and-deploy.yml so it can't break the existing release pipeline while
+# this platform is still experimental.
+#
+# WHAT THIS DOES
+#   1. Scaffolds the ios/ Xcode project via `flutter create` (it isn't
+#      committed to the repo yet — this generates it fresh on the runner
+#      every time, which avoids hand-writing a project.pbxproj).
+#   2. Patches Info.plist with the entries NeoStation needs (landscape,
+#      Files/document access, local networking for NeoSync discovery, etc).
+#   3. Runs `pod install` and `flutter build ios`.
+#   4a. If Apple signing secrets are configured (see below), exports a
+#       properly signed, installable .ipa.
+#   4b. Otherwise, builds with --no-codesign and zips the raw .app so you
+#       still get an artifact to inspect / sign yourself later in Xcode.
+#
+# REQUIRED SECRETS FOR A SIGNED, INSTALLABLE IPA
+#   IOS_CERTIFICATE_BASE64       - your .p12 signing certificate, base64-encoded
+#   IOS_CERTIFICATE_PASSWORD     - password for that .p12
+#   IOS_PROVISIONING_PROFILE_BASE64 - your .mobileprovision file, base64-encoded
+#   IOS_TEAM_ID                  - your Apple Developer Team ID
+# Without these, the workflow still runs and gives you an unsigned .app you
+# can open/sign manually in Xcode, or sideload via AltStore/Sideloadly which
+# do their own signing.
+#
+# To encode a file for a secret:
+#   base64 -i Certificates.p12 | pbcopy      (macOS)
+#   base64 -w 0 Certificates.p12             (Linux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ios-port
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    environment: Production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Create .env from secrets
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+        run: |
+          : > .env
+          [ -n "$SCREENSCRAPER_DEV_ID" ] && echo "SCREENSCRAPER_DEV_ID=$SCREENSCRAPER_DEV_ID" >> .env
+          [ -n "$SCREENSCRAPER_DEV_PASSWORD" ] && echo "SCREENSCRAPER_DEV_PASSWORD=$SCREENSCRAPER_DEV_PASSWORD" >> .env
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold ios/ platform if missing
+        run: |
+          if [ ! -d "ios" ]; then
+            echo "No ios/ folder committed yet — generating one with flutter create."
+            flutter create --platforms=ios --org com.neogamelab --project-name neostation .
+          else
+            echo "ios/ already exists in the repo, skipping scaffold."
+          fi
+
+      - name: Patch Info.plist
+        run: |
+          PLIST=ios/Runner/Info.plist
+          # Landscape-only, matching the Windows/Linux/macOS/Android UI.
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+
+          # Lets the app show up as a destination in the Files app / document
+          # picker so ROM folders can eventually be selected there (phase 2).
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || true
+
+          plutil -lint "$PLIST"
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Pod install
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Import signing certificate & provisioning profile
+        id: signing
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$IOS_CERTIFICATE_BASE64" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ]; then
+            echo "No IOS_CERTIFICATE_BASE64 / IOS_PROVISIONING_PROFILE_BASE64 secret set."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$IOS_CERTIFICATE_BASE64" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode -o "$RUNNER_TEMP/profile.mobileprovision"
+          cp "$RUNNER_TEMP/profile.mobileprovision" ~/Library/MobileDevice/Provisioning\ Profiles/
+
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed IPA
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          cat > ExportOptions.plist << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          PLIST
+
+          flutter build ipa --release --export-options-plist=ExportOptions.plist
+
+      - name: Build unsigned .app (no signing secrets configured)
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          flutter build ios --release --no-codesign
+          mkdir -p build/ios/unsigned/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/unsigned/Payload/
+          cd build/ios/unsigned && zip -r ../../../NeoStation-unsigned.ipa Payload
+          echo "::warning::No signing secrets configured — NeoStation-unsigned.ipa is NOT installable as-is. Open ios/Runner.xcworkspace in Xcode on a Mac, set your own Apple ID as the signing team, and run it on your iPhone, or sign this .app with a tool like Sideloadly."
+
+      - name: Upload signed IPA
+        if: steps.signing.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-ios-signed
+          path: build/ios/ipa/*.ipa
+          retention-days: 14
+
+      - name: Upload unsigned build
+        if: steps.signing.outputs.signed != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-ios-unsigned
+          path: NeoStation-unsigned.ipa
+          retention-days: 14

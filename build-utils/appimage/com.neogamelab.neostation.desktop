@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NeoStation
+Comment=Retro Gaming Emulation Station
+Exec=neostation
+Icon=neostation
+Categories=Game;Emulator;
+Terminal=false
+StartupWMClass=com.neogamelab.neostation
+

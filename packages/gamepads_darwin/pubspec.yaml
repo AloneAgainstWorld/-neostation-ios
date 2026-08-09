@@ -1,0 +1,28 @@
+name: gamepads_darwin
+resolution: workspace
+description: MacOS implementation of gamepads, a Flutter plugin to handle gamepad input across multiple platforms.
+version: 0.1.2+2
+publish_to: none
+
+flutter:
+  plugin:
+    implements: gamepads
+    platforms:
+      ios:
+        pluginClass: GamepadsIosPlugin
+      macos:
+        pluginClass: GamepadsDarwinPlugin
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  gamepads_platform_interface:
+    path: ../gamepads_platform_interface
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

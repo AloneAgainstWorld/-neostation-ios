@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Permitir tráfico cleartext para desarrollo local -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">192.168.1.1</domain>
+    </domain-config>
+    
+    <!-- Configuración para dominios de producción NeoGameLab (HTTPS) -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">neogamelab.com</domain>
+        <domain includeSubdomains="true">auth.neogamelab.com</domain>
+        <domain includeSubdomains="true">billing.neogamelab.com</domain>
+        <domain includeSubdomains="true">cloudsync.neogamelab.com</domain>
+        <domain includeSubdomains="true">notify.neogamelab.com</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Configuración para dominios de producción NeoStation (HTTPS) -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">neostation.dev</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Configuración base: permitir cleartext para depuración -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>
