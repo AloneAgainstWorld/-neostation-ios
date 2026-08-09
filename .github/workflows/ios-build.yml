@@ -126,12 +126,12 @@ jobs:
           </plist>
           PLIST
 
-          flutter build ipa --release --export-options-plist=ExportOptions.plist
+          flutter build ipa --release --export-options-plist=ExportOptions.plist  --dart-define-from-file=.env
 
       - name: Build unsigned .app (no signing secrets configured)
         if: steps.signing.outputs.signed != 'true'
         run: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign --dart-define-from-file=.env
           mkdir -p build/ios/unsigned/Payload
           cp -R build/ios/iphoneos/Runner.app build/ios/unsigned/Payload/
           cd build/ios/unsigned && zip -r ../../../NeoStation-unsigned.ipa Payload
