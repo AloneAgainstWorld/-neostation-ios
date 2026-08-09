@@ -46,10 +46,10 @@ jobs:
             echo "ios/ already exists in the repo, skipping scaffold."
           fi
 
-      - name: Set iOS deployment target to 14.0
+      - name: Set iOS deployment target to 18.0
         run: |
-          sed -i '' "s/platform :ios, '13.0'/platform :ios, '14.0'/" ios/Podfile
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' ios/Runner.xcodeproj/project.pbxproj
 
       - name: Patch Info.plist
         run: |
