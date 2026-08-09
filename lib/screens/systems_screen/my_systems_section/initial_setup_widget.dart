@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:provider/provider.dart';
 import 'package:neostation/responsive.dart';
+import 'package:neostation/services/config_service.dart';
 import '../../../providers/sqlite_config_provider.dart';
 
 /// A premium introductory widget presented when no ROM library is configured.
@@ -192,6 +194,50 @@ class InitialSetupWidget extends StatelessWidget {
     );
   }
 
+  /// Handles the "select/change ROM folder" button tap.
+  ///
+  /// On iOS there's no external folder picker (see
+  /// [SqliteConfigScanning.selectRomFolder]) — the app always uses its own
+  /// internal `Documents/roms` folder. That's invisible to the user unless
+  /// we tell them, so after the provider call we show exactly where that
+  /// folder lives and how to put ROMs into it via the Files app.
+  Future<void> _handleSelectFolderTap(
+    BuildContext context,
+    SqliteConfigProvider configProvider,
+  ) async {
+    await configProvider.selectRomFolder(context: context);
+    if (!Platform.isIOS || !context.mounted) return;
+
+    final romsFolder = await ConfigService.getDefaultIOSRomsFolder();
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add your ROMs'),
+        content: SingleChildScrollView(
+          child: Text(
+            'NeoStation looks for games in its own folder:\n\n'
+            '$romsFolder\n\n'
+            'To add games: open the Files app on this iPhone, go to '
+            '"On My iPhone" (or "On My iPad") > "NeoStation" > "roms", and '
+            'copy your game files in there — organized into subfolders per '
+            'system (e.g. "snes", "gba", "psx"). You can also drag files in '
+            'from a computer via Finder or iTunes file sharing.\n\n'
+            'Once your files are in place, tap this button again to scan '
+            'for them.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Primary interaction button for directory selection.
   Widget _buildSelectButton(
     BuildContext context,
@@ -217,7 +263,7 @@ class InitialSetupWidget extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => configProvider.selectRomFolder(context: context),
+          onTap: () => _handleSelectFolderTap(context, configProvider),
           borderRadius: BorderRadius.circular(18),
           child: Center(
             child: Text(
