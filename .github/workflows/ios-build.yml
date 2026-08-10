@@ -109,6 +109,24 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Patch device_info_plus for older Xcode SDK compatibility
+        run: |
+          # device_info_plus's iOS source unconditionally calls
+          # NSProcessInfo.isiOSAppOnVision, an API that requires the iOS 26.1
+          # SDK (Xcode 26+). We're intentionally pinned to an older macOS
+          # runner (see the runs-on note above) where that selector doesn't
+          # exist in the SDK headers at all, so this fails to compile
+          # regardless of which device_info_plus version pub resolves to
+          # (confirmed on both 12.4.0 and 13.2.0). We don't use this
+          # property from Dart, so removing the line entirely is safe.
+          DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" -path "*device_info_plus*/FPPDeviceInfoPlusPlugin.m" 2>/dev/null | head -1)
+          if [ -n "$DEVICE_INFO_FILE" ]; then
+            echo "Patching $DEVICE_INFO_FILE"
+            sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"
+          else
+            echo "device_info_plus source not found at the expected path — skipping patch (nothing to do, or plugin structure changed upstream)."
+          fi
+
       - name: Pod install
         working-directory: ios
         run: pod install --repo-update
