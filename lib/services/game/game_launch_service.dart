@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -117,20 +118,32 @@ class GameLaunchService {
       // This needs one extra tap the first few times; iOS promotes
       // frequently-used apps to the front of that list afterwards.
       if (Platform.isIOS) {
-        GameSessionManager.registerGameLaunch(system, game, 'ios_share_sheet');
+        GameSessionManager.registerGameLaunch(system, game, 'ios_open_in');
         await FavoritesService.recordGamePlayed(game);
 
-        // NOTE: previously, ROMs living inside a live-linked external
-        // folder (e.g. RetroArch's own folder) skipped straight to
-        // `retroarch://` instead of sharing the file, on the assumption
-        // that sharing an already-known file would just trigger a pointless
-        // re-import. That assumption is untested for files RetroArch's own
-        // playlist already recognizes (matched by path/crc32, core already
-        // resolved via "DETECT") — sharing a *known* file may behave
-        // differently from sharing a brand new one. Always share the actual
-        // file now so we can find out; if it turns out to still just
-        // trigger an import/picker either way, this fast-path can come
-        // back.
+        // Uses iOS's genuine "Open In" document-interaction flow rather
+        // than the general Share Sheet (which the previous version of this
+        // code used via share_plus, still available as a fallback below).
+        // "Open In" hands the file to an app that declared itself able to
+        // *own*/import that document type — the traditional "here's a
+        // file, please open it" flow, as opposed to "here's some content,
+        // do something with it" (sharing). Whether RetroArch treats these
+        // differently for a ROM its own playlist already recognizes
+        // (matched path/crc32, core resolved via "DETECT") is exactly what
+        // this is here to find out.
+        try {
+          final presented = await ExternalFolderAccess.openInMenu(
+            game.romPath!,
+          );
+          if (presented == true) {
+            return GameLaunchResult.success();
+          }
+          // Falls through to the Share Sheet below if "Open In" wasn't
+          // presented (e.g. no root view controller available) — better to
+          // still offer a working path than a dead end.
+        } catch (e) {
+          // Same — fall through to the Share Sheet fallback.
+        }
 
         // share_plus requires a non-null sharePositionOrigin on iPad, or it
         // can crash / hang with no visible error. Best-effort from whatever
