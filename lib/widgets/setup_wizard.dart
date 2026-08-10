@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:neostation/services/permission_service.dart';
 import 'package:neostation/services/config_service.dart';
+import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/user_data_location_service.dart';
 import 'package:neostation/services/screenshot_service.dart';
 import 'package:neostation/providers/theme_provider.dart';
@@ -1952,6 +1953,26 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
 
         if (result != null && mounted) {
           await configProvider.addRomFolder(result, scan: false);
+        }
+      } else if (Platform.isIOS) {
+        // Lead with linking RetroArch's own folder here — now that
+        // launching found games works (see RetroArchLibraryService), it's
+        // the better default for anyone using RetroArch. The plain
+        // internal-folder path (ConfigService.getDefaultIOSRomsFolder,
+        // via selectRomFolder below) remains available afterwards from
+        // Settings > Directories for anyone who declines or doesn't use
+        // RetroArch — this is only about which one leads during
+        // first-run onboarding.
+        final linked = await ExternalFolderAccess.pickAndBookmarkFolder();
+        if (linked != null && mounted) {
+          ConfigService.linkedExternalFolderPath = linked;
+          await configProvider.addRomFolder(linked, scan: false);
+          result = linked;
+        } else if (mounted) {
+          // Declined/cancelled the picker — fall back to the internal
+          // default so onboarding still has somewhere to go.
+          await configProvider.selectRomFolder(scan: false);
+          result = configProvider.config.romFolder;
         }
       } else {
         await configProvider.selectRomFolder(scan: false);

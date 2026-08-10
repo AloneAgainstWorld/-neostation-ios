@@ -146,6 +146,9 @@ jobs:
             echo "device_info_plus source not found at the expected path — skipping patch (nothing to do, or plugin structure changed upstream)."
           fi
 
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
       - name: Pod install
         working-directory: ios
         run: pod install --repo-update
