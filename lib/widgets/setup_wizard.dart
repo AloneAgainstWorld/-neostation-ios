@@ -1847,8 +1847,15 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
     }
 
     if (_currentStep == _stepScanning) {
-      // Scan finished → advance to the optional ES-DE import step.
-      setState(() => _currentStep = _stepEsde);
+      // Scan finished → advance to the optional ES-DE import step, except
+      // on iOS: ES-DE import needs picking an arbitrary external folder,
+      // which iOS's sandbox doesn't support the way desktop/Android do,
+      // and ES-DE itself isn't a realistic iOS setup anyway. Skip straight
+      // to the art-pack step, same as if the user had tapped "Skip" on the
+      // ES-DE step manually.
+      setState(
+        () => _currentStep = Platform.isIOS ? _stepArtPack : _stepEsde,
+      );
       return;
     }
 

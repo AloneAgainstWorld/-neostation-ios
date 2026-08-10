@@ -66,10 +66,6 @@ class DirectoriesSettingsContentState
   String? _currentUserDataPath;
   bool _isLoading = true;
 
-  // iOS-only: importing ROMs from another app's exposed folder (e.g.
-  // RetroArch's), see ConfigService.importFilesFromExternalFolder.
-  bool _isImportingFromExternal = false;
-
   // iOS-only: live-linking an external folder (e.g. RetroArch's) via a
   // persisted security-scoped bookmark, see external_folder_access.
   bool _isLinkingExternalFolder = false;
@@ -478,113 +474,8 @@ class DirectoriesSettingsContentState
   // ---------------------------------------------------------------------------
 
   // ---------------------------------------------------------------------------
-  // iOS: import ROMs from another app's exposed folder (e.g. RetroArch)
+  // iOS: link + sync with RetroArch
   // ---------------------------------------------------------------------------
-
-  /// Lets the user pick a folder exposed by another app (via the system
-  /// document picker — this shows every app's "On My iPhone" location, e.g.
-  /// RetroArch's), and copies whatever's in there into NeoStation's own
-  /// internal roms folder. See [ConfigService.importFilesFromExternalFolder]
-  /// for why this is a one-time copy rather than a live link.
-  Future<void> _importFromExternalFolder() async {
-    if (_isImportingFromExternal) return;
-
-    final selected = await FilePicker.getDirectoryPath(
-      dialogTitle: 'Select a folder to import ROMs from',
-    );
-    if (selected == null || !mounted) return;
-
-    setState(() => _isImportingFromExternal = true);
-    try {
-      final copiedCount = await ConfigService.importFilesFromExternalFolder(
-        selected,
-      );
-      if (!mounted) return;
-
-      final configProvider = Provider.of<SqliteConfigProvider>(
-        context,
-        listen: false,
-      );
-      await configProvider.scanSystems();
-      if (!mounted) return;
-
-      await _loadCurrentPaths();
-      if (!mounted) return;
-
-      AppNotification.showNotification(
-        context,
-        copiedCount > 0
-            ? 'Imported $copiedCount file(s). Scanning your library now.'
-            : 'Nothing new to import — every file there is already in '
-                  'NeoStation.',
-        type: NotificationType.info,
-      );
-    } catch (e) {
-      _log.e('Import from external folder failed: $e');
-      if (mounted) {
-        AppNotification.showNotification(
-          context,
-          'Import failed: $e',
-          type: NotificationType.error,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isImportingFromExternal = false);
-    }
-  }
-
-  /// Card shown only on iOS, offering the one-time import described above.
-  /// Deliberately built as a standalone widget rather than folded into
-  /// [_directoryItems] — that list drives index-sensitive section-header
-  /// placement ([_esdeSectionStart] etc.) that a new entry could easily
-  /// throw off without a way to compile-check the change end to end.
-  Widget _buildIOSImportSection(ThemeData theme) {
-    if (!Platform.isIOS) return const SizedBox.shrink();
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 8.r),
-      child: Container(
-        padding: EdgeInsets.all(12.r),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.4,
-          ),
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Symbols.drive_folder_upload_rounded,
-              color: theme.colorScheme.primary,
-              size: 22.r,
-            ),
-            SizedBox(width: 12.r),
-            Expanded(
-              child: Text(
-                'Import ROMs from another app (e.g. RetroArch)',
-                style: TextStyle(fontSize: 13.r),
-              ),
-            ),
-            SizedBox(width: 8.r),
-            if (_isImportingFromExternal)
-              SizedBox(
-                width: 20.r,
-                height: 20.r,
-                child: const CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              TextButton(
-                onPressed: _importFromExternalFolder,
-                child: const Text('Import'),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 
   /// Live-links an external folder (e.g. RetroArch's) via a persisted
   /// security-scoped bookmark instead of copying its contents in. See
@@ -630,63 +521,6 @@ class DirectoriesSettingsContentState
     }
   }
 
-  /// Card shown only on iOS, offering the live-link option described above.
-  /// Same standalone-widget reasoning as [_buildIOSImportSection].
-  Widget _buildIOSLinkSection(ThemeData theme) {
-    if (!Platform.isIOS) return const SizedBox.shrink();
-
-    final isLinked = ConfigService.linkedExternalFolderPath != null;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 4.r),
-      child: Container(
-        padding: EdgeInsets.all(12.r),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.4,
-          ),
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isLinked
-                  ? Symbols.link_rounded
-                  : Symbols.add_link_rounded,
-              color: theme.colorScheme.primary,
-              size: 22.r,
-            ),
-            SizedBox(width: 12.r),
-            Expanded(
-              child: Text(
-                isLinked
-                    ? 'Linked to another app\'s folder — scanned in place, '
-                          'no copy'
-                    : 'Link RetroArch\'s folder directly (beta, no copy)',
-                style: TextStyle(fontSize: 13.r),
-              ),
-            ),
-            SizedBox(width: 8.r),
-            if (_isLinkingExternalFolder)
-              SizedBox(
-                width: 20.r,
-                height: 20.r,
-                child: const CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              TextButton(
-                onPressed: _linkExternalFolder,
-                child: Text(isLinked ? 'Change' : 'Link'),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// Triggers RetroArch's library-export protocol
   /// (retroarch://library?scheme=neostation). RetroArch calls back
   /// asynchronously with its full game list — see
@@ -706,50 +540,120 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Card offering a one-tap-launch sync with RetroArch's own library, via
-  /// its documented retroarch://game/<filename> scheme. Shown only once a
-  /// folder has been linked (this is meaningless without one).
-  Widget _buildIOSSyncSection(ThemeData theme) {
+  /// Card shown only on iOS, combining the link + sync steps into one clear
+  /// place. Deliberately built as a standalone widget rather than folded
+  /// into [_directoryItems] — that list drives index-sensitive
+  /// section-header placement ([_esdeSectionStart] etc.) that a new entry
+  /// could easily throw off without a way to compile-check the change end
+  /// to end.
+  Widget _buildIOSRetroArchSection(ThemeData theme) {
     if (!Platform.isIOS) return const SizedBox.shrink();
-    if (ConfigService.linkedExternalFolderPath == null) {
-      return const SizedBox.shrink();
-    }
 
+    final isLinked = ConfigService.linkedExternalFolderPath != null;
     final hasSynced = RetroArchLibraryService.hasSyncedLibrary;
 
+    final String statusText;
+    if (!isLinked) {
+      statusText =
+          'Link RetroArch\'s folder so NeoStation can see your games in '
+          'place — no copying.';
+    } else if (!hasSynced) {
+      statusText =
+          'Folder linked. Now sync so games launch directly in RetroArch '
+          'with one tap.';
+    } else {
+      statusText = 'Linked and synced — games launch directly in RetroArch.';
+    }
+
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 4.r),
+      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 8.r),
       child: Container(
-        padding: EdgeInsets.all(12.r),
+        padding: EdgeInsets.all(16.r),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest.withValues(
             alpha: 0.4,
           ),
-          borderRadius: BorderRadius.circular(12.r),
+          borderRadius: BorderRadius.circular(14.r),
           border: Border.all(
             color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Symbols.bolt_rounded,
-              color: theme.colorScheme.primary,
-              size: 22.r,
+            Row(
+              children: [
+                Icon(
+                  Symbols.sports_esports_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 24.r,
+                ),
+                SizedBox(width: 10.r),
+                Text(
+                  'RetroArch',
+                  style: TextStyle(
+                    fontSize: 16.r,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-            SizedBox(width: 12.r),
-            Expanded(
-              child: Text(
-                hasSynced
-                    ? 'Synced with RetroArch — games launch directly'
-                    : 'Sync with RetroArch for true one-tap launching',
-                style: TextStyle(fontSize: 13.r),
+            SizedBox(height: 8.r),
+            Text(
+              statusText,
+              style: TextStyle(
+                fontSize: 13.r,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            SizedBox(width: 8.r),
-            TextButton(
-              onPressed: _syncWithRetroArch,
-              child: Text(hasSynced ? 'Re-sync' : 'Sync'),
+            SizedBox(height: 16.r),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48.r,
+                    child: OutlinedButton.icon(
+                      onPressed: _isLinkingExternalFolder
+                          ? null
+                          : _linkExternalFolder,
+                      icon: _isLinkingExternalFolder
+                          ? SizedBox(
+                              width: 18.r,
+                              height: 18.r,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Icon(
+                              isLinked
+                                  ? Symbols.link_rounded
+                                  : Symbols.add_link_rounded,
+                              size: 20.r,
+                            ),
+                      label: Text(
+                        isLinked ? 'Change folder' : 'Link folder',
+                        style: TextStyle(fontSize: 14.r),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10.r),
+                Expanded(
+                  child: SizedBox(
+                    height: 48.r,
+                    child: FilledButton.icon(
+                      onPressed: !isLinked
+                          ? null
+                          : _syncWithRetroArch,
+                      icon: Icon(Symbols.bolt_rounded, size: 20.r),
+                      label: Text(
+                        hasSynced ? 'Re-sync' : 'Sync',
+                        style: TextStyle(fontSize: 14.r),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1178,9 +1082,7 @@ class DirectoriesSettingsContentState
             _buildScanProgress(theme, configProvider),
             _buildEsdeProgress(theme),
             _buildEsdeResultSummary(theme),
-            _buildIOSImportSection(theme),
-            _buildIOSLinkSection(theme),
-            _buildIOSSyncSection(theme),
+            _buildIOSRetroArchSection(theme),
             Expanded(
               child: Builder(
                 builder: (context) {
