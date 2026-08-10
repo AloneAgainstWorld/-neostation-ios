@@ -98,11 +98,30 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || true
 
-          # TEMPORARILY REMOVED for diagnostics — the CFBundleURLTypes /
-          # LSApplicationQueriesSchemes additions here coincided with a new
-          # "requires a selected Development Team" build failure. Testing
-          # whether removing them resolves it before re-adding some other
-          # way. See IOS_PORT.md.
+          # Registers neostation:// as a URL scheme this app can be opened
+          # with — RetroArch's library-export protocol calls back via
+          # neostation://retroarch?games=<base64url>, handled natively via
+          # external_folder_access's application(_:open:options:) rather
+          # than the app_links package. Confirmed via isolation testing
+          # that these two plist additions were not what caused the
+          # "requires a selected Development Team" build failure seen
+          # earlier — that was unrelated (see IOS_PORT.md).
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.neogamelab.neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
+
+          # RetroArch's own request scheme (retroarch://library,
+          # retroarch://game/<filename>) needs to be in
+          # LSApplicationQueriesSchemes for canOpenURL/launchUrl checks to
+          # succeed — without this, iOS silently refuses even though
+          # RetroArch is installed.
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string shortcuts" "$PLIST"
 
           plutil -lint "$PLIST"
 

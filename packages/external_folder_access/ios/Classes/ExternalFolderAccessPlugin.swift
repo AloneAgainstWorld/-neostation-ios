@@ -18,6 +18,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     UIDocumentInteractionControllerDelegate
 {
     private var pendingResult: FlutterResult?
+    private var channel: FlutterMethodChannel?
     private static let bookmarkDefaultsKey = "external_folder_access.bookmark"
 
     // Held as a property, not a local var — UIDocumentInteractionController
@@ -31,7 +32,28 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             binaryMessenger: registrar.messenger()
         )
         let instance = ExternalFolderAccessPlugin()
+        instance.channel = channel
         registrar.addMethodCallDelegate(instance, channel: channel)
+        // Lets this plugin receive application(_:open:options:) callbacks —
+        // needed to catch RetroArch calling back into neostation://... See
+        // the method below and RetroArchLibraryService on the Dart side.
+        registrar.addApplicationDelegate(instance)
+    }
+
+    /// Called by iOS when another app (or Safari) opens a URL registered to
+    /// this app's CFBundleURLTypes — specifically, RetroArch's library
+    /// export protocol calling back via
+    /// neostation://retroarch?games=<base64url>. Forwards the URL to Dart
+    /// as a method call on the same channel, rather than pulling in the
+    /// third-party app_links package for what's otherwise a single simple
+    /// callback.
+    public func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        channel?.invokeMethod("onIncomingUrl", arguments: url.absoluteString)
+        return true
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

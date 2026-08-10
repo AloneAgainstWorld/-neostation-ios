@@ -221,23 +221,16 @@ void main() async {
     // and GameLaunchService's iOS branch.
     await RetroArchLibraryService.loadCachedLibrary();
 
-    // TEMPORARILY DISABLED for diagnostics, alongside removing the
-    // app_links dependency in pubspec.yaml — see the note there. Sync
-    // requests (RetroArchLibraryService.requestLibrarySync) still work;
-    // this only stops NeoStation from *receiving* RetroArch's callback
-    // with the exported library while this test is in place.
-    //
-    // AppLinks().uriLinkStream.listen((uri) {
-    //   RetroArchLibraryService.handleIncomingUri(uri);
-    // });
-    // try {
-    //   final initialUri = await AppLinks().getInitialAppLink();
-    //   if (initialUri != null) {
-    //     await RetroArchLibraryService.handleIncomingUri(initialUri);
-    //   }
-    // } catch (e) {
-    //   log.e('Failed to read initial app link: $e');
-    // }
+    // RetroArch's library-export protocol calls back via
+    // neostation://retroarch?games=<base64url>. Handled natively through
+    // our own external_folder_access plugin (see
+    // ExternalFolderAccessPlugin.swift's application(_:open:options:))
+    // rather than the third-party app_links package — one native
+    // MethodChannel forward is all this needs, and it keeps one fewer
+    // CocoaPod in the build.
+    ExternalFolderAccess.setIncomingUrlListener((uri) {
+      RetroArchLibraryService.handleIncomingUri(uri);
+    });
   }
 
   // Inicializar window_manager para desktop con tamano minimo 640x480

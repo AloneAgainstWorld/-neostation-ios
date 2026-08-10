@@ -51,10 +51,6 @@ dependencies:
   web_socket_channel: ^3.0.3
   url_launcher: ^6.3.2
   share_plus: ^13.0.0
-  # TEMPORARILY REMOVED for diagnostics — testing whether this specific
-  # package is what's triggering the "requires a selected Development
-  # Team" build failure, which started exactly when this was added.
-  # app_links: ^7.0.0
   widget_mask: ^1.0.0
   flutter_screenutil: 5.9.3
   window_manager: ^0.5.2
