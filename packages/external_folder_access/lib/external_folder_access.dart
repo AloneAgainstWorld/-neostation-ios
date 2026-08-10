@@ -75,4 +75,24 @@ class ExternalFolderAccess {
       return null;
     }
   }
+
+  /// Registers a callback for URLs opened while the app is running — e.g.
+  /// RetroArch calling back via neostation://retroarch?games=<base64url>
+  /// after a library export request. Replaces the app_links package for
+  /// this single use case, since the native side already forwards
+  /// `application(_:open:options:)` through this same channel (see
+  /// ExternalFolderAccessPlugin.swift).
+  ///
+  /// Only one listener is supported at a time; calling this again replaces
+  /// the previous one. No-op on non-iOS platforms.
+  static void setIncomingUrlListener(void Function(Uri uri) onUrl) {
+    if (!Platform.isIOS) return;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onIncomingUrl' && call.arguments is String) {
+        final uri = Uri.tryParse(call.arguments as String);
+        if (uri != null) onUrl(uri);
+      }
+      return null;
+    });
+  }
 }
