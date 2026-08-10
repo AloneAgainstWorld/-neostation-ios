@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:neostation/services/config_service.dart';
 import 'package:neostation/services/logger_service.dart';
 
@@ -47,101 +48,129 @@ class RetroArchPlaylistService {
   /// itself, or an I/O error) — callers should fall back to another launch
   /// path in that case rather than trigger "Resume Last Game" blind.
   static Future<bool> setAsMostRecent(String romPath) async {
-    final root = ConfigService.linkedExternalFolderPath;
-    if (root == null) return false;
-
-    final playlistsDir = Directory(path.join(root, 'playlists'));
-    if (!await playlistsDir.exists()) {
-      _log.w('RetroArchPlaylistService: no playlists/ folder under $root');
-      return false;
-    }
-
-    Map<String, dynamic>? matchingEntry;
+    final debug = StringBuffer();
+    debug.writeln('--- setAsMostRecent debug: ${DateTime.now()} ---');
+    debug.writeln('romPath: $romPath');
+    var result = false;
 
     try {
-      await for (final entity in playlistsDir.list()) {
-        if (entity is! File || !entity.path.endsWith('.lpl')) continue;
-        final name = path.basename(entity.path);
-        if (_skipFileNames.contains(name)) continue;
-
-        try {
-          final decoded = jsonDecode(await entity.readAsString());
-          if (decoded is! Map<String, dynamic>) continue;
-          final items = decoded['items'];
-          if (items is! List) continue;
-
-          for (final item in items) {
-            if (item is Map<String, dynamic> && item['path'] == romPath) {
-              matchingEntry = Map<String, dynamic>.from(item);
-              break;
-            }
-          }
-        } catch (e) {
-          // One corrupt/unreadable playlist file shouldn't stop the search
-          // through the rest of them.
-          _log.w('RetroArchPlaylistService: skipped unreadable ${entity.path}: $e');
-          continue;
-        }
-        if (matchingEntry != null) break;
-      }
-    } catch (e) {
-      _log.e('RetroArchPlaylistService: failed listing playlists/: $e');
-      return false;
-    }
-
-    if (matchingEntry == null) {
-      _log.w(
-        'RetroArchPlaylistService: no existing playlist entry found for '
-        '$romPath — RetroArch may not have scanned this folder yet.',
-      );
-      return false;
-    }
-
-    final historyFile = File(path.join(root, 'playlists', _historyFileName));
-    Map<String, dynamic> history;
-    if (await historyFile.exists()) {
-      try {
-        final decoded = jsonDecode(await historyFile.readAsString());
-        if (decoded is! Map<String, dynamic>) {
-          _log.e('RetroArchPlaylistService: $_historyFileName is not a JSON object');
-          return false;
-        }
-        history = decoded;
-      } catch (e) {
-        _log.e('RetroArchPlaylistService: failed to parse $_historyFileName: $e');
+      final root = ConfigService.linkedExternalFolderPath;
+      debug.writeln('linkedExternalFolderPath: $root');
+      if (root == null) {
+        debug.writeln('RESULT: false (no linked folder)');
         return false;
       }
-    } else {
-      // Minimal-but-valid shell, matching the fields seen in RetroArch's
-      // own generated playlists — used only if content_history.lpl doesn't
-      // exist yet (e.g. the user has never played anything via RetroArch's
-      // own UI).
-      history = {
-        'version': '1.5',
-        'default_core_path': '',
-        'default_core_name': '',
-        'label_display_mode': 0,
-        'right_thumbnail_mode': 0,
-        'left_thumbnail_mode': 0,
-        'thumbnail_match_mode': 0,
-        'sort_mode': 0,
-        'items': <dynamic>[],
-      };
-    }
 
-    final historyItems = (history['items'] as List?)?.toList() ?? <dynamic>[];
-    historyItems.removeWhere(
-      (item) => item is Map<String, dynamic> && item['path'] == romPath,
-    );
-    historyItems.insert(0, matchingEntry);
-    history['items'] = historyItems;
+      final playlistsDir = Directory(path.join(root, 'playlists'));
+      debug.writeln('playlistsDir: ${playlistsDir.path}');
+      debug.writeln('playlistsDir.exists(): ${await playlistsDir.exists()}');
+      if (!await playlistsDir.exists()) {
+        debug.writeln('RESULT: false (no playlists/ folder)');
+        return false;
+      }
 
-    try {
-      await historyFile.writeAsString(jsonEncode(history));
-      return true;
-    } catch (e) {
-      _log.e('RetroArchPlaylistService: failed writing $_historyFileName: $e');
-      return false;
+      Map<String, dynamic>? matchingEntry;
+      String? matchedInFile;
+
+      try {
+        await for (final entity in playlistsDir.list()) {
+          if (entity is! File || !entity.path.endsWith('.lpl')) continue;
+          final name = path.basename(entity.path);
+          if (_skipFileNames.contains(name)) continue;
+
+          try {
+            final decoded = jsonDecode(await entity.readAsString());
+            if (decoded is! Map<String, dynamic>) continue;
+            final items = decoded['items'];
+            if (items is! List) continue;
+
+            for (final item in items) {
+              if (item is Map<String, dynamic> && item['path'] == romPath) {
+                matchingEntry = Map<String, dynamic>.from(item);
+                matchedInFile = name;
+                break;
+              }
+            }
+          } catch (e) {
+            debug.writeln('skipped unreadable ${entity.path}: $e');
+            continue;
+          }
+          if (matchingEntry != null) break;
+        }
+      } catch (e) {
+        debug.writeln('RESULT: false (failed listing playlists/: $e)');
+        return false;
+      }
+
+      debug.writeln('matchedInFile: $matchedInFile');
+      debug.writeln('matchingEntry: ${matchingEntry != null ? jsonEncode(matchingEntry) : "null"}');
+
+      if (matchingEntry == null) {
+        debug.writeln('RESULT: false (no matching entry found in any playlist)');
+        return false;
+      }
+
+      final historyFile = File(path.join(root, 'playlists', _historyFileName));
+      debug.writeln('historyFile: ${historyFile.path}');
+      debug.writeln('historyFile.exists(): ${await historyFile.exists()}');
+
+      Map<String, dynamic> history;
+      if (await historyFile.exists()) {
+        try {
+          final decoded = jsonDecode(await historyFile.readAsString());
+          if (decoded is! Map<String, dynamic>) {
+            debug.writeln('RESULT: false ($_historyFileName is not a JSON object)');
+            return false;
+          }
+          history = decoded;
+        } catch (e) {
+          debug.writeln('RESULT: false (failed to parse $_historyFileName: $e)');
+          return false;
+        }
+      } else {
+        history = {
+          'version': '1.5',
+          'default_core_path': '',
+          'default_core_name': '',
+          'label_display_mode': 0,
+          'right_thumbnail_mode': 0,
+          'left_thumbnail_mode': 0,
+          'thumbnail_match_mode': 0,
+          'sort_mode': 0,
+          'items': <dynamic>[],
+        };
+      }
+
+      final historyItems = (history['items'] as List?)?.toList() ?? <dynamic>[];
+      debug.writeln('historyItems.length before: ${historyItems.length}');
+      historyItems.removeWhere(
+        (item) => item is Map<String, dynamic> && item['path'] == romPath,
+      );
+      historyItems.insert(0, matchingEntry);
+      history['items'] = historyItems;
+      debug.writeln('historyItems.length after: ${historyItems.length}');
+      debug.writeln('new first item: ${jsonEncode(historyItems.first)}');
+
+      try {
+        await historyFile.writeAsString(jsonEncode(history));
+        debug.writeln('RESULT: true (wrote $_historyFileName)');
+        result = true;
+        return true;
+      } catch (e) {
+        debug.writeln('RESULT: false (failed writing $_historyFileName: $e)');
+        return false;
+      }
+    } finally {
+      try {
+        final docsDir = await getApplicationDocumentsDirectory();
+        final debugFile = File(
+          path.join(docsDir.path, 'retroarch_playlist_debug.txt'),
+        );
+        await debugFile.writeAsString(debug.toString());
+      } catch (e) {
+        _log.e('RetroArchPlaylistService: failed writing debug file: $e');
+      }
+      _log.i('RetroArchPlaylistService.setAsMostRecent -> $result');
     }
   }
 }
