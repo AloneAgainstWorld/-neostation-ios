@@ -61,7 +61,19 @@ class RetroArchPlaylistService {
         return false;
       }
 
-      final playlistsDir = Directory(path.join(root, 'playlists'));
+      var playlistsDir = Directory(path.join(root, 'playlists'));
+      if (!await playlistsDir.exists()) {
+        // The linked folder is often the ROMs/library subfolder rather
+        // than RetroArch's own root (which has playlists/, cores/, etc as
+        // siblings of that subfolder) — confirmed via debug logging on a
+        // real device. Try one level up before giving up.
+        final parentPlaylistsDir = Directory(
+          path.join(path.dirname(root), 'playlists'),
+        );
+        if (await parentPlaylistsDir.exists()) {
+          playlistsDir = parentPlaylistsDir;
+        }
+      }
       debug.writeln('playlistsDir: ${playlistsDir.path}');
       debug.writeln('playlistsDir.exists(): ${await playlistsDir.exists()}');
       if (!await playlistsDir.exists()) {
@@ -110,7 +122,7 @@ class RetroArchPlaylistService {
         return false;
       }
 
-      final historyFile = File(path.join(root, 'playlists', _historyFileName));
+      final historyFile = File(path.join(playlistsDir.path, _historyFileName));
       debug.writeln('historyFile: ${historyFile.path}');
       debug.writeln('historyFile.exists(): ${await historyFile.exists()}');
 
