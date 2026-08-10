@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:neostation/services/logger_service.dart';
@@ -106,6 +108,11 @@ class RetroArchLibraryService {
       _log.i(
         'RetroArchLibraryService: synced ${decoded.length} games from RetroArch',
       );
+      await _writeDebugFile(
+        'sync_debug.txt',
+        'Synced ${decoded.length} games.\n\n'
+            'Raw entries:\n${const JsonEncoder.withIndent('  ').convert(decoded)}',
+      );
       return true;
     } catch (e) {
       _log.e('RetroArchLibraryService: failed to parse library callback: $e');
@@ -162,10 +169,27 @@ class RetroArchLibraryService {
   /// launch path otherwise (see GameLaunchService).
   static Future<bool> launchGameByRomPath(String romPath) async {
     final cache = _cache;
-    if (cache == null || cache.isEmpty) return false;
+    if (cache == null || cache.isEmpty) {
+      await _writeDebugFile(
+        'launch_debug.txt',
+        'romPath: $romPath\ncache is null or empty (no sync done yet?)',
+      );
+      return false;
+    }
 
     final basename = path.basename(romPath);
     final entry = cache[basename] ?? cache[romPath];
+
+    await _writeDebugFile(
+      'launch_debug.txt',
+      'romPath: $romPath\n'
+          'basename looked up: $basename\n'
+          'match found: ${entry != null}\n'
+          'matched entry: ${entry != null ? jsonEncode(entry) : "none"}\n'
+          'all cache keys (${cache.length}):\n'
+          '${cache.keys.join('\n')}',
+    );
+
     if (entry == null) return false;
 
     final filename = (entry['filename'] ?? entry['titleId'])?.toString();
@@ -182,6 +206,21 @@ class RetroArchLibraryService {
     } catch (e) {
       _log.e('RetroArchLibraryService: failed to launch $uri: $e');
       return false;
+    }
+  }
+
+  /// Writes diagnostic info to a plain text file under the app's Documents
+  /// folder, readable via the Files app ("On My iPhone > NeoStation >
+  /// <name>") — there's no Xcode console access to check this otherwise.
+  static Future<void> _writeDebugFile(String name, String content) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final file = File(path.join(docsDir.path, name));
+      await file.writeAsString(
+        '--- ${DateTime.now()} ---\n$content',
+      );
+    } catch (e) {
+      _log.e('RetroArchLibraryService: failed writing debug file $name: $e');
     }
   }
 }
