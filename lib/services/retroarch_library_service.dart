@@ -83,6 +83,22 @@ class RetroArchLibraryService {
         // field turns out to be a relative/full path rather than a bare
         // filename in practice — cheap to keep both keys.
         byFilename[path.basename(filename)] = map;
+
+        // Libretro's "content inside an archive" convention represents a
+        // single ROM inside a zip as "archive.zip#innerfile.ext" — common
+        // for systems typically distributed as one-ROM-per-zip (GBC, GB,
+        // NES, etc). NeoStation only knows the archive's own path/name
+        // (game.romPath points at the .zip, not what's inside it), so
+        // index by the archive's basename too, or the lookup below would
+        // never match for any archived content. Systems where the whole
+        // zip itself IS the content as a unit (arcade/FBNeo romsets) don't
+        // use "#" and are unaffected — they already matched via the plain
+        // basename above.
+        final hashIndex = filename.indexOf('#');
+        if (hashIndex > 0) {
+          final archivePart = filename.substring(0, hashIndex);
+          byFilename[path.basename(archivePart)] = map;
+        }
       }
 
       _cache = byFilename;
