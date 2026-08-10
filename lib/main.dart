@@ -45,7 +45,6 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'package:app_links/app_links.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
@@ -222,23 +221,23 @@ void main() async {
     // and GameLaunchService's iOS branch.
     await RetroArchLibraryService.loadCachedLibrary();
 
-    // RetroArch's library-export protocol calls back via
-    // neostation://retroarch?games=<base64url> — listen for it for the
-    // rest of this session...
-    AppLinks().uriLinkStream.listen((uri) {
-      RetroArchLibraryService.handleIncomingUri(uri);
-    });
-    // ...and also check whether the app was cold-launched *by* that
-    // callback (RetroArch opening neostation:// while NeoStation wasn't
-    // already running).
-    try {
-      final initialUri = await AppLinks().getInitialAppLink();
-      if (initialUri != null) {
-        await RetroArchLibraryService.handleIncomingUri(initialUri);
-      }
-    } catch (e) {
-      log.e('Failed to read initial app link: $e');
-    }
+    // TEMPORARILY DISABLED for diagnostics, alongside removing the
+    // app_links dependency in pubspec.yaml — see the note there. Sync
+    // requests (RetroArchLibraryService.requestLibrarySync) still work;
+    // this only stops NeoStation from *receiving* RetroArch's callback
+    // with the exported library while this test is in place.
+    //
+    // AppLinks().uriLinkStream.listen((uri) {
+    //   RetroArchLibraryService.handleIncomingUri(uri);
+    // });
+    // try {
+    //   final initialUri = await AppLinks().getInitialAppLink();
+    //   if (initialUri != null) {
+    //     await RetroArchLibraryService.handleIncomingUri(initialUri);
+    //   }
+    // } catch (e) {
+    //   log.e('Failed to read initial app link: $e');
+    // }
   }
 
   // Inicializar window_manager para desktop con tamano minimo 640x480
