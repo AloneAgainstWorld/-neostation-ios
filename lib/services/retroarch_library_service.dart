@@ -101,6 +101,17 @@ class RetroArchLibraryService {
           final archivePart = filename.substring(0, hashIndex);
           byFilename[path.basename(archivePart)] = map;
         }
+
+        // RetroArch's playlist "filename" for a zipped ROM sometimes uses
+        // the inner content's own extension (e.g. "Game.gb") rather than
+        // the container file's extension NeoStation actually sees on disk
+        // (e.g. "Game.zip") — same title, different extension, no "#"
+        // involved. Index by the extension-stripped stem too, as a last
+        // fallback for exactly that mismatch. Confirmed via debug logging
+        // on a real device: "4 in 1 Funpak (USA, Europe).gb" (RetroArch)
+        // vs "4 in 1 Funpak (USA, Europe).zip" (actual file).
+        final stem = path.basenameWithoutExtension(filename);
+        byFilename.putIfAbsent(stem, () => map);
       }
 
       _cache = byFilename;
@@ -178,7 +189,8 @@ class RetroArchLibraryService {
     }
 
     final basename = path.basename(romPath);
-    final entry = cache[basename] ?? cache[romPath];
+    final stem = path.basenameWithoutExtension(romPath);
+    final entry = cache[basename] ?? cache[romPath] ?? cache[stem];
 
     await _writeDebugFile(
       'launch_debug.txt',
