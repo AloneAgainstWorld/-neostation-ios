@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/widgets.dart';
+import 'package:provider/provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:neostation/main.dart' show rootNavigatorKey;
+import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/services/logger_service.dart';
 
 /// Talks to RetroArch's real, confirmed URL-scheme protocol for library
@@ -124,6 +128,25 @@ class RetroArchLibraryService {
         'Synced ${decoded.length} games.\n\n'
             'Raw entries:\n${const JsonEncoder.withIndent('  ').convert(decoded)}',
       );
+
+      // A RetroArch sync is exactly the moment new ROMs are most likely to
+      // have shown up (the user just dropped some in and asked RetroArch
+      // about its library) — rescan NeoStation's own game database too, so
+      // they appear without needing to restart the app. Goes through the
+      // root navigator's context since this is a plain service class with
+      // no BuildContext of its own.
+      try {
+        final context = rootNavigatorKey.currentContext;
+        if (context != null) {
+          await Provider.of<SqliteConfigProvider>(
+            context,
+            listen: false,
+          ).scanSystems();
+        }
+      } catch (e) {
+        _log.e('RetroArchLibraryService: post-sync rescan failed: $e');
+      }
+
       return true;
     } catch (e) {
       _log.e('RetroArchLibraryService: failed to parse library callback: $e');
