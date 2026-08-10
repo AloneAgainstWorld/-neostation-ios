@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:external_folder_access/external_folder_access.dart';
+import 'package:neostation/services/retroarch_playlist_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -118,8 +119,43 @@ class GameLaunchService {
       // This needs one extra tap the first few times; iOS promotes
       // frequently-used apps to the front of that list afterwards.
       if (Platform.isIOS) {
-        GameSessionManager.registerGameLaunch(system, game, 'ios_open_in');
+        GameSessionManager.registerGameLaunch(system, game, 'ios_resume_last');
         await FavoritesService.recordGamePlayed(game);
+
+        // Genuine one-tap launch: if this ROM lives in a folder we've
+        // live-linked to RetroArch's own folder (see
+        // ConfigService.linkedExternalFolderPath +
+        // external_folder_access), and RetroArch has already scanned it
+        // into one of its own playlists, move that entry to the front of
+        // content_history.lpl and trigger RetroArch's parameter-less
+        // "Resume Last Game" Shortcuts action. That action was confirmed
+        // (on-device) to accept no external input for a *specific* game —
+        // but it needs no input at all, since it just plays whatever's
+        // most recent. See RetroArchPlaylistService for the details.
+        //
+        // The exact name of the Shortcut wrapping "Resume Last Game" is a
+        // one-time setup step done by the user in the Shortcuts app (see
+        // IOS_PORT.md) — "ResumeNeoStation" is the name that setup uses by
+        // default.
+        final linkedFolder = ConfigService.linkedExternalFolderPath;
+        if (linkedFolder != null &&
+            path.isWithin(linkedFolder, game.romPath!)) {
+          try {
+            final updated = await RetroArchPlaylistService.setAsMostRecent(
+              game.romPath!,
+            );
+            if (updated) {
+              final opened = await launchUrl(
+                Uri.parse(
+                  'shortcuts://run-shortcut?name=ResumeNeoStation',
+                ),
+              );
+              if (opened) return GameLaunchResult.success();
+            }
+          } catch (e) {
+            // Fall through to Open In / Share below rather than dead-end.
+          }
+        }
 
         // Uses iOS's genuine "Open In" document-interaction flow rather
         // than the general Share Sheet (which the previous version of this
