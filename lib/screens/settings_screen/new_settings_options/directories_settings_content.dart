@@ -6,6 +6,7 @@ import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:external_folder_access/external_folder_access.dart';
+import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/providers/file_provider.dart';
@@ -686,6 +687,76 @@ class DirectoriesSettingsContentState
     );
   }
 
+  /// Triggers RetroArch's library-export protocol
+  /// (retroarch://library?scheme=neostation). RetroArch calls back
+  /// asynchronously with its full game list — see
+  /// RetroArchLibraryService.handleIncomingUri, wired up in main.dart.
+  /// This just opens the request; the actual sync completing happens in
+  /// the background and there's no reliable callback point to await here.
+  Future<void> _syncWithRetroArch() async {
+    final opened = await RetroArchLibraryService.requestLibrarySync();
+    if (!mounted) return;
+    AppNotification.showNotification(
+      context,
+      opened
+          ? 'Asked RetroArch for its game library — this happens in the '
+                'background, give it a few seconds.'
+          : 'Could not reach RetroArch. Is it installed?',
+      type: opened ? NotificationType.info : NotificationType.error,
+    );
+  }
+
+  /// Card offering a one-tap-launch sync with RetroArch's own library, via
+  /// its documented retroarch://game/<filename> scheme. Shown only once a
+  /// folder has been linked (this is meaningless without one).
+  Widget _buildIOSSyncSection(ThemeData theme) {
+    if (!Platform.isIOS) return const SizedBox.shrink();
+    if (ConfigService.linkedExternalFolderPath == null) {
+      return const SizedBox.shrink();
+    }
+
+    final hasSynced = RetroArchLibraryService.hasSyncedLibrary;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 4.r),
+      child: Container(
+        padding: EdgeInsets.all(12.r),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.4,
+          ),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Symbols.bolt_rounded,
+              color: theme.colorScheme.primary,
+              size: 22.r,
+            ),
+            SizedBox(width: 12.r),
+            Expanded(
+              child: Text(
+                hasSynced
+                    ? 'Synced with RetroArch — games launch directly'
+                    : 'Sync with RetroArch for true one-tap launching',
+                style: TextStyle(fontSize: 13.r),
+              ),
+            ),
+            SizedBox(width: 8.r),
+            TextButton(
+              onPressed: _syncWithRetroArch,
+              child: Text(hasSynced ? 'Re-sync' : 'Sync'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _selectRomFolder() async {
     final configProvider = Provider.of<SqliteConfigProvider>(
       context,
@@ -1109,6 +1180,7 @@ class DirectoriesSettingsContentState
             _buildEsdeResultSummary(theme),
             _buildIOSImportSection(theme),
             _buildIOSLinkSection(theme),
+            _buildIOSSyncSection(theme),
             Expanded(
               child: Builder(
                 builder: (context) {

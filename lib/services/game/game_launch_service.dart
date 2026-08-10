@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_playlist_service.dart';
+import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -119,8 +120,24 @@ class GameLaunchService {
       // This needs one extra tap the first few times; iOS promotes
       // frequently-used apps to the front of that list afterwards.
       if (Platform.isIOS) {
-        GameSessionManager.registerGameLaunch(system, game, 'ios_resume_last');
+        GameSessionManager.registerGameLaunch(system, game, 'ios_direct_launch');
         await FavoritesService.recordGamePlayed(game);
+
+        // Genuine, confirmed one-tap launch via RetroArch's own documented
+        // URL scheme (retroarch://game/<filename>), matched against a
+        // library previously synced from RetroArch itself (see
+        // RetroArchLibraryService — sync is triggered from the "Link
+        // RetroArch" settings card). No picker, no import, no Shortcuts
+        // dependency. Tried first; everything below is a fallback for
+        // games RetroArch hasn't been asked about yet.
+        try {
+          final launched = await RetroArchLibraryService.launchGameByRomPath(
+            game.romPath!,
+          );
+          if (launched) return GameLaunchResult.success();
+        } catch (e) {
+          // Fall through to the playlist/Open In/Share fallbacks below.
+        }
 
         // Genuine one-tap launch: if this ROM lives in a folder we've
         // live-linked to RetroArch's own folder (see
