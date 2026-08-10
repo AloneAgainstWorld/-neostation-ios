@@ -9,6 +9,8 @@ import 'package:neostation/services/logger_service.dart';
 import 'package:neostation/services/permission_service.dart';
 import 'package:neostation/services/config_service.dart';
 import 'package:external_folder_access/external_folder_access.dart';
+import 'package:neostation/services/retroarch_library_service.dart';
+import 'package:neostation/widgets/custom_notification.dart';
 import 'package:neostation/services/user_data_location_service.dart';
 import 'package:neostation/services/screenshot_service.dart';
 import 'package:neostation/providers/theme_provider.dart';
@@ -949,12 +951,35 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
     final titleSize = isLandscape ? 14.r : 24.r;
     final textSize = isLandscape ? 10.r : 14.r;
 
+    // iOS doesn't have free filesystem access the way desktop/Android do —
+    // this step links + syncs RetroArch's own folder rather than browsing
+    // an arbitrary one, so it's framed around that instead of generic
+    // "pick a folder" language that doesn't match what's actually
+    // happening. See _selectFolder()'s iOS branch.
+    final String title;
+    final String description;
+    final IconData icon;
+    if (Platform.isIOS) {
+      icon = Symbols.sports_esports_rounded;
+      title = 'Link RetroArch';
+      description = _selectedFolder != null
+          ? 'Linked and synced.\n\n$_selectedFolder'
+          : 'Link RetroArch\'s own folder so NeoStation can see your '
+                'games and launch them directly with one tap.';
+    } else {
+      icon = Symbols.folder_open_rounded;
+      title = AppLocale.selectRomFolder.getString(context);
+      description = _selectedFolder != null
+          ? '${AppLocale.romFolderSelected.getString(context)}\n\n$_selectedFolder'
+          : AppLocale.chooseRomFolderDesc.getString(context);
+    }
+
     return SingleChildScrollView(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Symbols.folder_open_rounded,
+            icon,
             size: iconSize,
             color: _selectedFolder != null
                 ? Colors.green
@@ -963,7 +988,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
           SizedBox(height: isLandscape ? 16.r : 24.r),
 
           Text(
-            AppLocale.selectRomFolder.getString(context),
+            title,
             style: TextStyle(
               fontSize: titleSize,
               fontWeight: FontWeight.bold,
@@ -973,9 +998,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
           SizedBox(height: isLandscape ? 8.r : 16.r),
 
           Text(
-            _selectedFolder != null
-                ? '${AppLocale.romFolderSelected.getString(context)}\n\n$_selectedFolder'
-                : AppLocale.chooseRomFolderDesc.getString(context),
+            description,
             style: TextStyle(
               fontSize: textSize,
               color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
@@ -1798,7 +1821,9 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
       return AppLocale.next.getString(context);
     }
     if (_currentStep == _stepFolder) {
-      return AppLocale.selectFolder.getString(context);
+      return Platform.isIOS
+          ? (_selectedFolder != null ? 'Continue' : 'Link RetroArch')
+          : AppLocale.selectFolder.getString(context);
     }
     if (_currentStep == _stepEsde) {
       // Once an import has run, the primary action becomes "Next".
@@ -1968,6 +1993,22 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
           ConfigService.linkedExternalFolderPath = linked;
           await configProvider.addRomFolder(linked, scan: false);
           result = linked;
+
+          // Immediately follow the link with a sync request — RetroArch's
+          // response arrives asynchronously (RetroArchLibraryService
+          // already triggers a rescan when it does), but that's a
+          // background event the wizard's own state won't necessarily
+          // pick up mid-setup. Tell the user a relaunch guarantees they'll
+          // see everything, rather than leaving it to chance.
+          await RetroArchLibraryService.requestLibrarySync();
+          if (mounted) {
+            AppNotification.showNotification(
+              context,
+              'Linked! If your games don\'t show up in a few seconds, '
+                  'relaunch NeoStation to see them.',
+              type: NotificationType.info,
+            );
+          }
         } else if (mounted) {
           // Declined/cancelled the picker — fall back to the internal
           // default so onboarding still has somewhere to go.
