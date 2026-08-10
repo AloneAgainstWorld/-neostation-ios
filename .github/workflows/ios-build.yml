@@ -41,7 +41,7 @@ env:
 jobs:
   build-ios:
     name: Build iOS IPA
-    runs-on: macos-15
+    runs-on: macos-latest
     environment: Production
     steps:
       - name: Checkout repository
