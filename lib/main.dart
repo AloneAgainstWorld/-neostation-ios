@@ -45,6 +45,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:app_links/app_links.dart';
+import 'package:neostation/services/retroarch_library_service.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -213,6 +215,30 @@ void main() async {
   if (Platform.isIOS) {
     ConfigService.linkedExternalFolderPath =
         await ExternalFolderAccess.resolveBookmarkedFolder();
+
+    // Load whatever RetroArch library data was synced in a previous
+    // session, so direct game-launch matching works immediately without
+    // needing a fresh sync every cold start. See RetroArchLibraryService
+    // and GameLaunchService's iOS branch.
+    await RetroArchLibraryService.loadCachedLibrary();
+
+    // RetroArch's library-export protocol calls back via
+    // neostation://retroarch?games=<base64url> — listen for it for the
+    // rest of this session...
+    AppLinks().uriLinkStream.listen((uri) {
+      RetroArchLibraryService.handleIncomingUri(uri);
+    });
+    // ...and also check whether the app was cold-launched *by* that
+    // callback (RetroArch opening neostation:// while NeoStation wasn't
+    // already running).
+    try {
+      final initialUri = await AppLinks().getInitialAppLink();
+      if (initialUri != null) {
+        await RetroArchLibraryService.handleIncomingUri(initialUri);
+      }
+    } catch (e) {
+      log.e('Failed to read initial app link: $e');
+    }
   }
 
   // Inicializar window_manager para desktop con tamano minimo 640x480
