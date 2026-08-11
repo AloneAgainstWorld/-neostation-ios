@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:neostation/main.dart' show rootNavigatorKey;
 import 'package:neostation/providers/sqlite_config_provider.dart';
@@ -60,24 +61,36 @@ class MelonxLibraryService {
   /// MeloNX returns asynchronously through `neostation://melonx?...`; the
   /// callback is handled by [handleIncomingUri].
   static Future<bool> requestLibrarySync() async {
-    // Keep the camel-cased host exactly as MeloNX's source expects it.
-    final uri = Uri.parse('melonx://gameInfo?scheme=$_callbackScheme');
+    // IMPORTANT: do not pass this request through Dart Uri on iOS. Dart
+    // normalizes URI hosts to lowercase, turning `gameInfo` into `gameinfo`.
+    // MeloNX currently switches on the camel-cased host `gameInfo`, so that
+    // normalization opens MeloNX but silently misses the export handler.
+    const rawUrl = 'melonx://gameInfo?scheme=$_callbackScheme';
 
     await _writeDebugFile(
       'melonx_sync_debug.txt',
       'STATE: REQUESTED\n'
-          'Request URL: $uri\n'
+          'Request URL (raw): $rawUrl\n'
+          'IMPORTANT: host must remain gameInfo (capital I).\n'
           'Callback expected: neostation://melonx?games=<base64url>\n\n'
           'If this file still says REQUESTED after returning to NeoStation, '
           'MeloNX did not send the library callback.',
     );
 
     try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final bool opened;
+      if (Platform.isIOS) {
+        opened = await ExternalFolderAccess.openRawUrl(rawUrl) ?? false;
+      } else {
+        opened = await launchUrl(
+          Uri.parse(rawUrl),
+          mode: LaunchMode.externalApplication,
+        );
+      }
       if (!opened) {
         await _appendDebugFile(
           'melonx_sync_debug.txt',
-          '\nlaunchUrl returned false: MeloNX could not be opened.',
+          '\nURL open returned false: MeloNX could not be opened.',
         );
       }
       return opened;

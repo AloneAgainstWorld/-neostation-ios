@@ -92,6 +92,22 @@ class ExternalFolderAccess {
     }
   }
 
+
+  /// Opens an arbitrary URL string on iOS without round-tripping through
+  /// Dart's [Uri] class. This matters for custom URL schemes whose handler
+  /// (incorrectly, but in practice) treats the host as case-sensitive, e.g.
+  /// MeloNX expects `melonx://gameInfo?...`. Dart normalizes URI hosts to
+  /// lowercase (`gameinfo`), so passing the raw string through the native
+  /// side preserves the exact spelling expected by the target app.
+  static Future<bool?> openRawUrl(String url) async {
+    if (!Platform.isIOS) return null;
+    try {
+      return await _channel.invokeMethod<bool>('openRawUrl', {'url': url});
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// Registers a callback for URLs opened while the app is running — e.g.
   /// RetroArch calling back via neostation://retroarch?games=<base64url>
   /// after a library export request. Replaces the app_links package for

@@ -96,6 +96,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             clearBookmark(key: Self.bookmarkKey(from: call), result: result)
         case "openInMenu":
             openInMenu(call: call, result: result)
+        case "openRawUrl":
+            openRawUrl(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -229,6 +231,32 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     private func clearBookmark(key: String, result: @escaping FlutterResult) {
         UserDefaults.standard.removeObject(forKey: Self.bookmarkDefaultsKey(for: key))
         result(nil)
+    }
+
+    // MARK: - Raw URL opening
+
+    /// Opens a custom URL exactly as supplied by Dart. Unlike constructing a
+    /// Dart Uri first, this preserves the original case of the authority/host
+    /// text. MeloNX currently dispatches `gameInfo` case-sensitively.
+    private func openRawUrl(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+            let raw = args["url"] as? String,
+            !raw.isEmpty,
+            let url = URL(string: raw)
+        else {
+            result(
+                FlutterError(
+                    code: "INVALID_URL",
+                    message: "openRawUrl requires a valid 'url' string argument",
+                    details: nil
+                )
+            )
+            return
+        }
+
+        UIApplication.shared.open(url, options: [:]) { opened in
+            result(opened)
+        }
     }
 
     // MARK: - Open In
