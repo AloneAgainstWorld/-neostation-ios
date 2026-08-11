@@ -213,11 +213,51 @@ jobs:
       - name: Build unsigned .app (no signing secrets configured)
         if: steps.signing.outputs.signed != 'true'
         run: |
-          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" flutter build ios --release --no-codesign --dart-define-from-file=.env
+          set -euo pipefail
+
+          # Flutter can emit a misleading "selected Development Team" error
+          # after an otherwise useful --no-codesign device build. Configure the
+          # generated iOS project with Flutter, then let xcodebuild compile the
+          # unsigned Runner directly. This also preserves the real Xcode error
+          # output in the Actions log if compilation genuinely fails.
+          flutter build ios \
+            --release \
+            --no-codesign \
+            --config-only \
+            --dart-define-from-file=.env
+
+          rm -rf build/ios/DerivedData build/ios/unsigned
+          mkdir -p build/ios
+
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee build/ios/xcodebuild-unsigned.log
+
+          APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos \
+            -maxdepth 1 -type d -name '*.app' -print -quit)
+
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "::error::Unsigned Runner.app was not produced."
+            exit 1
+          fi
+
+          echo "Unsigned app produced at: $APP_PATH"
           mkdir -p build/ios/unsigned/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ios/unsigned/Payload/
-          cd build/ios/unsigned && zip -r ../../../NeoStation-unsigned.ipa Payload
-          echo "::warning::No signing secrets configured — NeoStation-unsigned.ipa is NOT installable as-is. Open ios/Runner.xcworkspace in Xcode on a Mac, set your own Apple ID as the signing team, and run it on your iPhone, or sign this .app with a tool like Sideloadly."
+          cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
+          cd build/ios/unsigned
+          zip -r ../../../NeoStation-unsigned.ipa Payload
+          echo "::warning::NeoStation-unsigned.ipa must still be signed by SideStore before installation."
 
       - name: Upload signed IPA
         if: steps.signing.outputs.signed == 'true'
