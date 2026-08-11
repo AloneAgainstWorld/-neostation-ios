@@ -94,9 +94,20 @@ class GameLaunchService {
         }
       }
 
+      final isArmsx2VirtualRom =
+          Platform.isIOS &&
+          system.folderName.toLowerCase() == 'ps2' &&
+          game.romPath != null &&
+          Armsx2LibraryService.isVirtualLibraryPath(game.romPath!);
+
       bool romExists = false;
       if (game.romPath != null) {
-        if (Platform.isAndroid && game.romPath!.startsWith('content://')) {
+        if (isArmsx2VirtualRom) {
+          // ARMSX2 library imports are represented by their direct-launch URL
+          // rather than a filesystem path. They are intentionally launchable
+          // even when NeoStation cannot see the PS2 file itself.
+          romExists = true;
+        } else if (Platform.isAndroid && game.romPath!.startsWith('content://')) {
           romExists = true;
         } else {
           romExists = await File(game.romPath!).exists();
@@ -136,7 +147,17 @@ class GameLaunchService {
             );
             if (launched) return GameLaunchResult.success();
           } catch (e) {
-            // Fall through to RetroArch / Open In / Share below.
+            // Physical PS2 rows can still fall through to RetroArch/Open In.
+          }
+
+          // A virtual ARMSX2 row has no local file to hand to RetroArch or the
+          // iOS share sheet. If the deeplink failed, stop here with a useful
+          // error instead of attempting file-based fallbacks on armsx2://.
+          if (isArmsx2VirtualRom) {
+            return GameLaunchResult.failure(
+              'Could not launch this PS2 game in ARMSX2.',
+              game.romPath,
+            );
           }
         }
 

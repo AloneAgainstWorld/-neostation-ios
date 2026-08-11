@@ -761,6 +761,17 @@ class SqliteDatabaseService {
       final romsToDelete = <String>[];
       for (final rom in existingRoms) {
         final path = rom['rom_path'].toString();
+
+        // ARMSX2 iOS library imports are intentional virtual rows. Their
+        // `rom_path` is an armsx2:// direct-launch URL rather than a file the
+        // filesystem scanner can rediscover, so a normal rescan must not prune
+        // them as "missing". Armsx2LibraryService removes stale virtual rows
+        // itself whenever a fresh ARMSX2 library export is received.
+        if (path.toLowerCase().startsWith('armsx2://')) {
+          knownPaths.add(path);
+          continue;
+        }
+
         if (existingRomPaths.contains(path)) {
           knownPaths.add(path);
         } else {
