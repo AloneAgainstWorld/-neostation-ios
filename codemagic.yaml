@@ -51,6 +51,25 @@ workflows:
             echo "SCREENSCRAPER_DEV_PASSWORD=$SCREENSCRAPER_DEV_PASSWORD" >> .env
           fi
 
+          # Diagnostic only — confirms the secrets actually reached this
+          # build without ever printing their real values. If either shows
+          # "NOT SET", the "neostation_secrets" variable group isn't
+          # attached correctly (or the variable names/casing don't match)
+          # rather than anything wrong with the ScreenScraper account
+          # itself.
+          if [ -n "$SCREENSCRAPER_DEV_ID" ]; then
+            echo "SCREENSCRAPER_DEV_ID: SET (length ${#SCREENSCRAPER_DEV_ID})"
+          else
+            echo "SCREENSCRAPER_DEV_ID: NOT SET"
+          fi
+          if [ -n "$SCREENSCRAPER_DEV_PASSWORD" ]; then
+            echo "SCREENSCRAPER_DEV_PASSWORD: SET (length ${#SCREENSCRAPER_DEV_PASSWORD})"
+          else
+            echo "SCREENSCRAPER_DEV_PASSWORD: NOT SET"
+          fi
+          echo "--- .env file contents (values redacted) ---"
+          sed 's/=.*/=<redacted>/' .env || echo "(no .env file or it's empty)"
+
       - name: Scaffold ios/ platform if missing
         script: |
           if [ ! -d "ios" ]; then
