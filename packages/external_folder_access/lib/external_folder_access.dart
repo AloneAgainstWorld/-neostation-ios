@@ -108,6 +108,35 @@ class ExternalFolderAccess {
     }
   }
 
+  /// Opens [url] immediately, then asks the native iOS layer to open the same
+  /// URL again after [retryDelay]. The retry is kept alive with a short
+  /// UIApplication background task so it has a chance to fire after the first
+  /// launch moves NeoStation to the background.
+  ///
+  /// This is used for JIT-dependent emulators such as MeloNX and ARMSX2. Their
+  /// first direct-launch request can trigger the emulator's normal StikDebug
+  /// flow; the delayed second request then retries the exact game launch after
+  /// JIT has had time to become available.
+  ///
+  /// [debugFileName] is written by the native plugin into NeoStation's Documents
+  /// folder so the timing can be diagnosed on-device without Xcode.
+  static Future<bool?> openUrlWithDelayedRetry(
+    String url, {
+    Duration retryDelay = const Duration(seconds: 7),
+    String debugFileName = 'jit_launch_debug.txt',
+  }) async {
+    if (!Platform.isIOS) return null;
+    try {
+      return await _channel.invokeMethod<bool>('openUrlWithDelayedRetry', {
+        'url': url,
+        'delayMs': retryDelay.inMilliseconds,
+        'debugFileName': debugFileName,
+      });
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// Registers a callback for URLs opened while the app is running — e.g.
   /// RetroArch calling back via neostation://retroarch?games=<base64url>
   /// after a library export request. Replaces the app_links package for

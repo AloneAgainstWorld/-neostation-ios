@@ -8,6 +8,7 @@ import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/ios_jit_launch_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -425,9 +426,13 @@ class Armsx2LibraryService {
         final uri = Uri.parse(romPath);
         await _writeDebugFile(
           'armsx2_launch_debug.txt',
-          'Virtual ARMSX2 library row.\nLaunching directly: $uri',
+          'Virtual ARMSX2 library row.\n'
+              'Launching with native JIT retry: $uri',
         );
-        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return await IosJitLaunchService.launchWithRetry(
+          uri,
+          debugFileName: 'armsx2_jit_launch_debug.txt',
+        );
       } catch (e) {
         _log.e('Armsx2LibraryService: virtual launch failed: $e');
         return false;
@@ -481,7 +486,10 @@ class Armsx2LibraryService {
         );
 
     try {
-      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return await IosJitLaunchService.launchWithRetry(
+        uri,
+        debugFileName: 'armsx2_jit_launch_debug.txt',
+      );
     } catch (e) {
       _log.e('Armsx2LibraryService: failed to launch $uri: $e');
       return false;
