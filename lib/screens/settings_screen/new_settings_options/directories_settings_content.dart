@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
+import 'package:neostation/services/melonx_library_service.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/providers/file_provider.dart';
@@ -590,6 +591,23 @@ class DirectoriesSettingsContentState
     );
   }
 
+  /// Triggers MeloNX's alternate-frontend library export. MeloNX returns a
+  /// base64url JSON GameScheme array through neostation://melonx. The service
+  /// imports it directly into NeoStation's Nintendo Switch catalogue; no ROM
+  /// folder scan or shared filesystem access is required.
+  Future<void> _syncWithMeloNX() async {
+    final opened = await MelonxLibraryService.requestLibrarySync();
+    if (!mounted) return;
+    AppNotification.showNotification(
+      context,
+      opened
+          ? 'Asked MeloNX for its Nintendo Switch library — MeloNX will '
+                'return to NeoStation automatically when the export is ready.'
+          : 'Could not reach MeloNX. Is it installed?',
+      type: opened ? NotificationType.info : NotificationType.error,
+    );
+  }
+
   /// Cards shown only on iOS, one per emulator NeoStation can hand games
   /// to. Rendered as non-navigable rows at the top of the directory list
   /// (see build) rather than as entries in [_directoryItems] — that list
@@ -602,6 +620,7 @@ class DirectoriesSettingsContentState
     return [
       _buildIOSRetroArchSection(theme),
       _buildIOSArmsx2Section(theme),
+      _buildIOSMeloNXSection(theme),
     ];
   }
 
@@ -696,8 +715,43 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Shared card shell for an external emulator: name, status line, a link
-  /// button, and an optional extra action (library Sync / Re-sync).
+  /// MeloNX exports its own Nintendo Switch catalogue through a URL scheme,
+  /// so unlike RetroArch/ARMSX2 it does not need a linked ROM folder at all.
+  /// Sync alone imports the exported GameScheme JSON directly into NeoStation.
+  Widget _buildIOSMeloNXSection(ThemeData theme) {
+    final hasSynced = MelonxLibraryService.hasSyncedLibrary;
+
+    final statusText = hasSynced
+        ? 'MeloNX library synced — Nintendo Switch games launch directly in '
+              'MeloNX.'
+        : 'Sync MeloNX to import its Nintendo Switch library directly into '
+              'NeoStation. No ROM-folder scan is required.';
+
+    return _buildIOSEmulatorCard(
+      theme: theme,
+      name: 'MeloNX',
+      icon: Symbols.videogame_asset_rounded,
+      statusText: statusText,
+      isLinked: true,
+      bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
+      successMessage: '',
+      showLinkButton: false,
+      trailingAction: SizedBox(
+        height: 48.r,
+        child: FilledButton.icon(
+          onPressed: _syncWithMeloNX,
+          icon: Icon(Symbols.bolt_rounded, size: 20.r),
+          label: Text(
+            hasSynced ? 'Re-sync' : 'Sync',
+            style: TextStyle(fontSize: 14.r),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Shared card shell for an external emulator: name, status line, an
+  /// optional folder-link button, and an optional extra action (Sync).
   Widget _buildIOSEmulatorCard({
     required ThemeData theme,
     required String name,
@@ -706,6 +760,7 @@ class DirectoriesSettingsContentState
     required bool isLinked,
     required String bookmarkKey,
     required String successMessage,
+    bool showLinkButton = true,
     Widget? trailingAction,
   }) {
     final isLinkingThis = _linkingFolderKey == bookmarkKey;
@@ -779,11 +834,10 @@ class DirectoriesSettingsContentState
             SizedBox(height: 16.r),
             Row(
               children: [
-                Expanded(child: linkButton),
-                if (trailingAction != null) ...[
+                if (showLinkButton) Expanded(child: linkButton),
+                if (showLinkButton && trailingAction != null)
                   SizedBox(width: 10.r),
-                  Expanded(child: trailingAction),
-                ],
+                if (trailingAction != null) Expanded(child: trailingAction),
               ],
             ),
           ],
