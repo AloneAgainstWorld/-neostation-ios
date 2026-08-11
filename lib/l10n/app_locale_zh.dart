@@ -152,6 +152,8 @@ const Map<String, dynamic> appLocaleZh = {
   AppLocale.showSearchTabSubtitle: '在导航栏中显示搜索选项卡',
 
   AppLocale.configureDirectories: '目录设置',
+  AppLocale.configureLaunch: '配置启动',
+  AppLocale.shortcutSetupOpenError: '无法打开启动配置。',
   AppLocale.configureRomsFolder: '配置 ROM 文件夹',
   AppLocale.cannotAccessFolder: '无法访问文件夹',
   AppLocale.backgroundImage: '背景图片',

@@ -185,6 +185,8 @@ const Map<String, dynamic> appLocaleDe = {
       'Zeigt den Suche-Tab in der Navigationsleiste an',
 
   AppLocale.configureDirectories: 'Verzeichnisse konfigurieren',
+  AppLocale.configureLaunch: 'Start konfigurieren',
+  AppLocale.shortcutSetupOpenError: 'Die Startkonfiguration konnte nicht geöffnet werden.',
   AppLocale.configureRomsFolder: 'ROM-Ordner konfigurieren',
   AppLocale.cannotAccessFolder: 'Zugriff auf den Ordner nicht möglich',
   AppLocale.backgroundImage: 'Hintergrundbild',

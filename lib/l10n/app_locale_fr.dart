@@ -190,6 +190,8 @@ const Map<String, dynamic> appLocaleFr = {
       'Affiche l’onglet de recherche dans la barre de navigation',
 
   AppLocale.configureDirectories: 'Configurer les Répertoires',
+  AppLocale.configureLaunch: 'Configurer le lancement',
+  AppLocale.shortcutSetupOpenError: 'Impossible d’ouvrir la configuration du lancement.',
   AppLocale.configureRomsFolder: 'Configurer le Dossier des ROMs',
   AppLocale.cannotAccessFolder: 'Impossible d’accéder au dossier',
   AppLocale.backgroundImage: 'Image de Fond',

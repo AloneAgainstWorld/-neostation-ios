@@ -185,6 +185,8 @@ const Map<String, dynamic> appLocalePt = {
       'Exibe a aba de pesquisa na barra de navegação',
 
   AppLocale.configureDirectories: 'Configurar Diretórios',
+  AppLocale.configureLaunch: 'Configurar inicialização',
+  AppLocale.shortcutSetupOpenError: 'Não foi possível abrir a configuração de inicialização.',
   AppLocale.configureRomsFolder: 'Configurar Pasta de ROMs',
   AppLocale.cannotAccessFolder: 'Não foi possível acessar a pasta',
   AppLocale.backgroundImage: 'Imagem de Fundo',

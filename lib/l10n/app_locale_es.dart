@@ -187,6 +187,8 @@ const Map<String, dynamic> appLocaleEs = {
       'Muestra la pestaña de búsqueda en la barra de navegación',
 
   AppLocale.configureDirectories: 'Directorios',
+  AppLocale.configureLaunch: 'Configurar lanzamiento',
+  AppLocale.shortcutSetupOpenError: 'No se pudo abrir la configuración de lanzamiento.',
   AppLocale.configureRomsFolder: 'Configurar carpeta de ROMs',
   AppLocale.cannotAccessFolder: 'No se puede acceder a la carpeta',
   AppLocale.backgroundImage: 'Imagen de Fondo',

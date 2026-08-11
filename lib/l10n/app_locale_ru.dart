@@ -185,6 +185,8 @@ const Map<String, dynamic> appLocaleRu = {
       'Отображает вкладку поиска на панели навигации',
 
   AppLocale.configureDirectories: 'Директории',
+  AppLocale.configureLaunch: 'Настроить запуск',
+  AppLocale.shortcutSetupOpenError: 'Не удалось открыть настройку запуска.',
   AppLocale.configureRomsFolder: 'Настроить папку ROM',
   AppLocale.cannotAccessFolder: 'Нет доступа к папке',
   AppLocale.backgroundImage: 'Фоновое изображение',

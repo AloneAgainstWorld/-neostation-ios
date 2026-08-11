@@ -9,6 +9,7 @@ import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
+import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/providers/file_provider.dart';
@@ -608,6 +609,21 @@ class DirectoriesSettingsContentState
     );
   }
 
+  /// Opens the one-time Apple Shortcut installer used for MeloNX direct
+  /// launching. The user still confirms the import in Shortcuts; after that,
+  /// NeoStation can run the shortcut automatically for every game launch.
+  Future<void> _configureMeloNXLaunch() async {
+    final opened =
+        await IosShortcutJitLaunchService.openMeloNXShortcutInstaller();
+    if (!mounted || opened) return;
+
+    AppNotification.showNotification(
+      context,
+      AppLocale.shortcutSetupOpenError.getString(context),
+      type: NotificationType.error,
+    );
+  }
+
   /// Cards shown only on iOS, one per emulator NeoStation can hand games
   /// to. Rendered as non-navigable rows at the top of the directory list
   /// (see build) rather than as entries in [_directoryItems] — that list
@@ -736,16 +752,41 @@ class DirectoriesSettingsContentState
       bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
       successMessage: '',
       showLinkButton: false,
-      trailingAction: SizedBox(
-        height: 48.r,
-        child: FilledButton.icon(
-          onPressed: _syncWithMeloNX,
-          icon: Icon(Symbols.bolt_rounded, size: 20.r),
-          label: Text(
-            hasSynced ? 'Re-sync' : 'Sync',
-            style: TextStyle(fontSize: 14.r),
+      trailingAction: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 48.r,
+              child: FilledButton.icon(
+                onPressed: _syncWithMeloNX,
+                icon: Icon(Symbols.bolt_rounded, size: 20.r),
+                label: Text(
+                  hasSynced ? 'Re-sync' : 'Sync',
+                  style: TextStyle(fontSize: 14.r),
+                ),
+              ),
+            ),
           ),
-        ),
+          SizedBox(width: 10.r),
+          Expanded(
+            child: SizedBox(
+              height: 48.r,
+              child: OutlinedButton.icon(
+                onPressed:
+                    IosShortcutJitLaunchService.hasMeloNXShortcutInstaller
+                    ? _configureMeloNXLaunch
+                    : null,
+                icon: Icon(Symbols.rocket_launch_rounded, size: 20.r),
+                label: Text(
+                  AppLocale.configureLaunch.getString(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.r),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

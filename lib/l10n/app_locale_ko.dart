@@ -153,6 +153,8 @@ const Map<String, dynamic> appLocaleKo = {
   AppLocale.showSearchTabSubtitle: '내비게이션 바에 검색 탭을 표시합니다',
 
   AppLocale.configureDirectories: '폴더',
+  AppLocale.configureLaunch: '실행 설정',
+  AppLocale.shortcutSetupOpenError: '실행 설정을 열 수 없습니다.',
   AppLocale.configureRomsFolder: 'ROM 폴더 설정',
   AppLocale.cannotAccessFolder: '폴더에 접근할 수 없습니다',
   AppLocale.backgroundImage: '배경 이미지',

@@ -49,7 +49,8 @@ class MelonxLibraryService {
   // Keep NeoStation's stored virtual rows on melonx:// for backward
   // compatibility, but translate to this scheme only at launch time.
   static const String _frontendLaunchScheme = 'atariemulator';
-  static const String _jitShortcutName = 'NeoStation MeloNX JIT';
+  static const String _jitShortcutName =
+      IosShortcutJitLaunchService.melonxShortcutName;
 
   /// Lookup keys (Title ID and title name, case-insensitive) -> lightweight
   /// MeloNX GameScheme metadata.

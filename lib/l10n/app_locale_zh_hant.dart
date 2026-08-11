@@ -152,6 +152,8 @@ const Map<String, dynamic> appLocaleZhHant = {
   AppLocale.showSearchTabSubtitle: '在導覽列中顯示搜尋分頁',
 
   AppLocale.configureDirectories: '目錄設定',
+  AppLocale.configureLaunch: '設定啟動',
+  AppLocale.shortcutSetupOpenError: '無法開啟啟動設定。',
   AppLocale.configureRomsFolder: '設定 ROM 資料夾',
   AppLocale.cannotAccessFolder: '無法存取資料夾',
   AppLocale.backgroundImage: '背景圖片',

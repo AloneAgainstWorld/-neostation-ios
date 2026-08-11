@@ -191,6 +191,8 @@ mixin AppLocale {
   // Directories
   // ---------------------------------------------------------------------------
   static const String configureDirectories = 'configure_directories';
+  static const String configureLaunch = 'configure_launch';
+  static const String shortcutSetupOpenError = 'shortcut_setup_open_error';
   static const String configureRomsFolder = 'configure_roms_folder';
   static const String cannotAccessFolder = 'cannot_access_folder';
   static const String backgroundImage = 'background_image';
