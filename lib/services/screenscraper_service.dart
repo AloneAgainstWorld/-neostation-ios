@@ -600,6 +600,8 @@ class ScreenScraperService {
 
       onProgress?.call(AppLocale.fetchingMetadata, 0.1);
 
+      final isMeloNxVirtual = romPath.toLowerCase().startsWith('melonx://');
+
       Map<String, dynamic>? gameInfoResult;
       int attempts = 0;
       while (attempts < 3) {
@@ -609,7 +611,9 @@ class ScreenScraperService {
           romName,
           appSystemId: appSystemId,
           maxDailyRequests: 0,
-          gameName: (systemFolder == 'android') ? gameName : null,
+          gameName: (systemFolder == 'android' || isMeloNxVirtual)
+              ? gameName
+              : null,
         );
         if (gameInfoResult != null && gameInfoResult['gameInfo'] != null) break;
         attempts++;
@@ -652,7 +656,7 @@ class ScreenScraperService {
             appSystemId: appSystemId,
             preferredLanguage: preferredLanguage,
             allowedMediaTypes: allowedMediaTypes,
-            forceOverwrite: forceOverwrite,
+            forceOverwrite: forceOverwrite || isMeloNxVirtual,
             maxDailyRequests: null,
             onProgress: (p) =>
                 onProgress?.call(AppLocale.downloadingImages, 0.2 + (p * 0.8)),
@@ -865,10 +869,15 @@ class ScreenScraperService {
       final filename = rom['filename'].toString();
       final romPath = rom['rom_path'].toString();
       final titleName = rom['title_name']?.toString();
+      final isMeloNxVirtual = romPath.toLowerCase().startsWith('melonx://');
+      final displayName =
+          isMeloNxVirtual && (titleName?.trim().isNotEmpty ?? false)
+          ? titleName!.trim()
+          : filename;
 
       scrapingProvider.updateThreadProgress(
         threadId: threadId,
-        gameName: filename,
+        gameName: displayName,
         systemName: systemName,
         isActive: true,
         status: ThreadStatus.active,
@@ -885,7 +894,9 @@ class ScreenScraperService {
         filename,
         appSystemId: appSystemId,
         maxDailyRequests: maxDailyRequests,
-        gameName: (systemFolder == 'android') ? titleName : null,
+        gameName: (systemFolder == 'android' || isMeloNxVirtual)
+            ? titleName
+            : null,
       );
       var gameInfo = gameResult?['gameInfo'];
       int requestsMade = 1;
@@ -902,7 +913,7 @@ class ScreenScraperService {
 
       scrapingProvider.updateThreadProgress(
         threadId: threadId,
-        gameName: filename,
+        gameName: displayName,
         systemName: systemName,
         isActive: true,
         status: ThreadStatus.active,
@@ -943,7 +954,7 @@ class ScreenScraperService {
         if (allowedTypes.isNotEmpty) {
           scrapingProvider.updateThreadProgress(
             threadId: threadId,
-            gameName: filename,
+            gameName: displayName,
             systemName: systemName,
             isActive: true,
             status: ThreadStatus.active,
@@ -960,7 +971,9 @@ class ScreenScraperService {
             shouldCancel: shouldCancel,
             allowedMediaTypes: allowedTypes,
             maxDailyRequests: maxDailyRequests,
-            forceOverwrite: scraperConfig['scrape_mode'].toString() == 'all',
+            forceOverwrite:
+                scraperConfig['scrape_mode'].toString() == 'all' ||
+                isMeloNxVirtual,
           );
           if (res['cancelled'] == true) {
             return {
@@ -976,7 +989,7 @@ class ScreenScraperService {
 
         scrapingProvider.updateThreadProgress(
           threadId: threadId,
-          gameName: filename,
+          gameName: displayName,
           systemName: systemName,
           isActive: false,
           status: ThreadStatus.completed,

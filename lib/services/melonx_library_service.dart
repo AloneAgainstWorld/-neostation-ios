@@ -5,9 +5,11 @@ import 'package:flutter/widgets.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:neostation/main.dart' show rootNavigatorKey;
+import 'package:neostation/providers/file_provider.dart';
 import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
+import 'package:neostation/services/config_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -24,8 +26,9 @@ import 'package:url_launcher/url_launcher.dart';
 ///   neostation://melonx?games=<base64url(JSON [GameScheme])>
 ///
 /// A MeloNX GameScheme contains titleName, titleId, developer, version and
-/// iconData. NeoStation deliberately keeps only the lightweight metadata it
-/// needs instead of persisting iconData in SharedPreferences.
+/// iconData. NeoStation imports the human-readable metadata and uses iconData
+/// as local fallback artwork, while keeping the persistent SharedPreferences
+/// cache lightweight by excluding the image bytes from it.
 ///
 /// Exported games are imported directly into NeoStation's Nintendo Switch
 /// catalogue. This does not depend on NeoStation being able to scan MeloNX's
@@ -153,21 +156,26 @@ class MelonxLibraryService {
         final titleId = raw['titleId']?.toString().trim() ?? '';
         if (titleName.isEmpty && titleId.isEmpty) continue;
 
-        // iconData can be a sizeable base64 JPEG for every title. The database
-        // import only needs metadata + a deterministic launch URL, so do not
-        // duplicate those images in SharedPreferences or diagnostics.
+        // iconData can be sizeable. Keep it only for this sync so NeoStation
+        // can import MeloNX's artwork, then strip it from the persistent cache.
         final game = <String, dynamic>{
           if (raw['id'] != null) 'id': raw['id'].toString(),
           'titleName': titleName,
           'titleId': titleId,
           'developer': raw['developer']?.toString() ?? '',
           'version': raw['version']?.toString() ?? '',
+          if (raw['iconData'] != null) 'iconData': raw['iconData'],
         };
         game['launchURL'] = _launchUriForGame(game).toString();
 
         games.add(game);
-        _index(lookup, titleId, game);
-        _index(lookup, titleName, game);
+
+        // Keep the cache tiny. MeloNX's iconData can be a large base64 image
+        // for every game; it is consumed during import and written to NeoStation's
+        // media folder instead of being duplicated in SharedPreferences.
+        final cacheGame = Map<String, dynamic>.from(game)..remove('iconData');
+        _index(lookup, titleId, cacheGame);
+        _index(lookup, titleName, cacheGame);
       }
 
       _cache = lookup;
@@ -181,16 +189,22 @@ class MelonxLibraryService {
         '${importResult.physicalRows} existing physical rows',
       );
 
+      final debugGames = games.map((game) {
+        final copy = Map<String, dynamic>.from(game)..remove('iconData');
+        return copy;
+      }).toList();
+
       await _writeDebugFile(
         'melonx_sync_debug.txt',
         'STATE: IMPORTED\n'
             'MeloNX games: ${games.length}\n'
             'NeoStation virtual Switch rows: ${importResult.virtualRows}\n'
             'Existing physical Switch rows reused: ${importResult.physicalRows}\n'
+            'MeloNX artwork files imported: ${importResult.artworkRows}\n'
             'Stale MeloNX rows removed: ${importResult.removedRows}\n'
             'Switch rows now in NeoStation: ${importResult.totalSwitchRows}\n\n'
-            'Imported metadata (iconData intentionally omitted):\n'
-            '${const JsonEncoder.withIndent('  ').convert(games)}',
+            'Imported metadata (iconData omitted from this debug file):\n'
+            '${const JsonEncoder.withIndent('  ').convert(debugGames)}',
       );
 
       await _refreshNeoStationUi();
@@ -218,6 +232,7 @@ class MelonxLibraryService {
   static Future<({
     int virtualRows,
     int physicalRows,
+    int artworkRows,
     int removedRows,
     int totalSwitchRows,
   })> _importIntoNeoStation(List<Map<String, dynamic>> games) async {
@@ -251,6 +266,7 @@ class MelonxLibraryService {
     }
 
     final desiredVirtualPaths = <String>{};
+    final artworkWrites = <({String filename, Object? iconData})>[];
     var virtualRows = 0;
     var physicalRows = 0;
 
@@ -259,6 +275,7 @@ class MelonxLibraryService {
         final titleName = game['titleName']?.toString().trim() ?? '';
         final titleId = game['titleId']?.toString().trim() ?? '';
         final developer = game['developer']?.toString().trim() ?? '';
+        final iconData = game['iconData'];
         if (titleName.isEmpty && titleId.isEmpty) continue;
 
         Map<String, Object?>? physical;
@@ -332,6 +349,10 @@ class MelonxLibraryService {
             developer,
           ],
         );
+
+        if (iconData != null) {
+          artworkWrites.add((filename: syntheticFilename, iconData: iconData));
+        }
         virtualRows++;
       }
     });
@@ -370,6 +391,8 @@ class MelonxLibraryService {
       });
     }
 
+    final artworkRows = await _writeMeloNxArtwork(artworkWrites);
+
     final countRows = await db.rawQuery(
       'SELECT COUNT(*) AS count FROM user_roms WHERE app_system_id = ?',
       [systemId],
@@ -386,9 +409,96 @@ class MelonxLibraryService {
     return (
       virtualRows: virtualRows,
       physicalRows: physicalRows,
+      artworkRows: artworkRows,
       removedRows: removedRows,
       totalSwitchRows: totalSwitchRows,
     );
+  }
+
+  /// Decodes MeloNX's exported iconData and writes it as fallback local artwork.
+  /// Existing NeoStation/ScreenScraper art is preserved. When the user later
+  /// scrapes a MeloNX virtual title, the scraper can replace this fallback.
+  static Future<int> _writeMeloNxArtwork(
+    List<({String filename, Object? iconData})> items,
+  ) async {
+    if (items.isEmpty) return 0;
+
+    final mediaRoot = await ConfigService.getMediaPath();
+    final mediaDirs = <Directory>[
+      Directory(path.join(mediaRoot, 'switch', 'box2d')),
+      Directory(path.join(mediaRoot, 'switch', 'screenshots')),
+    ];
+    for (final dir in mediaDirs) {
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+    }
+
+    var written = 0;
+    for (final item in items) {
+      final bytes = _decodeIconData(item.iconData);
+      if (bytes == null || bytes.isEmpty) continue;
+
+      final mediaKey = FileProvider.stripRomExtension(item.filename);
+      final extension = _detectImageExtension(bytes);
+
+      for (final dir in mediaDirs) {
+        final pngFile = File(path.join(dir.path, '$mediaKey.png'));
+        final jpgFile = File(path.join(dir.path, '$mediaKey.jpg'));
+        final jpegFile = File(path.join(dir.path, '$mediaKey.jpeg'));
+
+        if (await pngFile.exists() ||
+            await jpgFile.exists() ||
+            await jpegFile.exists()) {
+          continue;
+        }
+
+        final target = File(path.join(dir.path, '$mediaKey.$extension'));
+        await target.writeAsBytes(bytes, flush: true);
+        written++;
+      }
+    }
+    return written;
+  }
+
+  static List<int>? _decodeIconData(Object? value) {
+    if (value == null) return null;
+
+    if (value is List) {
+      try {
+        return value.map((e) => int.parse(e.toString())).toList();
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (value is! String || value.trim().isEmpty) return null;
+    var text = value.trim();
+    final comma = text.indexOf(',');
+    if (text.startsWith('data:') && comma >= 0) {
+      text = text.substring(comma + 1);
+    }
+
+    try {
+      return base64Decode(text);
+    } catch (_) {
+      try {
+        return base64Url.decode(base64Url.normalize(text));
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  static String _detectImageExtension(List<int> bytes) {
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'png';
+    }
+    return 'jpg';
   }
 
   static Future<void> _refreshNeoStationUi() async {
