@@ -578,20 +578,18 @@ class DirectoriesSettingsContentState
   }
 
   /// Cards shown only on iOS, one per emulator NeoStation can hand games
-  /// to. Deliberately built as standalone widgets rather than folded into
-  /// [_directoryItems] — that list drives index-sensitive section-header
-  /// placement ([_esdeSectionStart] etc.) that new entries could easily
-  /// throw off without a way to compile-check the change end to end.
-  Widget _buildIOSEmulatorSections(ThemeData theme) {
-    if (!Platform.isIOS) return const SizedBox.shrink();
+  /// to. Rendered as non-navigable rows at the top of the directory list
+  /// (see build) rather than as entries in [_directoryItems] — that list
+  /// drives index-sensitive section-header placement ([_esdeSectionStart]
+  /// etc.) that new entries could easily throw off without a way to
+  /// compile-check the change end to end.
+  List<Widget> _iosEmulatorCards(ThemeData theme) {
+    if (!Platform.isIOS) return const [];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildIOSRetroArchSection(theme),
-        _buildIOSArmsx2Section(theme),
-      ],
-    );
+    return [
+      _buildIOSRetroArchSection(theme),
+      _buildIOSArmsx2Section(theme),
+    ];
   }
 
   /// RetroArch: link its folder, then sync its library so games launch
@@ -1180,7 +1178,6 @@ class DirectoriesSettingsContentState
             _buildScanProgress(theme, configProvider),
             _buildEsdeProgress(theme),
             _buildEsdeResultSummary(theme),
-            _buildIOSEmulatorSections(theme),
             Expanded(
               child: Builder(
                 builder: (context) {
@@ -1188,6 +1185,18 @@ class DirectoriesSettingsContentState
                   // navigable item, so header insertion stays robust as the
                   // ROM-folder count changes.
                   final visualRows = <Map<String, dynamic>>[];
+
+                  // The iOS emulator cards ride inside the list rather than
+                  // sitting pinned above it: two cards plus the title left
+                  // almost no room for the directory rows on a landscape
+                  // phone, and a fixed header can't scroll out of the way.
+                  // They're not navigable rows — like section headers, they
+                  // carry no 'nav' index, so gamepad indices still line up
+                  // 1:1 with _directoryItems.
+                  for (final card in _iosEmulatorCards(theme)) {
+                    visualRows.add({'card': card});
+                  }
+
                   for (var i = 0; i < _directoryItems.length; i++) {
                     // "ROM Directories" header before add_rom (nav index 2).
                     if (i == 2) {
@@ -1211,6 +1220,9 @@ class DirectoriesSettingsContentState
                     itemCount: visualRows.length,
                     itemBuilder: (context, visualIndex) {
                       final row = visualRows[visualIndex];
+                      if (row.containsKey('card')) {
+                        return row['card'] as Widget;
+                      }
                       if (row.containsKey('header')) {
                         return SettingsSectionHeader(
                           label: row['header'] as String,
