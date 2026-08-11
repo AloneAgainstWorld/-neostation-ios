@@ -11,7 +11,6 @@ import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/config_service.dart';
 import 'package:neostation/services/logger_service.dart';
-import 'package:neostation/services/ios_jit_launch_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -45,6 +44,10 @@ class MelonxLibraryService {
   static const String _callbackHost = 'melonx';
   static const String _prefsKey = 'melonx_library_cache_v1';
   static const String _virtualScheme = 'melonx';
+  // MeloNX's compatibility scheme used by ManicEMU for frontend launches.
+  // Keep NeoStation's stored virtual rows on melonx:// for backward
+  // compatibility, but translate to this scheme only at launch time.
+  static const String _frontendLaunchScheme = 'atariemulator';
 
   /// Lookup keys (Title ID and title name, case-insensitive) -> lightweight
   /// MeloNX GameScheme metadata.
@@ -611,16 +614,16 @@ class MelonxLibraryService {
   }) async {
     if (isVirtualLibraryPath(romPath)) {
       try {
-        final uri = Uri.parse(romPath);
+        final storedUri = Uri.parse(romPath);
+        final rawLaunchUrl = _frontendLaunchUrlFromUri(storedUri);
         await _writeDebugFile(
           'melonx_launch_debug.txt',
           'Virtual MeloNX library row.\n'
-              'Launching with native JIT retry: $uri',
+              'Strategy: ManicEMU-compatible single native open.\n'
+              'Stored NeoStation URL: $storedUri\n'
+              'Opened URL: $rawLaunchUrl',
         );
-        return await IosJitLaunchService.launchWithRetry(
-          uri,
-          debugFileName: 'melonx_jit_launch_debug.txt',
-        );
+        return await _openFrontendLaunchUrl(rawLaunchUrl);
       } catch (e) {
         _log.e('MelonxLibraryService: virtual launch failed: $e');
         return false;
@@ -659,19 +662,54 @@ class MelonxLibraryService {
     if (entry == null) return false;
 
     final launchUrlString = entry['launchURL']?.toString();
-    final uri = launchUrlString == null || launchUrlString.isEmpty
+    final storedUri = launchUrlString == null || launchUrlString.isEmpty
         ? _launchUriForGame(entry)
         : Uri.parse(launchUrlString);
+    final rawLaunchUrl = _frontendLaunchUrlFromUri(storedUri);
 
     try {
-      return await IosJitLaunchService.launchWithRetry(
-        uri,
-        debugFileName: 'melonx_jit_launch_debug.txt',
+      await _appendDebugFile(
+        'melonx_launch_debug.txt',
+        '\nStrategy: ManicEMU-compatible single native open.\n'
+            'Stored NeoStation URL: $storedUri\n'
+            'Opened URL: $rawLaunchUrl',
       );
+      return await _openFrontendLaunchUrl(rawLaunchUrl);
     } catch (e) {
-      _log.e('MelonxLibraryService: failed to launch $uri: $e');
+      _log.e('MelonxLibraryService: failed to launch $rawLaunchUrl: $e');
       return false;
     }
+  }
+
+  /// Converts NeoStation's persistent `melonx://game?...` virtual URL into
+  /// MeloNX's compatibility frontend scheme. ManicEMU uses this exact scheme
+  /// and performs one native UIApplication.open call, without a JIT delay or
+  /// duplicate game launch request.
+  static String _frontendLaunchUrlFromUri(Uri uri) {
+    final id = uri.queryParameters['id']?.trim() ?? '';
+    if (id.isNotEmpty) {
+      return '$_frontendLaunchScheme://game?id=${Uri.encodeQueryComponent(id)}';
+    }
+
+    final name = uri.queryParameters['name']?.trim() ?? '';
+    if (name.isNotEmpty) {
+      return '$_frontendLaunchScheme://game?name=${Uri.encodeQueryComponent(name)}';
+    }
+
+    throw StateError('MeloNX launch URL has neither id nor name: $uri');
+  }
+
+  /// Mirrors ManicEMU's MeloNX launch behavior as closely as NeoStation can:
+  /// a single native iOS URL open. No delayed retry is used for MeloNX.
+  static Future<bool> _openFrontendLaunchUrl(String rawUrl) async {
+    if (Platform.isIOS) {
+      return await ExternalFolderAccess.openRawUrl(rawUrl) ?? false;
+    }
+
+    return launchUrl(
+      Uri.parse(rawUrl),
+      mode: LaunchMode.externalApplication,
+    );
   }
 
   /// Device-readable diagnostics for CI-only iOS development where an Xcode
