@@ -10,6 +10,7 @@ import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_playlist_service.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
+import 'package:neostation/services/melonx_library_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -99,13 +100,18 @@ class GameLaunchService {
           system.folderName.toLowerCase() == 'ps2' &&
           game.romPath != null &&
           Armsx2LibraryService.isVirtualLibraryPath(game.romPath!);
+      final isMeloNXVirtualRom =
+          Platform.isIOS &&
+          system.folderName.toLowerCase() == 'switch' &&
+          game.romPath != null &&
+          MelonxLibraryService.isVirtualLibraryPath(game.romPath!);
 
       bool romExists = false;
       if (game.romPath != null) {
-        if (isArmsx2VirtualRom) {
-          // ARMSX2 library imports are represented by their direct-launch URL
-          // rather than a filesystem path. They are intentionally launchable
-          // even when NeoStation cannot see the PS2 file itself.
+        if (isArmsx2VirtualRom || isMeloNXVirtualRom) {
+          // External iOS library imports are represented by direct-launch URLs
+          // rather than filesystem paths. They remain launchable even when
+          // NeoStation cannot see the underlying ROM file itself.
           romExists = true;
         } else if (Platform.isAndroid && game.romPath!.startsWith('content://')) {
           romExists = true;
@@ -134,6 +140,32 @@ class GameLaunchService {
       if (Platform.isIOS) {
         GameSessionManager.registerGameLaunch(system, game, 'ios_direct_launch');
         await FavoritesService.recordGamePlayed(game);
+
+        // Nintendo Switch: MeloNX exposes an alternate-frontend library export
+        // and direct-launch URL scheme. Imported virtual rows launch immediately;
+        // physical Switch rows can also be matched by Title ID/title name from
+        // the last MeloNX sync.
+        if (system.folderName.toLowerCase() == 'switch') {
+          try {
+            final launched = await MelonxLibraryService.launchGameByRomPath(
+              game.romPath!,
+              titleId: game.titleId,
+              titleName: game.titleName,
+            );
+            if (launched) return GameLaunchResult.success();
+          } catch (e) {
+            // Physical Switch rows can still fall through to RetroArch/Open In.
+          }
+
+          // A virtual MeloNX row has no local file to hand to another emulator
+          // if its deeplink failed. Stop here instead of trying file fallbacks.
+          if (isMeloNXVirtualRom) {
+            return GameLaunchResult.failure(
+              'Could not launch this Nintendo Switch game in MeloNX.',
+              game.romPath,
+            );
+          }
+        }
 
         // PS2: ARMSX2 exports its own library with the exact fileName and
         // launchURL it expects. If this ROM matches that synced library, send

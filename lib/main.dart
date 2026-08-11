@@ -47,6 +47,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
+import 'package:neostation/services/melonx_library_service.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -225,14 +226,16 @@ void main() async {
     // works immediately after a cold start without forcing a fresh sync.
     await RetroArchLibraryService.loadCachedLibrary();
     await Armsx2LibraryService.loadCachedLibrary();
+    await MelonxLibraryService.loadCachedLibrary();
 
-    // RetroArch and ARMSX2 both return their exported libraries through the
+    // RetroArch, ARMSX2 and MeloNX return their exported libraries through the
     // neostation:// callback scheme. external_folder_access forwards every
     // incoming URL from iOS to this one listener; each service ignores URLs
     // that do not belong to it.
     ExternalFolderAccess.setIncomingUrlListener((uri) async {
       if (await RetroArchLibraryService.handleIncomingUri(uri)) return;
-      await Armsx2LibraryService.handleIncomingUri(uri);
+      if (await Armsx2LibraryService.handleIncomingUri(uri)) return;
+      await MelonxLibraryService.handleIncomingUri(uri);
     });
   }
 
