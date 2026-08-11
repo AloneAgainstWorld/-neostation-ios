@@ -184,6 +184,8 @@ const Map<String, dynamic> appLocaleIt = {
       'Mostra la scheda di ricerca nella barra di navigazione',
 
   AppLocale.configureDirectories: 'Configura Directory',
+  AppLocale.configureLaunch: 'Configura avvio',
+  AppLocale.shortcutSetupOpenError: 'Impossibile aprire la configurazione di avvio.',
   AppLocale.configureRomsFolder: 'Configura Cartella ROM',
   AppLocale.cannotAccessFolder: 'Impossibile accedere alla cartella',
   AppLocale.backgroundImage: 'Immagine di Sfondo',

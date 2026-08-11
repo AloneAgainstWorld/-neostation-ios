@@ -181,6 +181,8 @@ const Map<String, dynamic> appLocaleId = {
       'Menampilkan tab pencarian di bilah navigasi',
 
   AppLocale.configureDirectories: 'Konfigurasi Direktori',
+  AppLocale.configureLaunch: 'Konfigurasikan peluncuran',
+  AppLocale.shortcutSetupOpenError: 'Tidak dapat membuka konfigurasi peluncuran.',
   AppLocale.configureRomsFolder: 'Konfigurasi Folder ROM',
   AppLocale.cannotAccessFolder: 'Tidak dapat mengakses folder',
   AppLocale.backgroundImage: 'Gambar Latar Belakang',

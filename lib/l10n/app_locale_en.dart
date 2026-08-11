@@ -180,6 +180,8 @@ const Map<String, dynamic> appLocaleEn = {
       'Display the Search tab in the navigation bar',
 
   AppLocale.configureDirectories: 'Directories',
+  AppLocale.configureLaunch: 'Configure launch',
+  AppLocale.shortcutSetupOpenError: 'Could not open the launch setup shortcut.',
   AppLocale.configureRomsFolder: 'Configure ROMs folder',
   AppLocale.cannotAccessFolder: 'Cannot Access Folder',
   AppLocale.backgroundImage: 'Background Image',

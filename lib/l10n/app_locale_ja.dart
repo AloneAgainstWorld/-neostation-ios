@@ -154,6 +154,8 @@ const Map<String, dynamic> appLocaleJa = {
   AppLocale.showSearchTabSubtitle: 'ナビゲーションバーに検索タブを表示します',
 
   AppLocale.configureDirectories: 'ディレクトリの設定',
+  AppLocale.configureLaunch: '起動を設定',
+  AppLocale.shortcutSetupOpenError: '起動設定を開けませんでした。',
   AppLocale.configureRomsFolder: 'ROMフォルダの設定',
   AppLocale.cannotAccessFolder: 'フォルダにアクセスできません',
   AppLocale.backgroundImage: '背景画像',
