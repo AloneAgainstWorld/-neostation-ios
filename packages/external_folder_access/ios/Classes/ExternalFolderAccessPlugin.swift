@@ -19,7 +19,37 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
 {
     private var pendingResult: FlutterResult?
     private var channel: FlutterMethodChannel?
-    private static let bookmarkDefaultsKey = "external_folder_access.bookmark"
+
+    /// Bookmarks are stored per-emulator so several external folders can be
+    /// linked side by side (RetroArch's, ARMSX2's, ...) instead of the one
+    /// global slot this plugin originally had. The historical key is reused
+    /// verbatim for the "retroarch" bookmark, so a folder linked before
+    /// multi-bookmark support survives the upgrade with no migration step.
+    private static let legacyBookmarkDefaultsKey = "external_folder_access.bookmark"
+    private static let defaultBookmarkKey = "retroarch"
+
+    /// The bookmark key the in-flight document picker will store under.
+    /// Captured when the pick starts because UIDocumentPickerDelegate's
+    /// callback carries no context of its own.
+    private var pendingBookmarkKey: String = ExternalFolderAccessPlugin.defaultBookmarkKey
+
+    private static func bookmarkDefaultsKey(for key: String) -> String {
+        return key == defaultBookmarkKey
+            ? legacyBookmarkDefaultsKey
+            : "\(legacyBookmarkDefaultsKey).\(key)"
+    }
+
+    /// Reads the optional "key" argument, falling back to the default so a
+    /// call made without one behaves exactly as it did before.
+    private static func bookmarkKey(from call: FlutterMethodCall) -> String {
+        guard let args = call.arguments as? [String: Any],
+            let key = args["key"] as? String,
+            !key.isEmpty
+        else {
+            return defaultBookmarkKey
+        }
+        return key
+    }
 
     // Held as a property, not a local var — UIDocumentInteractionController
     // must stay alive for the duration of its menu/preview, and a local
@@ -59,11 +89,11 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "pickAndBookmarkFolder":
-            pickFolder(result: result)
+            pickFolder(key: Self.bookmarkKey(from: call), result: result)
         case "resolveBookmarkedFolder":
-            resolveBookmarkedFolder(result: result)
+            resolveBookmarkedFolder(key: Self.bookmarkKey(from: call), result: result)
         case "clearBookmark":
-            clearBookmark(result: result)
+            clearBookmark(key: Self.bookmarkKey(from: call), result: result)
         case "openInMenu":
             openInMenu(call: call, result: result)
         default:
@@ -73,7 +103,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
 
     // MARK: - Pick
 
-    private func pickFolder(result: @escaping FlutterResult) {
+    private func pickFolder(key: String, result: @escaping FlutterResult) {
         guard let rootVC = Self.topViewController() else {
             result(
                 FlutterError(
@@ -89,6 +119,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
         // killed mid-pick) shouldn't leak a dangling result — just drop it
         // rather than trying to call it twice.
         pendingResult = result
+        pendingBookmarkKey = key
 
         let picker: UIDocumentPickerViewController
         if #available(iOS 14.0, *) {
@@ -126,7 +157,10 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
-            UserDefaults.standard.set(bookmarkData, forKey: Self.bookmarkDefaultsKey)
+            UserDefaults.standard.set(
+                bookmarkData,
+                forKey: Self.bookmarkDefaultsKey(for: pendingBookmarkKey)
+            )
             pendingResult?(url.path)
         } catch {
             pendingResult?(
@@ -152,8 +186,12 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     /// Deliberately never calls stopAccessingSecurityScopedResource() here —
     /// NeoStation needs the folder readable for as long as the app runs, and
     /// iOS releases the scope automatically when the process exits.
-    private func resolveBookmarkedFolder(result: @escaping FlutterResult) {
-        guard let bookmarkData = UserDefaults.standard.data(forKey: Self.bookmarkDefaultsKey) else {
+    private func resolveBookmarkedFolder(key: String, result: @escaping FlutterResult) {
+        guard
+            let bookmarkData = UserDefaults.standard.data(
+                forKey: Self.bookmarkDefaultsKey(for: key)
+            )
+        else {
             result(nil)
             return
         }
@@ -188,8 +226,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
         }
     }
 
-    private func clearBookmark(result: @escaping FlutterResult) {
-        UserDefaults.standard.removeObject(forKey: Self.bookmarkDefaultsKey)
+    private func clearBookmark(key: String, result: @escaping FlutterResult) {
+        UserDefaults.standard.removeObject(forKey: Self.bookmarkDefaultsKey(for: key))
         result(nil)
     }
 

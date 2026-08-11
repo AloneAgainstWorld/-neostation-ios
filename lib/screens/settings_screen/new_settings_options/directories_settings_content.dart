@@ -67,13 +67,24 @@ class DirectoriesSettingsContentState
   bool _isLoading = true;
 
   // iOS-only: live-linking an external folder (e.g. RetroArch's) via a
-  // persisted security-scoped bookmark, see external_folder_access.
-  bool _isLinkingExternalFolder = false;
+  // persisted security-scoped bookmark, see external_folder_access. Holds
+  // the bookmark key currently being picked ('retroarch', 'armsx2', ...) so
+  // only that emulator's own button shows a spinner, rather than every card
+  // freezing at once as it would with a single shared boolean.
+  String? _linkingFolderKey;
 
   // Migration progress state (shown inline, no dialog).
   bool _isMigrating = false;
   double _migrationProgress = 0.0;
   String _migrationFile = '';
+
+  /// Whether the ES-DE import feature exists at all on this platform.
+  /// False on iOS: an ES-DE install lives in another app's sandbox, which
+  /// iOS doesn't expose the way desktop and Android do, so the whole
+  /// feature — list entries, section header, progress bar, result summary
+  /// and actions — is absent rather than present-but-disabled. Every ES-DE
+  /// entry point below is gated on this one flag.
+  static final bool _esdeSupported = !Platform.isIOS;
 
   // ES-DE import progress state (shown inline, no dialog).
   bool _isImporting = false;
@@ -146,6 +157,14 @@ class DirectoriesSettingsContentState
     }
 
     // ES-DE import actions (grouped under their own section header in build).
+    // Absent where the feature isn't supported (see [_esdeSupported]).
+    // Leaving _esdeSectionStart at -1 keeps its header out of the list too,
+    // since build() inserts that header by index match.
+    if (!_esdeSupported) {
+      _esdeSectionStart = -1;
+      return;
+    }
+
     _esdeSectionStart = _directoryItems.length;
     _directoryItems.add({
       'title': AppLocale.esdeSelectFolder,
@@ -246,6 +265,7 @@ class DirectoriesSettingsContentState
       context.read<SqliteConfigProvider>().config.esdeFolderPath;
 
   Future<void> _selectEsdeFolder() async {
+    if (!_esdeSupported) return;
     try {
       String? selected;
 
@@ -301,6 +321,7 @@ class DirectoriesSettingsContentState
   }
 
   Future<void> _runEsdeImport() async {
+    if (!_esdeSupported) return;
     final root = _esdePath;
     if (root.trim().isEmpty) {
       AppNotification.showNotification(
@@ -430,7 +451,7 @@ class DirectoriesSettingsContentState
   }
 
   Future<void> _resetEsdeImport() async {
-    if (_isImporting) return;
+    if (!_esdeSupported || _isImporting) return;
 
     final confirmed = await ConfirmActionDialog.show(
       context,
@@ -480,15 +501,29 @@ class DirectoriesSettingsContentState
   /// Live-links an external folder (e.g. RetroArch's) via a persisted
   /// security-scoped bookmark instead of copying its contents in. See
   /// ExternalFolderAccess and ConfigService.linkedExternalFolderPath.
-  Future<void> _linkExternalFolder() async {
-    if (_isLinkingExternalFolder) return;
+  /// Links a folder for the emulator identified by [bookmarkKey]. Each
+  /// emulator gets its own security-scoped bookmark natively, so linking
+  /// ARMSX2's folder never invalidates RetroArch's (the plugin originally
+  /// held a single global bookmark, which made two linked emulators
+  /// impossible).
+  Future<void> _linkExternalFolder({
+    required String bookmarkKey,
+    required String successMessage,
+  }) async {
+    if (_linkingFolderKey != null) return;
 
-    setState(() => _isLinkingExternalFolder = true);
+    setState(() => _linkingFolderKey = bookmarkKey);
     try {
-      final selected = await ExternalFolderAccess.pickAndBookmarkFolder();
+      final selected = await ExternalFolderAccess.pickAndBookmarkFolder(
+        key: bookmarkKey,
+      );
       if (selected == null || !mounted) return;
 
-      ConfigService.linkedExternalFolderPath = selected;
+      if (bookmarkKey == _armsx2BookmarkKey) {
+        ConfigService.linkedArmsx2FolderPath = selected;
+      } else {
+        ConfigService.linkedExternalFolderPath = selected;
+      }
 
       final configProvider = Provider.of<SqliteConfigProvider>(
         context,
@@ -502,13 +537,11 @@ class DirectoriesSettingsContentState
 
       AppNotification.showNotification(
         context,
-        'Linked. NeoStation will scan this folder in place — no copy '
-            'needed. Launching a game found here will open RetroArch '
-            'directly.',
+        successMessage,
         type: NotificationType.info,
       );
     } catch (e) {
-      _log.e('Link external folder failed: $e');
+      _log.e('Link external folder failed ($bookmarkKey): $e');
       if (mounted) {
         AppNotification.showNotification(
           context,
@@ -517,9 +550,13 @@ class DirectoriesSettingsContentState
         );
       }
     } finally {
-      if (mounted) setState(() => _isLinkingExternalFolder = false);
+      if (mounted) setState(() => _linkingFolderKey = null);
     }
   }
+
+  /// Bookmark key for ARMSX2's linked folder, kept distinct from
+  /// RetroArch's default key so the two coexist.
+  static const String _armsx2BookmarkKey = 'armsx2';
 
   /// Triggers RetroArch's library-export protocol
   /// (retroarch://library?scheme=neostation). RetroArch calls back
@@ -540,15 +577,26 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Card shown only on iOS, combining the link + sync steps into one clear
-  /// place. Deliberately built as a standalone widget rather than folded
-  /// into [_directoryItems] — that list drives index-sensitive
-  /// section-header placement ([_esdeSectionStart] etc.) that a new entry
-  /// could easily throw off without a way to compile-check the change end
-  /// to end.
-  Widget _buildIOSRetroArchSection(ThemeData theme) {
+  /// Cards shown only on iOS, one per emulator NeoStation can hand games
+  /// to. Deliberately built as standalone widgets rather than folded into
+  /// [_directoryItems] — that list drives index-sensitive section-header
+  /// placement ([_esdeSectionStart] etc.) that new entries could easily
+  /// throw off without a way to compile-check the change end to end.
+  Widget _buildIOSEmulatorSections(ThemeData theme) {
     if (!Platform.isIOS) return const SizedBox.shrink();
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildIOSRetroArchSection(theme),
+        _buildIOSArmsx2Section(theme),
+      ],
+    );
+  }
+
+  /// RetroArch: link its folder, then sync its library so games launch
+  /// straight into it with one tap via its URL scheme.
+  Widget _buildIOSRetroArchSection(ThemeData theme) {
     final isLinked = ConfigService.linkedExternalFolderPath != null;
     final hasSynced = RetroArchLibraryService.hasSyncedLibrary;
 
@@ -564,6 +612,99 @@ class DirectoriesSettingsContentState
     } else {
       statusText = 'Linked and synced — games launch directly in RetroArch.';
     }
+
+    return _buildIOSEmulatorCard(
+      theme: theme,
+      name: 'RetroArch',
+      icon: Symbols.sports_esports_rounded,
+      statusText: statusText,
+      isLinked: isLinked,
+      bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
+      successMessage:
+          'Linked. NeoStation will scan this folder in place — no copy '
+          'needed. Launching a game found here will open RetroArch '
+          'directly.',
+      trailingAction: SizedBox(
+        height: 48.r,
+        child: FilledButton.icon(
+          onPressed: !isLinked ? null : _syncWithRetroArch,
+          icon: Icon(Symbols.bolt_rounded, size: 20.r),
+          label: Text(
+            hasSynced ? 'Re-sync' : 'Sync',
+            style: TextStyle(fontSize: 14.r),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ARMSX2 (PS2): link-only. Unlike RetroArch it publishes no URL scheme,
+  /// so there is nothing to sync and no one-tap launch to offer — games in
+  /// a linked folder go out through iOS's "Open In" menu, which ARMSX2
+  /// already registers for. That path needs no code of its own, only the
+  /// folder being visible to NeoStation in the first place.
+  Widget _buildIOSArmsx2Section(ThemeData theme) {
+    final isLinked = ConfigService.linkedArmsx2FolderPath != null;
+
+    return _buildIOSEmulatorCard(
+      theme: theme,
+      name: 'ARMSX2',
+      icon: Symbols.stadia_controller_rounded,
+      statusText: isLinked
+          ? 'Folder linked. PS2 games open in ARMSX2 through the share menu.'
+          : 'Link ARMSX2\'s folder to see your PS2 games here. No direct '
+                'launch — ARMSX2 has no URL scheme, so games go through the '
+                'share menu.',
+      isLinked: isLinked,
+      bookmarkKey: _armsx2BookmarkKey,
+      successMessage:
+          'Linked. NeoStation will scan this folder in place. Launching a '
+          'PS2 game opens the share menu — pick ARMSX2 there.',
+    );
+  }
+
+  /// Shared card shell for an external emulator: name, status line, a link
+  /// button, and an optional extra action (RetroArch's Sync).
+  Widget _buildIOSEmulatorCard({
+    required ThemeData theme,
+    required String name,
+    required IconData icon,
+    required String statusText,
+    required bool isLinked,
+    required String bookmarkKey,
+    required String successMessage,
+    Widget? trailingAction,
+  }) {
+    final isLinkingThis = _linkingFolderKey == bookmarkKey;
+    // Any pick in flight blocks the others: iOS presents one document
+    // picker at a time, and a second request while one is open is dropped.
+    final isAnyLinkInFlight = _linkingFolderKey != null;
+
+    final linkButton = SizedBox(
+      height: 48.r,
+      child: OutlinedButton.icon(
+        onPressed: isAnyLinkInFlight
+            ? null
+            : () => _linkExternalFolder(
+                bookmarkKey: bookmarkKey,
+                successMessage: successMessage,
+              ),
+        icon: isLinkingThis
+            ? SizedBox(
+                width: 18.r,
+                height: 18.r,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                isLinked ? Symbols.link_rounded : Symbols.add_link_rounded,
+                size: 20.r,
+              ),
+        label: Text(
+          isLinked ? 'Change folder' : 'Link folder',
+          style: TextStyle(fontSize: 14.r),
+        ),
+      ),
+    );
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.r, vertical: 8.r),
@@ -583,14 +724,10 @@ class DirectoriesSettingsContentState
           children: [
             Row(
               children: [
-                Icon(
-                  Symbols.sports_esports_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 24.r,
-                ),
+                Icon(icon, color: theme.colorScheme.primary, size: 24.r),
                 SizedBox(width: 10.r),
                 Text(
-                  'RetroArch',
+                  name,
                   style: TextStyle(
                     fontSize: 16.r,
                     fontWeight: FontWeight.bold,
@@ -609,50 +746,11 @@ class DirectoriesSettingsContentState
             SizedBox(height: 16.r),
             Row(
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 48.r,
-                    child: OutlinedButton.icon(
-                      onPressed: _isLinkingExternalFolder
-                          ? null
-                          : _linkExternalFolder,
-                      icon: _isLinkingExternalFolder
-                          ? SizedBox(
-                              width: 18.r,
-                              height: 18.r,
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Icon(
-                              isLinked
-                                  ? Symbols.link_rounded
-                                  : Symbols.add_link_rounded,
-                              size: 20.r,
-                            ),
-                      label: Text(
-                        isLinked ? 'Change folder' : 'Link folder',
-                        style: TextStyle(fontSize: 14.r),
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 10.r),
-                Expanded(
-                  child: SizedBox(
-                    height: 48.r,
-                    child: FilledButton.icon(
-                      onPressed: !isLinked
-                          ? null
-                          : _syncWithRetroArch,
-                      icon: Icon(Symbols.bolt_rounded, size: 20.r),
-                      label: Text(
-                        hasSynced ? 'Re-sync' : 'Sync',
-                        style: TextStyle(fontSize: 14.r),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: linkButton),
+                if (trailingAction != null) ...[
+                  SizedBox(width: 10.r),
+                  Expanded(child: trailingAction),
+                ],
               ],
             ),
           ],
@@ -1082,7 +1180,7 @@ class DirectoriesSettingsContentState
             _buildScanProgress(theme, configProvider),
             _buildEsdeProgress(theme),
             _buildEsdeResultSummary(theme),
-            _buildIOSRetroArchSection(theme),
+            _buildIOSEmulatorSections(theme),
             Expanded(
               child: Builder(
                 builder: (context) {
@@ -1409,7 +1507,7 @@ class DirectoriesSettingsContentState
   }
 
   Widget _buildEsdeProgress(ThemeData theme) {
-    if (!_isImporting) return const SizedBox.shrink();
+    if (!_esdeSupported || !_isImporting) return const SizedBox.shrink();
     final pct = _importProgress;
     return Container(
       margin: EdgeInsets.only(bottom: 12.r),
@@ -1477,6 +1575,7 @@ class DirectoriesSettingsContentState
   }
 
   Widget _buildEsdeResultSummary(ThemeData theme) {
+    if (!_esdeSupported) return const SizedBox.shrink();
     final r = _lastEsdeResult;
     if (r == null || _isImporting) return const SizedBox.shrink();
     return Container(

@@ -14,6 +14,13 @@ class ExternalFolderAccess {
     'neostation/external_folder_access',
   );
 
+  /// Bookmark slot used when a caller doesn't name one. Several folders can
+  /// be linked independently by passing a different [key] (e.g. `'armsx2'`),
+  /// each stored under its own security-scoped bookmark natively. This
+  /// default maps to the plugin's original single-bookmark storage key, so
+  /// a folder linked before multi-bookmark support still resolves.
+  static const String defaultBookmarkKey = 'retroarch';
+
   /// Presents the system folder picker — which can browse into any app's
   /// exposed "On My iPhone" location, e.g. RetroArch's — and persists a
   /// security-scoped bookmark for the picked folder so it stays accessible
@@ -21,36 +28,45 @@ class ExternalFolderAccess {
   ///
   /// Returns the picked folder's absolute path, or `null` if the user
   /// cancelled, this isn't iOS, or the pick otherwise failed.
-  static Future<String?> pickAndBookmarkFolder() async {
+  static Future<String?> pickAndBookmarkFolder({
+    String key = defaultBookmarkKey,
+  }) async {
     if (!Platform.isIOS) return null;
     try {
-      return await _channel.invokeMethod<String>('pickAndBookmarkFolder');
+      return await _channel.invokeMethod<String>('pickAndBookmarkFolder', {
+        'key': key,
+      });
     } on PlatformException {
       return null;
     }
   }
 
-  /// Resolves the previously-bookmarked folder (if any) and starts
-  /// security-scoped access to it for this app session.
+  /// Resolves the folder previously bookmarked under [key] (if any) and
+  /// starts security-scoped access to it for this app session.
   ///
   /// Returns the folder's absolute path, or `null` if no folder has been
-  /// linked yet (or this isn't iOS).
-  static Future<String?> resolveBookmarkedFolder() async {
+  /// linked under that key yet (or this isn't iOS).
+  static Future<String?> resolveBookmarkedFolder({
+    String key = defaultBookmarkKey,
+  }) async {
     if (!Platform.isIOS) return null;
     try {
-      return await _channel.invokeMethod<String>('resolveBookmarkedFolder');
+      return await _channel.invokeMethod<String>('resolveBookmarkedFolder', {
+        'key': key,
+      });
     } on PlatformException {
       return null;
     }
   }
 
-  /// Forgets the linked folder. The next call to [resolveBookmarkedFolder]
-  /// returns `null` until a new folder is picked via
-  /// [pickAndBookmarkFolder].
-  static Future<void> clearBookmark() async {
+  /// Forgets the folder linked under [key]. The next call to
+  /// [resolveBookmarkedFolder] with the same key returns `null` until a new
+  /// folder is picked via [pickAndBookmarkFolder]. Other keys are
+  /// untouched.
+  static Future<void> clearBookmark({String key = defaultBookmarkKey}) async {
     if (!Platform.isIOS) return;
     try {
-      await _channel.invokeMethod<void>('clearBookmark');
+      await _channel.invokeMethod<void>('clearBookmark', {'key': key});
     } on PlatformException {
       // Nothing meaningful to recover here — worst case the bookmark
       // lingers and a future resolve attempt fails, which is handled.

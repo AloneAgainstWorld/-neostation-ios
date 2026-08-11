@@ -87,14 +87,22 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   //   Android: 0=UserData, 1=Permissions, 2=Folder, 3=Scanning,
   //            4=EsdeImport, 5=ArtPack
   //   Desktop: 0=UserData, 1=Folder, 2=Scanning, 3=EsdeImport, 4=ArtPack
+  //   iOS:     0=UserData, 1=Folder, 2=Scanning, 3=ArtPack (no ES-DE)
   // The Permissions step covers both All-Files access and the accessibility
   // (Screen Return) service.
   int get _stepUserData => 0;
   int get _stepPermissions => Platform.isAndroid ? 1 : -1;
   int get _stepFolder => Platform.isAndroid ? 2 : 1;
   int get _stepScanning => Platform.isAndroid ? 3 : 2;
-  int get _stepEsde => Platform.isAndroid ? 4 : 3;
-  int get _stepArtPack => Platform.isAndroid ? 5 : 4;
+  // iOS has no ES-DE step at all — an ES-DE install lives in another app's
+  // sandbox, which iOS doesn't expose. Resolving it to -1 means every
+  // `_currentStep == _stepEsde` comparison is false there, and ArtPack
+  // moves up into the slot ES-DE would have occupied so the progress dots
+  // match the steps the user actually walks through.
+  int get _stepEsde => Platform.isIOS ? -1 : (Platform.isAndroid ? 4 : 3);
+  int get _stepArtPack => Platform.isAndroid
+      ? 5
+      : (Platform.isIOS ? 3 : 4);
 
   /// The art-pack step is always the final step of the wizard.
   bool get _isLastStep => _currentStep == _stepArtPack;
@@ -271,7 +279,10 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   //          4=EsdeImport, 5=ArtPack (6 steps)
   // Desktop: 0=UserData, 1=FolderSelect, 2=Scanning, 3=EsdeImport,
   //          4=ArtPack (5 steps)
-  int get _totalSteps => Platform.isAndroid ? 6 : 5;
+  // iOS:     0=UserData, 1=FolderSelect, 2=Scanning, 3=ArtPack (4 steps)
+  int get _totalSteps => Platform.isAndroid
+      ? 6
+      : (Platform.isIOS ? 4 : 5);
 
   @override
   Widget build(BuildContext context) {
@@ -1880,6 +1891,8 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
       // to the art-pack step, same as if the user had tapped "Skip" on the
       // ES-DE step manually.
       setState(
+        // ES-DE doesn't exist on iOS (_stepEsde is -1 there), so scanning
+        // hands straight over to the art-pack step.
         () => _currentStep = Platform.isIOS ? _stepArtPack : _stepEsde,
       );
       return;
