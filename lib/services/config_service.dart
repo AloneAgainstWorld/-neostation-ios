@@ -33,10 +33,8 @@ class ConfigService {
   /// iOS-only: absolute path of the folder linked for ARMSX2, resolved at
   /// startup from its own security-scoped bookmark (key `'armsx2'`, see
   /// ExternalFolderAccess). Kept separate from
-  /// [linkedExternalFolderPath] because the two emulators get different
-  /// launch treatment: RetroArch supports direct one-tap launching via its
-  /// URL scheme, whereas ARMSX2 exposes no such protocol and can only be
-  /// reached through iOS's "Open In" menu. Null if nothing is linked.
+  /// [linkedExternalFolderPath] because each emulator has its own library
+  /// export and direct-launch URL scheme. Null if nothing is linked.
   static String? linkedArmsx2FolderPath;
 
   /// Determines the base execution path for Windows installations.

@@ -113,15 +113,15 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
 
-          # RetroArch's own request scheme (retroarch://library,
-          # retroarch://game/<filename>) needs to be in
+          # External-emulator URL schemes used by NeoStation must be in
           # LSApplicationQueriesSchemes for canOpenURL/launchUrl checks to
-          # succeed — without this, iOS silently refuses even though
-          # RetroArch is installed.
+          # succeed. RetroArch provides library export + direct launching;
+          # ARMSX2 provides its iOS library export + direct PS2 launch.
           /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string shortcuts" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:2 string armsx2" "$PLIST"
 
           plutil -lint "$PLIST"
 
