@@ -20,6 +20,13 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     private var pendingResult: FlutterResult?
     private var channel: FlutterMethodChannel?
 
+    /// State for the one in-flight delayed launch retry. A second game launch
+    /// cancels the previous retry so an old title can never unexpectedly open
+    /// after the user has already selected a different one.
+    private var delayedRetryWorkItem: DispatchWorkItem?
+    private var delayedRetryBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var delayedRetryDebugFileName: String?
+
     /// Bookmarks are stored per-emulator so several external folders can be
     /// linked side by side (RetroArch's, ARMSX2's, ...) instead of the one
     /// global slot this plugin originally had. The historical key is reused
@@ -98,6 +105,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             openInMenu(call: call, result: result)
         case "openRawUrl":
             openRawUrl(call: call, result: result)
+        case "openUrlWithDelayedRetry":
+            openUrlWithDelayedRetry(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -256,6 +265,205 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
 
         UIApplication.shared.open(url, options: [:]) { opened in
             result(opened)
+        }
+    }
+
+    // MARK: - Delayed direct-launch retry
+
+    /// Opens a game deeplink now, then retries the same deeplink after a short
+    /// delay. This deliberately does not know anything about StikDebug or the
+    /// target emulator's bundle identifier: the first launch is allowed to
+    /// trigger the emulator's own JIT flow, while the retry simply asks the
+    /// unmodified emulator to launch the selected game again once JIT has had
+    /// time to settle.
+    ///
+    /// A UIApplication background task gives the scheduled retry a short window
+    /// to execute after NeoStation leaves the foreground. iOS still controls
+    /// background runtime, so every stage is logged to Documents for on-device
+    /// validation rather than assuming the delayed open is guaranteed.
+    private func openUrlWithDelayedRetry(
+        call: FlutterMethodCall,
+        result: @escaping FlutterResult
+    ) {
+        guard let args = call.arguments as? [String: Any],
+            let raw = args["url"] as? String,
+            !raw.isEmpty,
+            let url = URL(string: raw)
+        else {
+            result(
+                FlutterError(
+                    code: "INVALID_URL",
+                    message: "openUrlWithDelayedRetry requires a valid 'url' string argument",
+                    details: nil
+                )
+            )
+            return
+        }
+
+        let requestedDelayMs: Int
+        if let value = args["delayMs"] as? Int {
+            requestedDelayMs = value
+        } else if let value = args["delayMs"] as? NSNumber {
+            requestedDelayMs = value.intValue
+        } else {
+            requestedDelayMs = 7000
+        }
+
+        // Keep the test range sane even if a malformed value reaches native.
+        let delayMs = min(max(requestedDelayMs, 500), 20_000)
+        let delaySeconds = Double(delayMs) / 1000.0
+        let debugFileName = Self.safeDebugFileName(
+            (args["debugFileName"] as? String) ?? "jit_launch_debug.txt"
+        )
+
+        cancelDelayedRetry(reason: "REPLACED_BY_NEW_LAUNCH")
+        delayedRetryDebugFileName = debugFileName
+        Self.writeLaunchDebug(
+            fileName: debugFileName,
+            replace: true,
+            message: "STATE: INITIAL_OPEN\nURL: \(raw)\nRetry delay: \(delayMs) ms"
+        )
+
+        delayedRetryBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "NeoStation.JITLaunchRetry"
+        ) { [weak self] in
+            guard let self = self else { return }
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: "STATE: BACKGROUND_TASK_EXPIRED"
+            )
+            self.delayedRetryWorkItem?.cancel()
+            self.delayedRetryWorkItem = nil
+            self.endDelayedRetryBackgroundTask()
+        }
+
+        Self.writeLaunchDebug(
+            fileName: debugFileName,
+            replace: false,
+            message: delayedRetryBackgroundTask == .invalid
+                ? "STATE: BACKGROUND_TASK_UNAVAILABLE"
+                : "STATE: BACKGROUND_TASK_STARTED"
+        )
+
+        UIApplication.shared.open(url, options: [:]) { [weak self] opened in
+            guard let self = self else {
+                result(false)
+                return
+            }
+
+            guard opened else {
+                Self.writeLaunchDebug(
+                    fileName: debugFileName,
+                    replace: false,
+                    message: "STATE: INITIAL_OPEN_FAILED"
+                )
+                self.cancelDelayedRetry(reason: "INITIAL_OPEN_FAILED")
+                result(false)
+                return
+            }
+
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: "STATE: RETRY_SCHEDULED\nDelay: \(delayMs) ms"
+            )
+
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                Self.writeLaunchDebug(
+                    fileName: debugFileName,
+                    replace: false,
+                    message: "STATE: RETRY_ATTEMPT\nApplication state: \(Self.applicationStateName())"
+                )
+
+                UIApplication.shared.open(url, options: [:]) { [weak self] retryOpened in
+                    guard let self = self else { return }
+                    Self.writeLaunchDebug(
+                        fileName: debugFileName,
+                        replace: false,
+                        message: retryOpened ? "STATE: RETRY_OPENED" : "STATE: RETRY_FAILED"
+                    )
+                    self.delayedRetryWorkItem = nil
+                    self.endDelayedRetryBackgroundTask()
+                }
+            }
+
+            self.delayedRetryWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds, execute: workItem)
+
+            // The Dart caller only needs to know that the first launch succeeded
+            // and the native retry was scheduled. Do not keep Flutter waiting
+            // while NeoStation is in the background.
+            result(true)
+        }
+    }
+
+    private func cancelDelayedRetry(reason: String) {
+        if delayedRetryWorkItem != nil,
+            let fileName = delayedRetryDebugFileName
+        {
+            Self.writeLaunchDebug(
+                fileName: fileName,
+                replace: false,
+                message: "STATE: \(reason)"
+            )
+        }
+        delayedRetryWorkItem?.cancel()
+        delayedRetryWorkItem = nil
+        endDelayedRetryBackgroundTask()
+        delayedRetryDebugFileName = nil
+    }
+
+    private func endDelayedRetryBackgroundTask() {
+        guard delayedRetryBackgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(delayedRetryBackgroundTask)
+        delayedRetryBackgroundTask = .invalid
+    }
+
+    private static func applicationStateName() -> String {
+        switch UIApplication.shared.applicationState {
+        case .active:
+            return "active"
+        case .inactive:
+            return "inactive"
+        case .background:
+            return "background"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private static func safeDebugFileName(_ value: String) -> String {
+        let candidate = URL(fileURLWithPath: value).lastPathComponent
+        return candidate.isEmpty ? "jit_launch_debug.txt" : candidate
+    }
+
+    private static func writeLaunchDebug(
+        fileName: String,
+        replace: Bool,
+        message: String
+    ) {
+        guard let documents = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else { return }
+
+        let fileURL = documents.appendingPathComponent(fileName)
+        let line = "--- \(ISO8601DateFormatter().string(from: Date())) ---\n\(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+
+        do {
+            if replace || !FileManager.default.fileExists(atPath: fileURL.path) {
+                try data.write(to: fileURL, options: .atomic)
+            } else {
+                let handle = try FileHandle(forWritingTo: fileURL)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+            }
+        } catch {
+            // Diagnostics must never interfere with launching a game.
         }
     }
 
