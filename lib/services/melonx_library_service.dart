@@ -10,7 +10,7 @@ import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/config_service.dart';
-import 'package:neostation/services/ios_jit_launch_service.dart';
+import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -49,7 +49,7 @@ class MelonxLibraryService {
   // Keep NeoStation's stored virtual rows on melonx:// for backward
   // compatibility, but translate to this scheme only at launch time.
   static const String _frontendLaunchScheme = 'atariemulator';
-  static const String _melonxBaseBundleId = 'com.stossy11.MeloNX';
+  static const String _jitShortcutName = 'NeoStation MeloNX JIT';
 
   /// Lookup keys (Title ID and title name, case-insensitive) -> lightweight
   /// MeloNX GameScheme metadata.
@@ -701,29 +701,40 @@ class MelonxLibraryService {
     throw StateError('MeloNX launch URL has neither id nor name: $uri');
   }
 
-  /// On iOS, explicitly primes MeloNX through StikDebug before sending the
-  /// game deeplink. StikDebug is asked to attach `universal.js`, then NeoStation
-  /// waits a conservative warm-up window before opening the selected title.
+  /// On iOS, hand the complete sequence to Apple Shortcuts instead of trying
+  /// to open the game from NeoStation while NeoStation is suspended in the
+  /// background. The shortcut receives [rawUrl] as its Shortcut Input, runs
+  /// StikDebug's official "Enable JIT" action for MeloNX, then opens that input.
   ///
-  /// This keeps the official/unmodified MeloNX and StikDebug apps while avoiding
-  /// the race where a demanding game begins booting before the JIT script has
-  /// attached. The native plugin adapts the MeloNX bundle identifier to the
-  /// current SideStore/AltStore signing Team ID automatically.
+  /// This keeps NeoStation, MeloNX and StikDebug unmodified and lets the app that
+  /// owns the foreground workflow (Shortcuts) perform the final game deeplink.
   static Future<bool> _openFrontendLaunchUrl(String rawUrl) async {
+    final launchUri = Uri.parse(rawUrl);
+
     if (Platform.isIOS) {
-      return IosJitLaunchService.launchAfterPreflight(
-        Uri.parse(rawUrl),
-        targetBaseBundleId: _melonxBaseBundleId,
-        warmupDelay: const Duration(seconds: 8),
-        scriptName: 'universal.js',
-        debugFileName: 'melonx_jit_preflight_debug.txt',
+      await _writeDebugFile(
+        'melonx_shortcut_launch_debug.txt',
+        'STATE: SHORTCUT_REQUESTED\n'
+            'Shortcut: $_jitShortcutName\n'
+            'Game URL: $rawUrl\n'
+            'Expected shortcut flow: StikDebug Enable JIT -> Wait -> Open Shortcut Input',
       );
+
+      final opened = await IosShortcutJitLaunchService.run(
+        shortcutName: _jitShortcutName,
+        input: launchUri.toString(),
+      );
+
+      if (!opened) {
+        await _appendDebugFile(
+          'melonx_shortcut_launch_debug.txt',
+          '\nSTATE: SHORTCUT_OPEN_FAILED',
+        );
+      }
+      return opened;
     }
 
-    return launchUrl(
-      Uri.parse(rawUrl),
-      mode: LaunchMode.externalApplication,
-    );
+    return launchUrl(launchUri, mode: LaunchMode.externalApplication);
   }
 
   /// Device-readable diagnostics for CI-only iOS development where an Xcode
