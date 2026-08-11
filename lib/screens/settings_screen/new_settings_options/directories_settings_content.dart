@@ -520,11 +520,10 @@ class DirectoriesSettingsContentState
       );
       if (selected == null || !mounted) return;
 
-      if (bookmarkKey == _armsx2BookmarkKey) {
-        ConfigService.linkedArmsx2FolderPath = selected;
-      } else {
-        ConfigService.linkedExternalFolderPath = selected;
-      }
+      // iOS uses one shared ROM source for RetroArch and ARMSX2. Both cards
+      // therefore update the same persisted bookmark/path instead of creating
+      // a second ROM root that would be scanned twice.
+      ConfigService.linkedExternalFolderPath = selected;
 
       final configProvider = Provider.of<SqliteConfigProvider>(
         context,
@@ -555,10 +554,6 @@ class DirectoriesSettingsContentState
     }
   }
 
-  /// Bookmark key for ARMSX2's linked folder, kept distinct from
-  /// RetroArch's default key so the two coexist.
-  static const String _armsx2BookmarkKey = 'armsx2';
-
   /// Triggers RetroArch's library-export protocol
   /// (retroarch://library?scheme=neostation). RetroArch calls back
   /// asynchronously with its full game list — see
@@ -580,8 +575,8 @@ class DirectoriesSettingsContentState
 
   /// Triggers ARMSX2 iOS's library-export protocol. ARMSX2 returns to
   /// NeoStation through neostation://armsx2 with a base64url JSON payload.
-  /// Armsx2LibraryService caches that export and rescans the linked PS2 ROM
-  /// folder so newly-added games appear in NeoStation immediately.
+  /// Armsx2LibraryService imports that payload directly into NeoStation's PS2
+  /// catalogue, so ARMSX2 and RetroArch can share the same ROM folder.
   Future<void> _syncWithArmsx2() async {
     final opened = await Armsx2LibraryService.requestLibrarySync();
     if (!mounted) return;
@@ -654,24 +649,27 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// ARMSX2 (PS2): link its folder, then export/sync ARMSX2's own library.
-  /// The export supplies the exact fileName + launchURL ARMSX2 expects, so
-  /// NeoStation can match linked PS2 ROMs and launch them directly by deeplink.
+  /// ARMSX2 (PS2) uses the exact same ROM source as RetroArch/NeoStation.
+  /// There is deliberately no second bookmark: Sync imports ARMSX2's exported
+  /// library into NeoStation, including PS2 games that the normal folder-based
+  /// detector cannot see because they are not inside a `ps2/` subfolder.
   Widget _buildIOSArmsx2Section(ThemeData theme) {
-    final isLinked = ConfigService.linkedArmsx2FolderPath != null;
+    final isLinked = ConfigService.linkedExternalFolderPath != null;
     final hasSynced = Armsx2LibraryService.hasSyncedLibrary;
 
     final String statusText;
     if (!isLinked) {
       statusText =
-          'Link ARMSX2\'s folder so NeoStation can see your PS2 games in '
-          'place — no copying.';
+          'ARMSX2 uses the same ROM folder as RetroArch. Link the shared ROM '
+          'folder, then sync ARMSX2\'s library.';
     } else if (!hasSynced) {
       statusText =
-          'Folder linked. Now sync ARMSX2\'s library so PS2 games appear '
-          'and launch directly with one tap.';
+          'Shared ROM folder linked. Sync ARMSX2 to import the PS2 library '
+          'into NeoStation.';
     } else {
-      statusText = 'Linked and synced — PS2 games launch directly in ARMSX2.';
+      statusText =
+          'Shared folder + ARMSX2 library synced — PS2 games launch directly '
+          'in ARMSX2.';
     }
 
     return _buildIOSEmulatorCard(
@@ -680,15 +678,14 @@ class DirectoriesSettingsContentState
       icon: Symbols.stadia_controller_rounded,
       statusText: statusText,
       isLinked: isLinked,
-      bookmarkKey: _armsx2BookmarkKey,
+      bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
       successMessage:
-          'Linked. NeoStation will scan this folder in place — no copy '
-          'needed. Sync ARMSX2 next to import its library and enable direct '
-          'PS2 launching.',
+          'Shared ROM folder linked. RetroArch and ARMSX2 now use the same '
+          'NeoStation ROM source.',
       trailingAction: SizedBox(
         height: 48.r,
         child: FilledButton.icon(
-          onPressed: !isLinked ? null : _syncWithArmsx2,
+          onPressed: _syncWithArmsx2,
           icon: Icon(Symbols.bolt_rounded, size: 20.r),
           label: Text(
             hasSynced ? 'Re-sync' : 'Sync',

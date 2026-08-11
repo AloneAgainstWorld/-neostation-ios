@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:neostation/main.dart' show rootNavigatorKey;
 import 'package:neostation/providers/sqlite_config_provider.dart';
+import 'package:neostation/providers/sqlite_database_provider.dart';
+import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -14,16 +17,19 @@ import 'package:url_launcher/url_launcher.dart';
 /// Integrates NeoStation with ARMSX2 iOS's URL-scheme library export and
 /// direct-launch protocol.
 ///
-/// ARMSX2 accepts a library request such as:
+/// ARMSX2 accepts:
 ///   armsx2://library?callback=neostation://armsx2
 ///
 /// It calls NeoStation back with:
 ///   neostation://armsx2?source=armsx2-ios&payload=<base64url>
 ///
-/// The decoded payload is a JSON object whose `games` array contains entries
-/// including `fileName` and `launchURL`. NeoStation caches those entries by
-/// filename so a PS2 ROM can later be opened directly in ARMSX2 without the
-/// iOS Open In / Share Sheet fallback.
+/// Unlike the normal NeoStation filesystem scanner, this service does not
+/// require ARMSX2 games to live inside a `ps2/` subfolder. ARMSX2's exported
+/// library is imported directly into NeoStation's PS2 catalogue. If a matching
+/// physical PS2 row already exists, it is kept; otherwise NeoStation stores the
+/// exported ARMSX2 launch URL as a virtual ROM path. This lets the PS2 console
+/// appear in the main menu even when ARMSX2 and RetroArch share one ROM folder
+/// whose layout does not match NeoStation's folder-based detector.
 class Armsx2LibraryService {
   Armsx2LibraryService._();
 
@@ -32,10 +38,27 @@ class Armsx2LibraryService {
   static const String _callbackScheme = 'neostation';
   static const String _callbackHost = 'armsx2';
   static const String _prefsKey = 'armsx2_library_cache_v1';
+  static const String _virtualScheme = 'armsx2';
 
   /// Lookup keys (filename / basename / extensionless stem) -> raw ARMSX2
   /// exported game entry.
   static Map<String, Map<String, dynamic>>? _cache;
+
+  /// True for NeoStation rows backed by an ARMSX2 deeplink instead of a local
+  /// filesystem path.
+  static bool isVirtualLibraryPath(String romPath) {
+    final uri = Uri.tryParse(romPath);
+    if (uri == null || uri.scheme.toLowerCase() != _virtualScheme) {
+      return false;
+    }
+    final route = <String>{
+      if (uri.host.isNotEmpty) uri.host.toLowerCase(),
+      ...uri.pathSegments.map((segment) => segment.toLowerCase()),
+    };
+    return route.contains('launch') ||
+        route.contains('boot') ||
+        route.contains('play');
+  }
 
   /// Opens ARMSX2 and requests a fresh export of its game library.
   ///
@@ -53,10 +76,30 @@ class Armsx2LibraryService {
       queryParameters: {'callback': callback},
     );
 
+    await _writeDebugFile(
+      'armsx2_sync_debug.txt',
+      'STATE: REQUESTED\n'
+          'Request URL: $uri\n'
+          'Callback expected: $callback\n\n'
+          'If this file still says REQUESTED after returning to NeoStation, '
+          'ARMSX2 did not send a callback to NeoStation.',
+    );
+
     try {
-      return await launchUrl(uri);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        await _appendDebugFile(
+          'armsx2_sync_debug.txt',
+          '\nlaunchUrl returned false: ARMSX2 could not be opened.',
+        );
+      }
+      return opened;
     } catch (e) {
       _log.e('Armsx2LibraryService: failed to request library sync: $e');
+      await _appendDebugFile(
+        'armsx2_sync_debug.txt',
+        '\nERROR opening ARMSX2: $e',
+      );
       return false;
     }
   }
@@ -69,9 +112,18 @@ class Armsx2LibraryService {
       return false;
     }
 
+    await _writeDebugFile(
+      'armsx2_sync_debug.txt',
+      'STATE: CALLBACK_RECEIVED\nURI: $uri',
+    );
+
     final payloadParam = uri.queryParameters['payload'];
     if (payloadParam == null || payloadParam.isEmpty) {
       _log.w('Armsx2LibraryService: callback with no "payload" param');
+      await _appendDebugFile(
+        'armsx2_sync_debug.txt',
+        '\nERROR: callback contained no payload parameter.',
+      );
       return false;
     }
 
@@ -82,6 +134,10 @@ class Armsx2LibraryService {
 
       if (decoded is! Map) {
         _log.e('Armsx2LibraryService: decoded payload is not an object');
+        await _appendDebugFile(
+          'armsx2_sync_debug.txt',
+          '\nERROR: decoded payload is not a JSON object.',
+        );
         return false;
       }
 
@@ -89,10 +145,15 @@ class Armsx2LibraryService {
       final gamesRaw = payload['games'];
       if (gamesRaw is! List) {
         _log.e('Armsx2LibraryService: payload has no games array');
+        await _appendDebugFile(
+          'armsx2_sync_debug.txt',
+          '\nERROR: payload has no games array.\nDecoded payload: $payload',
+        );
         return false;
       }
 
       final byFilename = <String, Map<String, dynamic>>{};
+      final games = <Map<String, dynamic>>[];
       for (final entry in gamesRaw) {
         if (entry is! Map) continue;
 
@@ -100,6 +161,7 @@ class Armsx2LibraryService {
         final fileName = map['fileName']?.toString();
         if (fileName == null || fileName.isEmpty) continue;
 
+        games.add(map);
         _index(byFilename, fileName, map);
         _index(byFilename, path.basename(fileName), map);
         _index(byFilename, path.basenameWithoutExtension(fileName), map);
@@ -108,42 +170,198 @@ class Armsx2LibraryService {
       _cache = byFilename;
       await _persist(byFilename);
 
+      final importResult = await _importIntoNeoStation(games);
+
       _log.i(
-        'Armsx2LibraryService: synced ${gamesRaw.length} games from ARMSX2',
+        'Armsx2LibraryService: synced ${games.length} games from ARMSX2; '
+        '${importResult.virtualRows} virtual rows, '
+        '${importResult.physicalRows} existing physical rows',
       );
 
       await _writeDebugFile(
         'armsx2_sync_debug.txt',
-        'Schema: ${payload['schema'] ?? 'unknown'}\n'
+        'STATE: IMPORTED\n'
+            'Schema: ${payload['schema'] ?? 'unknown'}\n'
             'App: ${payload['app'] ?? 'unknown'}\n'
             'Version: ${payload['version'] ?? 'unknown'}\n'
-            'Games: ${gamesRaw.length}\n\n'
+            'ARMSX2 games: ${games.length}\n'
+            'NeoStation virtual PS2 rows: ${importResult.virtualRows}\n'
+            'Existing physical PS2 rows reused: ${importResult.physicalRows}\n'
+            'Stale ARMSX2 rows removed: ${importResult.removedRows}\n'
+            'PS2 rows now in NeoStation: ${importResult.totalPs2Rows}\n\n'
             'Payload:\n${const JsonEncoder.withIndent('  ').convert(payload)}',
       );
 
-      // A linked ARMSX2 folder is already registered as a NeoStation ROM
-      // folder. Rescan after every successful export so newly-added PS2 games
-      // appear in NeoStation immediately after ARMSX2 returns the callback.
-      try {
-        final context = rootNavigatorKey.currentContext;
-        if (context != null) {
-          await Provider.of<SqliteConfigProvider>(
-            context,
-            listen: false,
-          ).scanSystems();
-        }
-      } catch (e) {
-        _log.e('Armsx2LibraryService: post-sync rescan failed: $e');
-      }
-
+      await _refreshNeoStationUi();
       return true;
-    } catch (e) {
-      _log.e('Armsx2LibraryService: failed to parse library callback: $e');
+    } catch (e, stack) {
+      _log.e('Armsx2LibraryService: failed to parse/import callback: $e');
       await _writeDebugFile(
         'armsx2_sync_debug.txt',
-        'Failed to parse callback.\nURI: $uri\nError: $e',
+        'STATE: ERROR\n'
+            'Failed to parse/import callback.\n'
+            'URI: $uri\n'
+            'Error: $e\n'
+            'Stack: $stack',
       );
       return false;
+    }
+  }
+
+  /// Imports the exported ARMSX2 library into NeoStation's PS2 catalogue.
+  ///
+  /// Existing physical rows are preferred. Games which NeoStation has never
+  /// scanned get a virtual `armsx2://launch?...` row, which is enough for the
+  /// PS2 system and game list to render and launch directly through ARMSX2.
+  static Future<({
+    int virtualRows,
+    int physicalRows,
+    int removedRows,
+    int totalPs2Rows,
+  })> _importIntoNeoStation(List<Map<String, dynamic>> games) async {
+    final ps2 = await SystemRepository.getSystemByFolderName('ps2');
+    if (ps2?.id == null) {
+      throw StateError('NeoStation PS2 system definition was not found');
+    }
+
+    final db = await SqliteService.getDatabase();
+    final existingRows = await db.rawQuery(
+      'SELECT filename, rom_path FROM user_roms WHERE app_system_id = ?',
+      [ps2!.id!],
+    );
+
+    final physicalFilenames = <String>{};
+    for (final row in existingRows) {
+      final fileName = row['filename']?.toString();
+      final romPath = row['rom_path']?.toString() ?? '';
+      if (fileName == null || fileName.isEmpty) continue;
+      if (!isVirtualLibraryPath(romPath)) {
+        physicalFilenames.add(fileName.toLowerCase());
+      }
+    }
+
+    final desiredVirtualPaths = <String>{};
+    var virtualRows = 0;
+    var physicalRows = 0;
+
+    await db.transaction((txn) async {
+      for (final game in games) {
+        final fileName = game['fileName']?.toString();
+        if (fileName == null || fileName.isEmpty) continue;
+
+        if (physicalFilenames.contains(fileName.toLowerCase())) {
+          physicalRows++;
+          continue;
+        }
+
+        final title = game['title']?.toString();
+        final serial = game['serial']?.toString();
+        final exportedLaunchUrl = game['launchURL']?.toString();
+        final parsedExported = exportedLaunchUrl == null
+            ? null
+            : Uri.tryParse(exportedLaunchUrl);
+        final launchUri = parsedExported != null &&
+                parsedExported.scheme.toLowerCase() == _virtualScheme
+            ? parsedExported
+            : Uri(
+                scheme: _virtualScheme,
+                host: 'launch',
+                queryParameters: {'game': fileName},
+              );
+        final virtualPath = launchUri.toString();
+        desiredVirtualPaths.add(virtualPath);
+
+        await txn.rawInsert(
+          '''
+          INSERT INTO user_roms
+            (app_system_id, app_emulator_unique_id, app_emulator_os_id,
+             filename, rom_path, title_id, title_name, created_at, updated_at)
+          VALUES (?, NULL, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          ON CONFLICT(rom_path) DO UPDATE SET
+            app_system_id = excluded.app_system_id,
+            filename = excluded.filename,
+            title_id = CASE
+              WHEN user_roms.title_id IS NULL OR user_roms.title_id = ''
+              THEN excluded.title_id ELSE user_roms.title_id END,
+            title_name = CASE
+              WHEN user_roms.title_name IS NULL OR user_roms.title_name = ''
+              THEN excluded.title_name ELSE user_roms.title_name END,
+            updated_at = datetime('now')
+          ''',
+          [ps2.id!, fileName, virtualPath, serial, title],
+        );
+        virtualRows++;
+      }
+    });
+
+    // Remove only stale virtual ARMSX2 rows. Physical PS2 rows and all their
+    // user metadata remain untouched.
+    final virtualRowsInDb = await db.rawQuery(
+      "SELECT rom_path FROM user_roms WHERE app_system_id = ? AND rom_path LIKE 'armsx2://%'",
+      [ps2.id!],
+    );
+    final staleVirtualPaths = virtualRowsInDb
+        .map((row) => row['rom_path']?.toString() ?? '')
+        .where(
+          (romPath) =>
+              romPath.isNotEmpty && !desiredVirtualPaths.contains(romPath),
+        )
+        .toList();
+
+    var removedRows = 0;
+    if (staleVirtualPaths.isNotEmpty) {
+      await db.transaction((txn) async {
+        const batchSize = 100;
+        for (var i = 0; i < staleVirtualPaths.length; i += batchSize) {
+          final end = (i + batchSize < staleVirtualPaths.length)
+              ? i + batchSize
+              : staleVirtualPaths.length;
+          final batch = staleVirtualPaths.sublist(i, end);
+          final placeholders = List.filled(batch.length, '?').join(',');
+          removedRows += await txn.rawDelete(
+            'DELETE FROM user_roms WHERE app_system_id = ? '
+            'AND rom_path IN ($placeholders)',
+            [ps2.id!, ...batch],
+          );
+        }
+      });
+    }
+
+    final countRows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM user_roms WHERE app_system_id = ?',
+      [ps2.id!],
+    );
+    final totalPs2Rows = int.tryParse('${countRows.first['count'] ?? 0}') ?? 0;
+
+    if (totalPs2Rows > 0) {
+      await SystemRepository.addDetectedSystem(ps2.id!, 'ps2');
+    } else {
+      await SystemRepository.removeDetectedSystem(ps2.id!);
+    }
+
+    return (
+      virtualRows: virtualRows,
+      physicalRows: physicalRows,
+      removedRows: removedRows,
+      totalPs2Rows: totalPs2Rows,
+    );
+  }
+
+  static Future<void> _refreshNeoStationUi() async {
+    try {
+      final context = rootNavigatorKey.currentContext;
+      if (context == null) return;
+
+      await Provider.of<SqliteDatabaseProvider>(
+        context,
+        listen: false,
+      ).loadGamesForSystem('ps2');
+      await Provider.of<SqliteConfigProvider>(
+        context,
+        listen: false,
+      ).refreshDetectedSystems();
+    } catch (e) {
+      _log.e('Armsx2LibraryService: UI refresh failed: $e');
     }
   }
 
@@ -198,11 +416,24 @@ class Armsx2LibraryService {
   /// Whether a non-empty ARMSX2 library has been received at least once.
   static bool get hasSyncedLibrary => (_cache?.isNotEmpty ?? false);
 
-  /// Launches a ROM directly in ARMSX2 when its filename matches the most
-  /// recently exported ARMSX2 library. Returns false when no match exists or
-  /// when iOS refuses to open the ARMSX2 URL, allowing the caller to fall back
-  /// to RetroArch / Open In / Share Sheet behavior.
+  /// Launches a ROM directly in ARMSX2 when it matches the most recently
+  /// exported library. Virtual library rows can be launched without a cache
+  /// lookup because their `rom_path` is already ARMSX2's exported launch URL.
   static Future<bool> launchGameByRomPath(String romPath) async {
+    if (isVirtualLibraryPath(romPath)) {
+      try {
+        final uri = Uri.parse(romPath);
+        await _writeDebugFile(
+          'armsx2_launch_debug.txt',
+          'Virtual ARMSX2 library row.\nLaunching directly: $uri',
+        );
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        _log.e('Armsx2LibraryService: virtual launch failed: $e');
+        return false;
+      }
+    }
+
     final cache = _cache;
     if (cache == null || cache.isEmpty) {
       await _writeDebugFile(
@@ -250,7 +481,7 @@ class Armsx2LibraryService {
         );
 
     try {
-      return await launchUrl(uri);
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       _log.e('Armsx2LibraryService: failed to launch $uri: $e');
       return false;
@@ -266,6 +497,16 @@ class Armsx2LibraryService {
       await file.writeAsString('--- ${DateTime.now()} ---\n$content');
     } catch (e) {
       _log.e('Armsx2LibraryService: failed writing debug file $name: $e');
+    }
+  }
+
+  static Future<void> _appendDebugFile(String name, String content) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final file = File(path.join(docsDir.path, name));
+      await file.writeAsString(content, mode: FileMode.append);
+    } catch (e) {
+      _log.e('Armsx2LibraryService: failed appending debug file $name: $e');
     }
   }
 }
