@@ -1,0 +1,56 @@
+NEOSTATION — RACCOURCI JIT MELONX (TEST V6)
+==========================================
+
+Objectif
+--------
+NeoStation ne tente plus de lancer le jeu une seconde fois depuis l'arriere-plan.
+Apple Raccourcis prend en charge toute la sequence :
+
+NeoStation -> Raccourcis -> StikDebug/JIT -> MeloNX -> jeu
+
+Le raccourci doit s'appeler EXACTEMENT :
+
+NeoStation MeloNX JIT
+
+Creation du raccourci (une seule fois)
+---------------------------------------
+1. Ouvrir l'app Raccourcis sur l'iPhone.
+2. Creer un nouveau raccourci.
+3. Le nommer exactement : NeoStation MeloNX JIT
+4. Ajouter l'action StikDebug : "Enable JIT" / "Activer JIT".
+5. Dans cette action, selectionner MeloNX comme application cible.
+6. Ajouter l'action "Attendre" et regler 1 seconde.
+7. Ajouter l'action "Ouvrir les URL".
+8. Pour l'URL a ouvrir, NE PAS saisir une URL fixe : choisir la variable magique
+   "Entree du raccourci" / "Shortcut Input".
+9. Enregistrer.
+
+Le raccourci doit donc avoir exactement cette logique :
+
+[StikDebug - Enable JIT for MeloNX]
+              ↓
+          [Wait 1 sec]
+              ↓
+   [Open URLs: Shortcut Input]
+
+Test
+----
+Dans NeoStation, lancer Super Smash Bros. Ultimate.
+
+NeoStation transmet automatiquement comme entree au raccourci :
+
+atariemulator://game?id=<TITLE_ID>
+
+Le jeu doit etre ouvert uniquement APRES que l'action JIT de StikDebug a fini.
+
+Diagnostic NeoStation
+---------------------
+Fichiers > Sur mon iPhone > NeoStation > melonx_shortcut_launch_debug.txt
+
+Si le fichier contient STATE: SHORTCUT_REQUESTED, NeoStation a bien transmis la
+commande a Raccourcis.
+
+Important
+---------
+Cette version est volontairement testee sur MeloNX uniquement. ARMSX2 conserve
+son comportement actuel afin de ne pas modifier deux integrations en meme temps.
