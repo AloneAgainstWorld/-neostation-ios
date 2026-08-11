@@ -1,7 +1,6 @@
 import Flutter
 import UIKit
 import UniformTypeIdentifiers
-import Security
 
 /// Lets NeoStation pick a folder exposed by another app (e.g. RetroArch,
 /// which shows up under "On My iPhone > RetroArch" in the Files app) via
@@ -451,19 +450,19 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             (args["debugFileName"] as? String) ?? "jit_preflight_debug.txt"
         )
 
-        let teamId = Self.currentTeamIdentifier()
-        let teamIdText = teamId ?? "not detected"
         let currentBundleId = Bundle.main.bundleIdentifier ?? ""
-        let shouldUseResignedSuffix: Bool
-        if let teamId = teamId, !teamId.isEmpty {
-            shouldUseResignedSuffix = currentBundleId.hasSuffix(".\(teamId)")
-        } else {
-            shouldUseResignedSuffix = false
-        }
+        let sideloadSuffix = Self.currentSideloadBundleSuffix()
+        let suffixText = sideloadSuffix ?? "none"
 
+        // SideStore/AltStore resigning can append the same signing-specific
+        // suffix to every installed app bundle identifier. Rather than reading
+        // entitlements through SecTask APIs (not exposed to normal iOS app
+        // targets), derive that suffix from NeoStation's own installed bundle
+        // identifier. This keeps the unsigned GitHub build generic and lets
+        // the final SideStore-resigned installation determine the target ID.
         let targetBundleId: String
-        if shouldUseResignedSuffix, let teamId = teamId {
-            targetBundleId = "\(targetBaseBundleId).\(teamId)"
+        if let sideloadSuffix = sideloadSuffix, !sideloadSuffix.isEmpty {
+            targetBundleId = "\(targetBaseBundleId).\(sideloadSuffix)"
         } else {
             targetBundleId = targetBaseBundleId
         }
@@ -495,7 +494,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             replace: true,
             message: "STATE: PREFLIGHT_REQUESTED\n"
                 + "NeoStation bundle: \(currentBundleId)\n"
-                + "Team ID: \(teamIdText)\n"
+                + "Detected sideload suffix: \(suffixText)\n"
                 + "Target base bundle: \(targetBaseBundleId)\n"
                 + "Target effective bundle: \(targetBundleId)\n"
                 + "Script: \(scriptName)\n"
@@ -575,35 +574,29 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
         }
     }
 
-    /// Reads NeoStation's actual Team ID from the signed entitlements. This is
-    /// public Security.framework API and reflects the identity SideStore/AltStore
-    /// used to sign the installed app, rather than a build-time constant.
-    private static func currentTeamIdentifier() -> String? {
-        guard let task = SecTaskCreateFromSelf(nil) else { return nil }
-
-        if let value = SecTaskCopyValueForEntitlement(
-            task,
-            "com.apple.developer.team-identifier" as CFString,
-            nil
-        ) as? String,
-            !value.isEmpty
-        {
-            return value
+    /// Returns the suffix SideStore/AltStore appended to NeoStation's original
+    /// bundle identifier, if any. Example:
+    ///   com.neogamelab.neostation.ABC123
+    /// becomes:
+    ///   ABC123
+    /// The same suffix can then be applied to the official emulator bundle ID.
+    private static func currentSideloadBundleSuffix() -> String? {
+        let baseBundleId = "com.neogamelab.neostation"
+        guard let currentBundleId = Bundle.main.bundleIdentifier,
+            !currentBundleId.isEmpty,
+            currentBundleId != baseBundleId
+        else {
+            return nil
         }
 
-        // Fallback: application-identifier is normally TEAMID.bundle.identifier.
-        if let applicationId = SecTaskCopyValueForEntitlement(
-            task,
-            "application-identifier" as CFString,
-            nil
-        ) as? String,
-            let prefix = applicationId.split(separator: ".").first,
-            !prefix.isEmpty
-        {
-            return String(prefix)
+        let prefix = "\(baseBundleId)."
+        guard currentBundleId.hasPrefix(prefix) else {
+            return nil
         }
 
-        return nil
+        let suffix = String(currentBundleId.dropFirst(prefix.count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return suffix.isEmpty ? nil : suffix
     }
 
     private func cancelDelayedRetry(reason: String) {
