@@ -215,6 +215,11 @@ void main() async {
     ConfigService.linkedExternalFolderPath =
         await ExternalFolderAccess.resolveBookmarkedFolder();
 
+    // Same again for ARMSX2's folder, which lives under its own bookmark
+    // key so linking one emulator never invalidates the other.
+    ConfigService.linkedArmsx2FolderPath =
+        await ExternalFolderAccess.resolveBookmarkedFolder(key: 'armsx2');
+
     // Load whatever RetroArch library data was synced in a previous
     // session, so direct game-launch matching works immediately without
     // needing a fresh sync every cold start. See RetroArchLibraryService
