@@ -10,6 +10,7 @@ import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/config_service.dart';
+import 'package:neostation/services/ios_jit_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -48,6 +49,7 @@ class MelonxLibraryService {
   // Keep NeoStation's stored virtual rows on melonx:// for backward
   // compatibility, but translate to this scheme only at launch time.
   static const String _frontendLaunchScheme = 'atariemulator';
+  static const String _melonxBaseBundleId = 'com.stossy11.MeloNX';
 
   /// Lookup keys (Title ID and title name, case-insensitive) -> lightweight
   /// MeloNX GameScheme metadata.
@@ -619,7 +621,7 @@ class MelonxLibraryService {
         await _writeDebugFile(
           'melonx_launch_debug.txt',
           'Virtual MeloNX library row.\n'
-              'Strategy: ManicEMU-compatible single native open.\n'
+              'Strategy: StikDebug universal.js preflight, then single MeloNX game open.\n'
               'Stored NeoStation URL: $storedUri\n'
               'Opened URL: $rawLaunchUrl',
         );
@@ -670,7 +672,7 @@ class MelonxLibraryService {
     try {
       await _appendDebugFile(
         'melonx_launch_debug.txt',
-        '\nStrategy: ManicEMU-compatible single native open.\n'
+        '\nStrategy: StikDebug universal.js preflight, then single MeloNX game open.\n'
             'Stored NeoStation URL: $storedUri\n'
             'Opened URL: $rawLaunchUrl',
       );
@@ -699,11 +701,23 @@ class MelonxLibraryService {
     throw StateError('MeloNX launch URL has neither id nor name: $uri');
   }
 
-  /// Mirrors ManicEMU's MeloNX launch behavior as closely as NeoStation can:
-  /// a single native iOS URL open. No delayed retry is used for MeloNX.
+  /// On iOS, explicitly primes MeloNX through StikDebug before sending the
+  /// game deeplink. StikDebug is asked to attach `universal.js`, then NeoStation
+  /// waits a conservative warm-up window before opening the selected title.
+  ///
+  /// This keeps the official/unmodified MeloNX and StikDebug apps while avoiding
+  /// the race where a demanding game begins booting before the JIT script has
+  /// attached. The native plugin adapts the MeloNX bundle identifier to the
+  /// current SideStore/AltStore signing Team ID automatically.
   static Future<bool> _openFrontendLaunchUrl(String rawUrl) async {
     if (Platform.isIOS) {
-      return await ExternalFolderAccess.openRawUrl(rawUrl) ?? false;
+      return IosJitLaunchService.launchAfterPreflight(
+        Uri.parse(rawUrl),
+        targetBaseBundleId: _melonxBaseBundleId,
+        warmupDelay: const Duration(seconds: 8),
+        scriptName: 'universal.js',
+        debugFileName: 'melonx_jit_preflight_debug.txt',
+      );
     }
 
     return launchUrl(
