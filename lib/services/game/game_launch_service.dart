@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_playlist_service.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
+import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -123,13 +124,26 @@ class GameLaunchService {
         GameSessionManager.registerGameLaunch(system, game, 'ios_direct_launch');
         await FavoritesService.recordGamePlayed(game);
 
-        // Genuine, confirmed one-tap launch via RetroArch's own documented
-        // URL scheme (retroarch://game/<filename>), matched against a
-        // library previously synced from RetroArch itself (see
-        // RetroArchLibraryService — sync is triggered from the "Link
-        // RetroArch" settings card). No picker, no import, no Shortcuts
-        // dependency. Tried first; everything below is a fallback for
-        // games RetroArch hasn't been asked about yet.
+        // PS2: ARMSX2 exports its own library with the exact fileName and
+        // launchURL it expects. If this ROM matches that synced library, send
+        // it straight to ARMSX2 before trying RetroArch. Restrict this branch
+        // to the PS2 system so identical filenames on unrelated systems can
+        // never be captured accidentally.
+        if (system.folderName.toLowerCase() == 'ps2') {
+          try {
+            final launched = await Armsx2LibraryService.launchGameByRomPath(
+              game.romPath!,
+            );
+            if (launched) return GameLaunchResult.success();
+          } catch (e) {
+            // Fall through to RetroArch / Open In / Share below.
+          }
+        }
+
+        // Genuine one-tap launch via RetroArch's synced library and
+        // retroarch://game/<filename>. This remains the general iOS direct
+        // launch path for systems RetroArch knows about, and the fallback for
+        // PS2 games that are not present in ARMSX2's exported library.
         try {
           final launched = await RetroArchLibraryService.launchGameByRomPath(
             game.romPath!,

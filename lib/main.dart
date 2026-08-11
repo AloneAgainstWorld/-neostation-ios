@@ -46,6 +46,7 @@ import 'package:external_folder_access/external_folder_access.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/retroarch_library_service.dart';
+import 'package:neostation/services/armsx2_library_service.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -220,21 +221,18 @@ void main() async {
     ConfigService.linkedArmsx2FolderPath =
         await ExternalFolderAccess.resolveBookmarkedFolder(key: 'armsx2');
 
-    // Load whatever RetroArch library data was synced in a previous
-    // session, so direct game-launch matching works immediately without
-    // needing a fresh sync every cold start. See RetroArchLibraryService
-    // and GameLaunchService's iOS branch.
+    // Load the last exported emulator libraries so direct-launch matching
+    // works immediately after a cold start without forcing a fresh sync.
     await RetroArchLibraryService.loadCachedLibrary();
+    await Armsx2LibraryService.loadCachedLibrary();
 
-    // RetroArch's library-export protocol calls back via
-    // neostation://retroarch?games=<base64url>. Handled natively through
-    // our own external_folder_access plugin (see
-    // ExternalFolderAccessPlugin.swift's application(_:open:options:))
-    // rather than the third-party app_links package — one native
-    // MethodChannel forward is all this needs, and it keeps one fewer
-    // CocoaPod in the build.
-    ExternalFolderAccess.setIncomingUrlListener((uri) {
-      RetroArchLibraryService.handleIncomingUri(uri);
+    // RetroArch and ARMSX2 both return their exported libraries through the
+    // neostation:// callback scheme. external_folder_access forwards every
+    // incoming URL from iOS to this one listener; each service ignores URLs
+    // that do not belong to it.
+    ExternalFolderAccess.setIncomingUrlListener((uri) async {
+      if (await RetroArchLibraryService.handleIncomingUri(uri)) return;
+      await Armsx2LibraryService.handleIncomingUri(uri);
     });
   }
 

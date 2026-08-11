@@ -7,6 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
+import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/providers/file_provider.dart';
@@ -577,6 +578,23 @@ class DirectoriesSettingsContentState
     );
   }
 
+  /// Triggers ARMSX2 iOS's library-export protocol. ARMSX2 returns to
+  /// NeoStation through neostation://armsx2 with a base64url JSON payload.
+  /// Armsx2LibraryService caches that export and rescans the linked PS2 ROM
+  /// folder so newly-added games appear in NeoStation immediately.
+  Future<void> _syncWithArmsx2() async {
+    final opened = await Armsx2LibraryService.requestLibrarySync();
+    if (!mounted) return;
+    AppNotification.showNotification(
+      context,
+      opened
+          ? 'Asked ARMSX2 for its game library — ARMSX2 will return to '
+                'NeoStation automatically when the export is ready.'
+          : 'Could not reach ARMSX2. Is it installed?',
+      type: opened ? NotificationType.info : NotificationType.error,
+    );
+  }
+
   /// Cards shown only on iOS, one per emulator NeoStation can hand games
   /// to. Rendered as non-navigable rows at the top of the directory list
   /// (see build) rather than as entries in [_directoryItems] — that list
@@ -636,33 +654,53 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// ARMSX2 (PS2): link-only. Unlike RetroArch it publishes no URL scheme,
-  /// so there is nothing to sync and no one-tap launch to offer — games in
-  /// a linked folder go out through iOS's "Open In" menu, which ARMSX2
-  /// already registers for. That path needs no code of its own, only the
-  /// folder being visible to NeoStation in the first place.
+  /// ARMSX2 (PS2): link its folder, then export/sync ARMSX2's own library.
+  /// The export supplies the exact fileName + launchURL ARMSX2 expects, so
+  /// NeoStation can match linked PS2 ROMs and launch them directly by deeplink.
   Widget _buildIOSArmsx2Section(ThemeData theme) {
     final isLinked = ConfigService.linkedArmsx2FolderPath != null;
+    final hasSynced = Armsx2LibraryService.hasSyncedLibrary;
+
+    final String statusText;
+    if (!isLinked) {
+      statusText =
+          'Link ARMSX2\'s folder so NeoStation can see your PS2 games in '
+          'place — no copying.';
+    } else if (!hasSynced) {
+      statusText =
+          'Folder linked. Now sync ARMSX2\'s library so PS2 games appear '
+          'and launch directly with one tap.';
+    } else {
+      statusText = 'Linked and synced — PS2 games launch directly in ARMSX2.';
+    }
 
     return _buildIOSEmulatorCard(
       theme: theme,
       name: 'ARMSX2',
       icon: Symbols.stadia_controller_rounded,
-      statusText: isLinked
-          ? 'Folder linked. PS2 games open in ARMSX2 through the share menu.'
-          : 'Link ARMSX2\'s folder to see your PS2 games here. No direct '
-                'launch — ARMSX2 has no URL scheme, so games go through the '
-                'share menu.',
+      statusText: statusText,
       isLinked: isLinked,
       bookmarkKey: _armsx2BookmarkKey,
       successMessage:
-          'Linked. NeoStation will scan this folder in place. Launching a '
-          'PS2 game opens the share menu — pick ARMSX2 there.',
+          'Linked. NeoStation will scan this folder in place — no copy '
+          'needed. Sync ARMSX2 next to import its library and enable direct '
+          'PS2 launching.',
+      trailingAction: SizedBox(
+        height: 48.r,
+        child: FilledButton.icon(
+          onPressed: !isLinked ? null : _syncWithArmsx2,
+          icon: Icon(Symbols.bolt_rounded, size: 20.r),
+          label: Text(
+            hasSynced ? 'Re-sync' : 'Sync',
+            style: TextStyle(fontSize: 14.r),
+          ),
+        ),
+      ),
     );
   }
 
   /// Shared card shell for an external emulator: name, status line, a link
-  /// button, and an optional extra action (RetroArch's Sync).
+  /// button, and an optional extra action (library Sync / Re-sync).
   Widget _buildIOSEmulatorCard({
     required ThemeData theme,
     required String name,
