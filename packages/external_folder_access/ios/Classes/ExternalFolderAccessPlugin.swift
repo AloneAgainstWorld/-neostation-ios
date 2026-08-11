@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import UniformTypeIdentifiers
+import Security
 
 /// Lets NeoStation pick a folder exposed by another app (e.g. RetroArch,
 /// which shows up under "On My iPhone > RetroArch" in the Files app) via
@@ -107,6 +108,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             openRawUrl(call: call, result: result)
         case "openUrlWithDelayedRetry":
             openUrlWithDelayedRetry(call: call, result: result)
+        case "openUrlAfterJitPreflight":
+            openUrlAfterJitPreflight(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -397,6 +400,210 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             // while NeoStation is in the background.
             result(true)
         }
+    }
+
+    // MARK: - Explicit StikDebug JIT preflight
+
+    /// Opens StikDebug first with the target emulator bundle identifier and
+    /// universal JIT script, then opens the actual game deeplink after a short
+    /// warm-up window. This avoids asking a demanding game to boot while
+    /// StikDebug is still attaching/running its script.
+    ///
+    /// SideStore/AltStore commonly resign apps by appending the signing Team ID
+    /// to the original bundle identifier. We derive the current Team ID from
+    /// NeoStation's signed entitlements and only append it to the target when
+    /// NeoStation's own installed bundle identifier also has that suffix. This
+    /// avoids hard-coding one user's Team ID while preserving direct/ad-hoc
+    /// installs that keep the original bundle identifier unchanged.
+    private func openUrlAfterJitPreflight(
+        call: FlutterMethodCall,
+        result: @escaping FlutterResult
+    ) {
+        guard let args = call.arguments as? [String: Any],
+            let rawLaunch = args["launchUrl"] as? String,
+            !rawLaunch.isEmpty,
+            let launchURL = URL(string: rawLaunch),
+            let targetBaseBundleId = args["targetBaseBundleId"] as? String,
+            !targetBaseBundleId.isEmpty
+        else {
+            result(
+                FlutterError(
+                    code: "INVALID_ARGS",
+                    message: "openUrlAfterJitPreflight requires launchUrl and targetBaseBundleId",
+                    details: nil
+                )
+            )
+            return
+        }
+
+        let requestedDelayMs: Int
+        if let value = args["delayMs"] as? Int {
+            requestedDelayMs = value
+        } else if let value = args["delayMs"] as? NSNumber {
+            requestedDelayMs = value.intValue
+        } else {
+            requestedDelayMs = 8000
+        }
+        let delayMs = min(max(requestedDelayMs, 1000), 20_000)
+        let delaySeconds = Double(delayMs) / 1000.0
+        let scriptName = ((args["scriptName"] as? String) ?? "universal.js").trimmingCharacters(in: .whitespacesAndNewlines)
+        let debugFileName = Self.safeDebugFileName(
+            (args["debugFileName"] as? String) ?? "jit_preflight_debug.txt"
+        )
+
+        let teamId = Self.currentTeamIdentifier()
+        let teamIdText = teamId ?? "not detected"
+        let currentBundleId = Bundle.main.bundleIdentifier ?? ""
+        let shouldUseResignedSuffix: Bool
+        if let teamId = teamId, !teamId.isEmpty {
+            shouldUseResignedSuffix = currentBundleId.hasSuffix(".\(teamId)")
+        } else {
+            shouldUseResignedSuffix = false
+        }
+
+        let targetBundleId: String
+        if shouldUseResignedSuffix, let teamId = teamId {
+            targetBundleId = "\(targetBaseBundleId).\(teamId)"
+        } else {
+            targetBundleId = targetBaseBundleId
+        }
+
+        var components = URLComponents()
+        components.scheme = "stikjit"
+        components.host = "enable-jit"
+        var queryItems = [URLQueryItem(name: "bundle-id", value: targetBundleId)]
+        if !scriptName.isEmpty {
+            queryItems.append(URLQueryItem(name: "script-name", value: scriptName))
+        }
+        components.queryItems = queryItems
+
+        guard let preflightURL = components.url else {
+            result(
+                FlutterError(
+                    code: "INVALID_PREFLIGHT_URL",
+                    message: "Could not build StikDebug JIT URL",
+                    details: nil
+                )
+            )
+            return
+        }
+
+        cancelDelayedRetry(reason: "REPLACED_BY_JIT_PREFLIGHT")
+        delayedRetryDebugFileName = debugFileName
+        Self.writeLaunchDebug(
+            fileName: debugFileName,
+            replace: true,
+            message: "STATE: PREFLIGHT_REQUESTED\n"
+                + "NeoStation bundle: \(currentBundleId)\n"
+                + "Team ID: \(teamIdText)\n"
+                + "Target base bundle: \(targetBaseBundleId)\n"
+                + "Target effective bundle: \(targetBundleId)\n"
+                + "Script: \(scriptName)\n"
+                + "Warm-up delay: \(delayMs) ms\n"
+                + "StikDebug URL: \(preflightURL.absoluteString)\n"
+                + "Game URL: \(rawLaunch)"
+        )
+
+        delayedRetryBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "NeoStation.JITPreflightLaunch"
+        ) { [weak self] in
+            guard let self = self else { return }
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: "STATE: BACKGROUND_TASK_EXPIRED"
+            )
+            self.delayedRetryWorkItem?.cancel()
+            self.delayedRetryWorkItem = nil
+            self.endDelayedRetryBackgroundTask()
+        }
+
+        Self.writeLaunchDebug(
+            fileName: debugFileName,
+            replace: false,
+            message: delayedRetryBackgroundTask == .invalid
+                ? "STATE: BACKGROUND_TASK_UNAVAILABLE"
+                : "STATE: BACKGROUND_TASK_STARTED"
+        )
+
+        UIApplication.shared.open(preflightURL, options: [:]) { [weak self] opened in
+            guard let self = self else {
+                result(false)
+                return
+            }
+
+            guard opened else {
+                Self.writeLaunchDebug(
+                    fileName: debugFileName,
+                    replace: false,
+                    message: "STATE: PREFLIGHT_OPEN_FAILED"
+                )
+                self.cancelDelayedRetry(reason: "PREFLIGHT_OPEN_FAILED")
+                result(false)
+                return
+            }
+
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: "STATE: PREFLIGHT_OPENED\nSTATE: GAME_LAUNCH_SCHEDULED\nDelay: \(delayMs) ms"
+            )
+
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                Self.writeLaunchDebug(
+                    fileName: debugFileName,
+                    replace: false,
+                    message: "STATE: GAME_LAUNCH_ATTEMPT\nApplication state: \(Self.applicationStateName())"
+                )
+
+                UIApplication.shared.open(launchURL, options: [:]) { [weak self] gameOpened in
+                    guard let self = self else { return }
+                    Self.writeLaunchDebug(
+                        fileName: debugFileName,
+                        replace: false,
+                        message: gameOpened ? "STATE: GAME_LAUNCH_OPENED" : "STATE: GAME_LAUNCH_FAILED"
+                    )
+                    self.delayedRetryWorkItem = nil
+                    self.endDelayedRetryBackgroundTask()
+                }
+            }
+
+            self.delayedRetryWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds, execute: workItem)
+            result(true)
+        }
+    }
+
+    /// Reads NeoStation's actual Team ID from the signed entitlements. This is
+    /// public Security.framework API and reflects the identity SideStore/AltStore
+    /// used to sign the installed app, rather than a build-time constant.
+    private static func currentTeamIdentifier() -> String? {
+        guard let task = SecTaskCreateFromSelf(nil) else { return nil }
+
+        if let value = SecTaskCopyValueForEntitlement(
+            task,
+            "com.apple.developer.team-identifier" as CFString,
+            nil
+        ) as? String,
+            !value.isEmpty
+        {
+            return value
+        }
+
+        // Fallback: application-identifier is normally TEAMID.bundle.identifier.
+        if let applicationId = SecTaskCopyValueForEntitlement(
+            task,
+            "application-identifier" as CFString,
+            nil
+        ) as? String,
+            let prefix = applicationId.split(separator: ".").first,
+            !prefix.isEmpty
+        {
+            return String(prefix)
+        }
+
+        return nil
     }
 
     private func cancelDelayedRetry(reason: String) {

@@ -18,6 +18,7 @@ place without copying them into NeoStation's own sandbox.
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
+  s.frameworks = 'Security'
 
   s.platform = :ios, '14.0'
   s.pod_target_xcconfig = {
