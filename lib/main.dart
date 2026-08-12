@@ -48,6 +48,7 @@ import 'package:path/path.dart' as path;
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
+import 'package:neostation/services/ifly_library_service.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -227,6 +228,7 @@ void main() async {
     await RetroArchLibraryService.loadCachedLibrary();
     await Armsx2LibraryService.loadCachedLibrary();
     await MelonxLibraryService.loadCachedLibrary();
+    await IflyLibraryService.loadCachedLibrary();
 
     // RetroArch, ARMSX2 and MeloNX return their exported libraries through the
     // neostation:// callback scheme. external_folder_access forwards every
