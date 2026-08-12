@@ -54,8 +54,6 @@ const Map<String, dynamic> appLocaleEs = {
       'Se descargará el paquete de System Art para todos los sistemas. Esto puede tardar algunos momentos.',
   AppLocale.systemArtDownloading: 'Descargando el paquete de System Art...',
   AppLocale.about: 'Acerca de',
-  AppLocale.exit: 'Salir',
-  AppLocale.launcher: 'Lanzador',
   AppLocale.emulators: 'Emuladores',
   AppLocale.appearance: 'Apariencia',
   AppLocale.systemsSettings: 'Sistemas',
@@ -198,10 +196,6 @@ const Map<String, dynamic> appLocaleEs = {
   AppLocale.logoImageSubtitle: 'jpg, png, webp | 512x512px o menos',
   AppLocale.selectRetroArchExe: 'Seleccionar ejecutable de RetroArch',
   AppLocale.selectExecutablePath: 'Seleccionar ruta del ejecutable',
-
-  AppLocale.exitApplication: 'Salir de la aplicación',
-  AppLocale.exitConfirmation: '¿Seguro que quieres salir de NeoStation?',
-  AppLocale.confirmExit: 'Confirmar salida',
   AppLocale.rescanAllFolders: 'Reescanear todas las carpetas de ROMs',
   AppLocale.rescanAllFoldersSubtitle:
       'Buscar nuevos sistemas y ROMs manualmente',

@@ -458,7 +458,7 @@ void main() async {
   final sqliteDatabaseProvider = SqliteDatabaseProvider();
 
   try {
-    // 1. Inicializar ConfigProvider primero (sincroniza sistemas)
+    // 1. Initialize SqliteConfigProvider first so system state is synchronized.
     await sqliteConfigProvider.initialize();
 
     // Seed the game legend visibility from persisted config and wire its

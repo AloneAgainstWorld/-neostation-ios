@@ -218,9 +218,8 @@ class GameLaunchService {
         // most recent. See RetroArchPlaylistService for the details.
         //
         // The exact name of the Shortcut wrapping "Resume Last Game" is a
-        // one-time setup step done by the user in the Shortcuts app (see
-        // IOS_PORT.md) — "ResumeNeoStation" is the name that setup uses by
-        // default.
+        // one-time setup step done by the user in the Shortcuts app.
+        // "ResumeNeoStation" is the default name expected here.
         final linkedFolder = ConfigService.linkedExternalFolderPath;
         if (linkedFolder != null &&
             path.isWithin(linkedFolder, game.romPath!)) {
