@@ -403,22 +403,73 @@ class GameModel {
   }
 
   /// Resolves the absolute path to the game's preview video.
+  ///
+  /// Uses the same media-key priority as images. This is important for MeloNX
+  /// virtual rows: ScreenScraper stores videos under the Nintendo Switch
+  /// Title ID (for example `01006a800016e000.mp4`), while the database may use
+  /// a synthetic ROM name such as `01006a800016e000.melonx`.
   String getVideoPath(String systemFolderName, [FileProvider? fileProvider]) {
+    final lookupNames = _mediaLookupNames();
+
     if (fileProvider != null && fileProvider.isInitialized) {
-      final master = fileProvider.getVideoPath(systemFolderName, romname);
-      // ES-DE read-time fallback video (cheap in-memory lookup, no I/O).
+      // First resolve NeoStation's own media directory. For MeloNX the Title ID
+      // is tried first, matching the key used by the ScreenScraper downloader.
+      for (final mediaName in lookupNames) {
+        final candidate = fileProvider.getVideoPath(
+          systemFolderName,
+          mediaName,
+        );
+        if (File(candidate).existsSync()) return candidate;
+
+        // Literal fallback for keys that FileProvider must not transform.
+        final literalCandidate = path.join(
+          fileProvider.getMediaDirectoryPath(),
+          systemFolderName,
+          'videos',
+          '$mediaName.mp4',
+        );
+        if (File(literalCandidate).existsSync()) return literalCandidate;
+      }
+
+      // Keep ES-DE as a fallback based on the actual ROM filename.
       final esde = fileProvider.getEsdeVideoPath(systemFolderName, romname);
-      // No ES-DE fallback for this system: return the master path without any
-      // filesystem stat — getVideoPath is called on the scroll hot path and
-      // there is nothing to fall back to anyway.
-      if (esde == null) return master;
-      // Prefer the master video; only fall back to ES-DE when it's missing.
-      if (File(master).existsSync()) return master;
-      if (File(esde).existsSync()) return esde;
-      return master;
+      if (esde != null && File(esde).existsSync()) return esde;
+
+      // Return the canonical NeoStation path even if the file does not exist
+      // yet, so media caching and later downloads use the same Title-ID key.
+      return fileProvider.getVideoPath(
+        systemFolderName,
+        lookupNames.first,
+      );
     }
-    final baseName = _stripRomExtension(romname);
-    return path.join('media', systemFolderName, 'videos', '$baseName.mp4');
+
+    // Manual filesystem lookup logic mirrors getImagePath().
+    for (final mediaName in lookupNames) {
+      final baseName = _stripRomExtension(mediaName);
+      final candidate = path.join(
+        'media',
+        systemFolderName,
+        'videos',
+        '$baseName.mp4',
+      );
+      if (File(candidate).existsSync()) return candidate;
+
+      final literalCandidate = path.join(
+        'media',
+        systemFolderName,
+        'videos',
+        '$mediaName.mp4',
+      );
+      if (File(literalCandidate).existsSync()) return literalCandidate;
+    }
+
+    final fallbackBase = _stripRomExtension(lookupNames.first);
+    return path.join(
+      'media',
+      systemFolderName,
+      'videos',
+      '$fallbackBase.mp4',
+    );
   }
 
   /// Verifies if a preview video exists for this game.
