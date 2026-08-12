@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_localization/flutter_localization.dart';
@@ -13,7 +12,6 @@ import 'new_settings_options/tools_settings_content.dart';
 import 'new_settings_options/systems_settings_content.dart';
 import 'new_settings_options/launcher_settings_content.dart';
 import 'new_settings_options/about_settings_content.dart';
-import 'new_settings_options/exit_settings_content.dart';
 import 'new_settings_options/themes_settings_content.dart';
 import 'new_settings_options/system_art_settings_content.dart';
 import 'package:flutter/services.dart';
@@ -56,7 +54,7 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
   final List<SettingsMenuItem> _menuItems = [];
 
   /// Key attached to the currently-selected left-menu item, so it can be
-  /// scrolled into view (e.g. the bottom "Exit" entry on small displays).
+  /// scrolled into view on small displays.
   final GlobalKey _selectedMenuItemKey = GlobalKey();
 
   /// Snaps during rapid D-pad navigation, animates on a single move.
@@ -88,8 +86,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
       GlobalKey<SystemsSettingsContentState>();
   final GlobalKey<AboutSettingsContentState> _aboutSettingsKey =
       GlobalKey<AboutSettingsContentState>();
-  final GlobalKey<ExitSettingsContentState> _exitSettingsKey =
-      GlobalKey<ExitSettingsContentState>();
 
   @override
   void initState() {
@@ -194,15 +190,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
         isVisible: true,
       ),
     );
-
-    _menuItems.add(
-      SettingsMenuItem(
-        title: '',
-        localeKey: AppLocale.exit,
-        icon: Symbols.exit_to_app_rounded,
-        isVisible: true,
-      ),
-    );
   }
 
   /// Switches the active settings category and resets the content-level focus.
@@ -212,12 +199,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
       _focusOnMenu = true;
       _selectedContentIndex = 0;
     });
-
-    // Auto-focus content for immediate termination confirmation if Exit is selected.
-    if (_menuItems[index].localeKey == AppLocale.exit) {
-      _focusOnMenu = false;
-      _selectedContentIndex = 0;
-    }
   }
 
   /// Vertical Navigation Protocol: Handles wrap-around menu scrolling and content list progression.
@@ -398,8 +379,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
       return _systemsSettingsKey.currentState?.getItemCount(provider) ?? 0;
     } else if (selectedKey == AppLocale.about) {
       return _aboutSettingsKey.currentState?.getItemCount() ?? 0;
-    } else if (selectedKey == AppLocale.exit) {
-      return 1;
     } else {
       return 0;
     }
@@ -428,34 +407,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
       );
     } else if (selectedKey == AppLocale.about) {
       _aboutSettingsKey.currentState?.selectItem(_selectedContentIndex);
-    } else if (selectedKey == AppLocale.exit) {
-      _executeExit();
-    }
-  }
-
-  /// Multi-tier Termination Protocol: Handles platform-specific exits and OS-level shutdown requests.
-  void _executeExit() {
-    final config = context.read<SqliteConfigProvider>().config;
-    final bool shouldShutdown = config.bartopExitPoweroff;
-
-    if (Platform.isAndroid) {
-      // The secondary display's persisted artwork is neutralised by
-      // SqliteConfigProvider.didChangeAppLifecycleState on the detached that
-      // follows this pop, so no explicit clear is needed here.
-      SystemNavigator.pop();
-    } else {
-      if (shouldShutdown) {
-        try {
-          if (Platform.isWindows) {
-            Process.runSync('shutdown', ['/s', '/t', '0']);
-          } else if (Platform.isLinux) {
-            Process.runSync('shutdown', ['-h', 'now']);
-          }
-        } catch (e) {
-          _log.e('OS-level shutdown attempt failed: $e');
-        }
-      }
-      exit(0);
     }
   }
 
@@ -649,19 +600,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
         key: _aboutSettingsKey,
         isContentFocused: !_focusOnMenu,
         selectedContentIndex: _selectedContentIndex,
-      );
-    } else if (selectedKey == AppLocale.exit) {
-      return ExitSettingsContent(
-        key: _exitSettingsKey,
-        isContentFocused: !_focusOnMenu,
-        selectedContentIndex: _selectedContentIndex,
-        onExitPressed: _executeExit,
-        onCancel: () {
-          setState(() {
-            _focusOnMenu = true;
-            _selectedContentIndex = 0;
-          });
-        },
       );
     } else {
       return Center(
