@@ -9,7 +9,6 @@ import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
-import 'package:neostation/services/ifly_library_service.dart';
 import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
@@ -557,58 +556,6 @@ class DirectoriesSettingsContentState
     }
   }
 
-  /// Links iFly's own ROMs directory independently from NeoStation's normal
-  /// ROM roots. iFly V1 does not expose a library-export URL scheme, so Sync
-  /// reads this security-scoped folder directly and imports Dreamcast rows into
-  /// NeoStation's database.
-  Future<void> _linkIflyFolder() async {
-    if (_linkingFolderKey != null) return;
-
-    setState(() => _linkingFolderKey = IflyLibraryService.bookmarkKey);
-    try {
-      final selected = await ExternalFolderAccess.pickAndBookmarkFolder(
-        key: IflyLibraryService.bookmarkKey,
-      );
-      if (selected == null || !mounted) return;
-
-      IflyLibraryService.setLinkedFolderPath(selected);
-      setState(() {});
-
-      AppNotification.showNotification(
-        context,
-        'iFly ROMs folder linked. Press Sync to import the Dreamcast library.',
-        type: NotificationType.info,
-      );
-    } catch (e) {
-      _log.e('Link iFly folder failed: $e');
-      if (mounted) {
-        AppNotification.showNotification(
-          context,
-          'Could not link the iFly ROMs folder: $e',
-          type: NotificationType.error,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _linkingFolderKey = null);
-    }
-  }
-
-  /// Imports the contents of iFly's linked ROMs folder directly into the
-  /// Dreamcast catalogue. No `dc/` subfolder and no normal ROM scan are needed.
-  Future<void> _syncWithIfly() async {
-    final result = await IflyLibraryService.syncLibrary();
-    if (!mounted) return;
-
-    setState(() {});
-    AppNotification.showNotification(
-      context,
-      result.success
-          ? 'iFly Dreamcast library synced (${result.totalDreamcastRows} games in NeoStation).'
-          : 'iFly sync failed: ${result.error ?? 'unknown error'}',
-      type: result.success ? NotificationType.info : NotificationType.error,
-    );
-  }
-
   /// Triggers RetroArch's library-export protocol
   /// (retroarch://library?scheme=neostation). RetroArch calls back
   /// asynchronously with its full game list — see
@@ -705,7 +652,6 @@ class DirectoriesSettingsContentState
       _buildIOSRetroArchSection(theme),
       _buildIOSArmsx2Section(theme),
       _buildIOSMeloNXSection(theme),
-      _buildIOSIflySection(theme),
     ];
   }
 
@@ -882,50 +828,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// iFly V1 has no public library-export or game-launch URL scheme. The
-  /// practical integration is therefore folder-based: link iFly's `ROMs`
-  /// directory once, then Sync imports those files directly as Dreamcast games.
-  Widget _buildIOSIflySection(ThemeData theme) {
-    final isLinked = IflyLibraryService.hasLinkedFolder;
-    final hasSynced = IflyLibraryService.hasSyncedLibrary;
-
-    final String statusText;
-    if (!isLinked) {
-      statusText =
-          'Link iFly\'s ROMs folder, then sync it directly into NeoStation\'s '
-          'Dreamcast library.';
-    } else if (!hasSynced) {
-      statusText =
-          'iFly ROMs folder linked. Sync to import the Dreamcast library.';
-    } else {
-      statusText =
-          'iFly Dreamcast library synced — ${IflyLibraryService.lastSyncedCount} '
-          'game(s) currently tracked.';
-    }
-
-    return _buildIOSEmulatorCard(
-      theme: theme,
-      name: 'iFly',
-      icon: Symbols.flight_rounded,
-      statusText: statusText,
-      isLinked: isLinked,
-      bookmarkKey: IflyLibraryService.bookmarkKey,
-      successMessage: '',
-      onLinkPressed: _linkIflyFolder,
-      trailingAction: SizedBox(
-        height: 48.r,
-        child: FilledButton.icon(
-          onPressed: isLinked ? _syncWithIfly : null,
-          icon: Icon(Symbols.sync_rounded, size: 20.r),
-          label: Text(
-            hasSynced ? 'Re-sync' : 'Sync',
-            style: TextStyle(fontSize: 14.r),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Shared card shell for an external emulator: name, status line, an
   /// optional folder-link button, and an optional extra action (Sync).
   Widget _buildIOSEmulatorCard({
@@ -937,7 +839,6 @@ class DirectoriesSettingsContentState
     required String bookmarkKey,
     required String successMessage,
     bool showLinkButton = true,
-    Future<void> Function()? onLinkPressed,
     Widget? trailingAction,
   }) {
     final isLinkingThis = _linkingFolderKey == bookmarkKey;
@@ -950,11 +851,10 @@ class DirectoriesSettingsContentState
       child: OutlinedButton.icon(
         onPressed: isAnyLinkInFlight
             ? null
-            : (onLinkPressed ??
-                () => _linkExternalFolder(
-                  bookmarkKey: bookmarkKey,
-                  successMessage: successMessage,
-                )),
+            : () => _linkExternalFolder(
+                bookmarkKey: bookmarkKey,
+                successMessage: successMessage,
+              ),
         icon: isLinkingThis
             ? SizedBox(
                 width: 18.r,

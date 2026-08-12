@@ -48,7 +48,8 @@ import 'package:path/path.dart' as path;
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
-import 'package:neostation/services/ifly_library_service.dart';
+import 'package:neostation/data/datasources/sqlite_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
@@ -189,6 +190,70 @@ Future<void> _configureImageCache() async {
 /// created them. Used by [AppNotification] for progress notifications.
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
+/// One-time cleanup for the removed iFly integration.
+///
+/// Earlier iOS builds could import Dreamcast rows directly from iFly's ROMs
+/// folder. The integration has now been removed; this migration deletes only
+/// the exact ROM paths that were previously recorded by that feature, clears
+/// its security-scoped bookmark and removes its diagnostic files. After the
+/// first successful cleanup the preference key is gone, so subsequent launches
+/// are effectively a no-op.
+Future<void> _cleanupRemovedIflyIntegration({
+  required SqliteConfigProvider configProvider,
+  required SqliteDatabaseProvider databaseProvider,
+}) async {
+  if (!Platform.isIOS) return;
+
+  const prefsKey = 'ifly_library_paths_v1';
+  const bookmarkKey = 'ifly';
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final importedPaths = prefs.getStringList(prefsKey) ?? const <String>[];
+
+    if (importedPaths.isNotEmpty) {
+      final db = await SqliteService.getDatabase();
+      const batchSize = 100;
+      for (var i = 0; i < importedPaths.length; i += batchSize) {
+        final end = (i + batchSize < importedPaths.length)
+            ? i + batchSize
+            : importedPaths.length;
+        final batch = importedPaths.sublist(i, end);
+        final placeholders = List.filled(batch.length, '?').join(',');
+        await db.rawDelete(
+          'DELETE FROM user_roms WHERE lower(rom_path) IN ($placeholders)',
+          batch.map((value) => path.normalize(value).toLowerCase()).toList(),
+        );
+      }
+
+      await databaseProvider.loadGamesForSystem('dc');
+      await configProvider.refreshDetectedSystems();
+    }
+
+    await prefs.remove(prefsKey);
+    await ExternalFolderAccess.clearBookmark(key: bookmarkKey);
+
+    final docsDir = await getApplicationDocumentsDirectory();
+    for (final name in const [
+      'ifly_sync_debug.txt',
+      'ifly_launch_debug.txt',
+    ]) {
+      final file = File(path.join(docsDir.path, name));
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+
+    LoggerService.instance.i(
+      'Removed legacy iFly integration data (${importedPaths.length} tracked path(s)).',
+    );
+  } catch (e) {
+    // iFly is no longer part of NeoStation, so cleanup failure must never block
+    // application startup. The migration will be attempted again next launch.
+    LoggerService.instance.w('Could not clean legacy iFly integration data: $e');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -228,7 +293,6 @@ void main() async {
     await RetroArchLibraryService.loadCachedLibrary();
     await Armsx2LibraryService.loadCachedLibrary();
     await MelonxLibraryService.loadCachedLibrary();
-    await IflyLibraryService.loadCachedLibrary();
 
     // RetroArch, ARMSX2 and MeloNX return their exported libraries through the
     // neostation:// callback scheme. external_folder_access forwards every
@@ -408,6 +472,13 @@ void main() async {
     await sqliteDatabaseProvider.initialize(
       romFolders: sqliteConfigProvider.config.romFolders,
       availableSystems: sqliteConfigProvider.availableSystems,
+    );
+
+    // Remove any Dreamcast rows/bookmarks left by the discontinued iFly
+    // integration. This only targets paths recorded by that feature.
+    await _cleanupRemovedIflyIntegration(
+      configProvider: sqliteConfigProvider,
+      databaseProvider: sqliteDatabaseProvider,
     );
 
     // Background scrape Windows games from Steam

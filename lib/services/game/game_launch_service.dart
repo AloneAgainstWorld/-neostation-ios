@@ -11,7 +11,6 @@ import 'package:neostation/services/retroarch_playlist_service.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
-import 'package:neostation/services/ifly_library_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -191,25 +190,6 @@ class GameLaunchService {
               'Could not launch this PS2 game in ARMSX2.',
               game.romPath,
             );
-          }
-        }
-
-        // Dreamcast: iFly V1 does not expose a custom URL/deeplink, but it
-        // registers itself as an owner/viewer for Dreamcast ROM documents.
-        // Games imported through IflyLibraryService therefore use iOS' native
-        // Open In hand-off before the general RetroArch fallback. This keeps
-        // iFly-linked games associated with iFly without modifying the
-        // emulator. A future iFly launch scheme can replace this implementation
-        // inside IflyLibraryService without changing this routing branch.
-        if (system.folderName.toLowerCase() == 'dc' &&
-            IflyLibraryService.isManagedRomPath(game.romPath!)) {
-          try {
-            final launched = await IflyLibraryService.launchGameByRomPath(
-              game.romPath!,
-            );
-            if (launched) return GameLaunchResult.success();
-          } catch (e) {
-            // Fall through to RetroArch / generic iOS file hand-off.
           }
         }
 
