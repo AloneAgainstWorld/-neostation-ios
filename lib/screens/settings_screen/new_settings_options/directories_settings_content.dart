@@ -592,6 +592,21 @@ class DirectoriesSettingsContentState
     );
   }
 
+  /// Opens the one-time Apple Shortcut setup used for ARMSX2 direct
+  /// launching. Once the shared iCloud link is published this opens the
+  /// ready-made Shortcut; until then the service opens the Shortcut editor.
+  Future<void> _configureArmsx2Launch() async {
+    final opened =
+        await IosShortcutJitLaunchService.openArmsx2ShortcutInstaller();
+    if (!mounted || opened) return;
+
+    AppNotification.showNotification(
+      context,
+      AppLocale.shortcutSetupOpenError.getString(context),
+      type: NotificationType.error,
+    );
+  }
+
   /// Triggers MeloNX's alternate-frontend library export. MeloNX returns a
   /// base64url JSON GameScheme array through neostation://melonx. The service
   /// imports it directly into NeoStation's Nintendo Switch catalogue; no ROM
@@ -717,16 +732,38 @@ class DirectoriesSettingsContentState
       successMessage:
           'Shared ROM folder linked. RetroArch and ARMSX2 now use the same '
           'NeoStation ROM source.',
-      trailingAction: SizedBox(
-        height: 48.r,
-        child: FilledButton.icon(
-          onPressed: _syncWithArmsx2,
-          icon: Icon(Symbols.bolt_rounded, size: 20.r),
-          label: Text(
-            hasSynced ? 'Re-sync' : 'Sync',
-            style: TextStyle(fontSize: 14.r),
+      trailingAction: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 48.r,
+              child: FilledButton.icon(
+                onPressed: _syncWithArmsx2,
+                icon: Icon(Symbols.bolt_rounded, size: 20.r),
+                label: Text(
+                  hasSynced ? 'Re-sync' : 'Sync',
+                  style: TextStyle(fontSize: 14.r),
+                ),
+              ),
+            ),
           ),
-        ),
+          SizedBox(width: 10.r),
+          Expanded(
+            child: SizedBox(
+              height: 48.r,
+              child: OutlinedButton.icon(
+                onPressed: _configureArmsx2Launch,
+                icon: Icon(Symbols.rocket_launch_rounded, size: 20.r),
+                label: Text(
+                  AppLocale.configureLaunch.getString(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.r),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

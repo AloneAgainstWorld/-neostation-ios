@@ -23,10 +23,44 @@ class IosShortcutJitLaunchService {
   static const String _melonxShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/84b9d0fbdd714c6c9596ba2e3c699031';
 
+  // Add the shared iCloud URL here once the ARMSX2 Shortcut has been
+  // published. Until then, the settings button opens Apple's Shortcut
+  // creation editor so the launch flow can still be configured manually.
+  static const String _armsx2ShortcutInstallUrl = '';
+
   static bool get hasMeloNXShortcutInstaller =>
       _melonxShortcutInstallUrl.startsWith(
         'https://www.icloud.com/shortcuts/',
       );
+
+  static bool get hasArmsx2ShortcutInstaller =>
+      _armsx2ShortcutInstallUrl.startsWith(
+        'https://www.icloud.com/shortcuts/',
+      );
+
+  /// Opens the shared ARMSX2 launch Shortcut. While the iCloud sharing link
+  /// is not configured yet, fall back to Apple's official create-shortcut
+  /// URL so the user can create/duplicate the Shortcut without leaving the
+  /// NeoStation setup flow.
+  static Future<bool> openArmsx2ShortcutInstaller() async {
+    if (!Platform.isIOS) return false;
+
+    final target = hasArmsx2ShortcutInstaller
+        ? Uri.parse(_armsx2ShortcutInstallUrl)
+        : Uri.parse('shortcuts://create-shortcut');
+
+    try {
+      return await launchUrl(
+        target,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      _log.e(
+        'IosShortcutJitLaunchService: failed to open ARMSX2 setup: $e',
+      );
+      return false;
+    }
+  }
 
   /// Opens Apple's import sheet for the shared MeloNX Shortcut.
   static Future<bool> openMeloNXShortcutInstaller() async {
