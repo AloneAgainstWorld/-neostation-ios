@@ -704,7 +704,7 @@ class _GamesGridState extends State<GamesGrid> {
 
   /// Select + B — toggles the (session-global) vertical action-button legend.
   /// When hidden the legend slides off the left edge and the grid reflows into
-  /// the 60.r gutter.
+  /// the 72.r gutter.
   void _toggleLegend() {
     SfxService().playNavSound();
     GameLegendVisibility.toggle();
@@ -1034,14 +1034,14 @@ class _GamesGridState extends State<GamesGrid> {
           children: [
             Expanded(
               // Indent the grid to clear the vertical legend on the left. Select
-              // + B toggles the legend; the indent flips 60.r↔0 in a single frame
+              // + B toggles the legend; the indent flips 72.r↔0 in a single frame
               // (no animation) so there's no moving target to chase — the grid
               // reflows once and the selected card is pinned in place by the
               // scroll restore below. The reduced width makes the cards slightly
               // smaller when the legend is shown.
               child: Padding(
                 padding: EdgeInsets.only(
-                  left: GameLegendVisibility.hidden.value ? 0 : 60.r,
+                  left: GameLegendVisibility.hidden.value ? 0 : 72.r,
                 ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -1255,7 +1255,7 @@ class _GamesGridState extends State<GamesGrid> {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
           top: 12.r,
-          left: GameLegendVisibility.hidden.value ? -60.r : 10.r,
+          left: GameLegendVisibility.hidden.value ? -72.r : 10.r,
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 250),
             opacity: GameLegendVisibility.hidden.value ? 0.0 : 1.0,
