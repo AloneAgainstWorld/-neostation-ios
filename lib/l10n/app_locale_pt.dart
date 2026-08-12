@@ -1004,4 +1004,27 @@ const Map<String, dynamic> appLocalePt = {
   AppLocale.wizardArtPackUnavailable:
       'Não foi possível acessar o pacote de arte agora. Você pode instalá-lo '
       'mais tarde nas Configurações quando estiver online.',
+
+  // iOS emulator library integration
+  AppLocale.iosEmuSync: "Sincronizar",
+  AppLocale.iosEmuResync: "Sincronizar novamente",
+  AppLocale.iosEmuLinkFolder: "Vincular pasta",
+  AppLocale.iosEmuChangeFolder: "Alterar pasta",
+  AppLocale.iosEmuLinkingFailed: "Falha ao vincular: {error}",
+  AppLocale.iosRetroarchSyncRequested: "A sincronização da biblioteca do RetroArch foi solicitada. Ela ocorre em segundo plano; aguarde alguns segundos.",
+  AppLocale.iosRetroarchUnavailable: "Não foi possível acessar o RetroArch. Ele está instalado?",
+  AppLocale.iosArmsx2SyncRequested: "A sincronização da biblioteca do ARMSX2 foi solicitada. O ARMSX2 retornará automaticamente ao NeoStation quando a exportação estiver pronta.",
+  AppLocale.iosArmsx2Unavailable: "Não foi possível acessar o ARMSX2. Ele está instalado?",
+  AppLocale.iosMelonxSyncRequested: "A sincronização da biblioteca Nintendo Switch do MeloNX foi solicitada. O MeloNX retornará automaticamente ao NeoStation quando a exportação estiver pronta.",
+  AppLocale.iosMelonxUnavailable: "Não foi possível acessar o MeloNX. Ele está instalado?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Vincule a pasta do RetroArch para que o NeoStation acesse seus jogos diretamente, sem copiar.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Pasta vinculada. Sincronize a biblioteca para iniciar os jogos diretamente no RetroArch com um toque.",
+  AppLocale.iosRetroarchStatusSynced: "Pasta vinculada e biblioteca sincronizada — os jogos são iniciados diretamente no RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Pasta vinculada. O NeoStation fará a leitura diretamente, sem copiar. Os jogos encontrados aqui serão iniciados diretamente no RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "O ARMSX2 usa a mesma pasta de ROMs do RetroArch. Vincule a pasta compartilhada e depois sincronize a biblioteca do ARMSX2.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Pasta de ROMs compartilhada vinculada. Sincronize o ARMSX2 para importar a biblioteca de PS2 para o NeoStation.",
+  AppLocale.iosArmsx2StatusSynced: "Pasta compartilhada e biblioteca do ARMSX2 sincronizadas — os jogos de PS2 são iniciados diretamente no ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Pasta de ROMs compartilhada vinculada. RetroArch e ARMSX2 agora usam a mesma origem de ROMs do NeoStation.",
+  AppLocale.iosMelonxStatusSynced: "Biblioteca do MeloNX sincronizada — os jogos de Nintendo Switch são iniciados diretamente no MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Sincronize o MeloNX para importar diretamente sua biblioteca de Nintendo Switch para o NeoStation. Não é necessário analisar uma pasta de ROMs.",
 };

@@ -992,4 +992,27 @@ const Map<String, dynamic> appLocaleRu = {
   AppLocale.wizardArtPackUnavailable:
       'Сейчас не удалось получить набор обложек. Вы можете установить его позже '
       'в Настройках, когда будете онлайн.',
+
+  // iOS emulator library integration
+  AppLocale.iosEmuSync: "Синхронизировать",
+  AppLocale.iosEmuResync: "Синхронизировать снова",
+  AppLocale.iosEmuLinkFolder: "Подключить папку",
+  AppLocale.iosEmuChangeFolder: "Изменить папку",
+  AppLocale.iosEmuLinkingFailed: "Не удалось подключить папку: {error}",
+  AppLocale.iosRetroarchSyncRequested: "Запрошена синхронизация библиотеки RetroArch. Она выполняется в фоновом режиме; подождите несколько секунд.",
+  AppLocale.iosRetroarchUnavailable: "Не удалось связаться с RetroArch. Он установлен?",
+  AppLocale.iosArmsx2SyncRequested: "Запрошена синхронизация библиотеки ARMSX2. ARMSX2 автоматически вернётся в NeoStation, когда экспорт будет готов.",
+  AppLocale.iosArmsx2Unavailable: "Не удалось связаться с ARMSX2. Он установлен?",
+  AppLocale.iosMelonxSyncRequested: "Запрошена синхронизация библиотеки Nintendo Switch из MeloNX. MeloNX автоматически вернётся в NeoStation, когда экспорт будет готов.",
+  AppLocale.iosMelonxUnavailable: "Не удалось связаться с MeloNX. Он установлен?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Подключите папку RetroArch, чтобы NeoStation мог обращаться к играм напрямую, без копирования.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Папка подключена. Синхронизируйте библиотеку, чтобы запускать игры прямо в RetroArch одним нажатием.",
+  AppLocale.iosRetroarchStatusSynced: "Папка подключена, библиотека синхронизирована — игры запускаются прямо в RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Папка подключена. NeoStation будет сканировать её напрямую, без копирования. Найденные здесь игры будут запускаться прямо в RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 использует ту же папку ROM, что и RetroArch. Подключите общую папку ROM, затем синхронизируйте библиотеку ARMSX2.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Общая папка ROM подключена. Синхронизируйте ARMSX2, чтобы импортировать библиотеку PS2 в NeoStation.",
+  AppLocale.iosArmsx2StatusSynced: "Общая папка и библиотека ARMSX2 синхронизированы — игры PS2 запускаются прямо в ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Общая папка ROM подключена. RetroArch и ARMSX2 теперь используют один источник ROM в NeoStation.",
+  AppLocale.iosMelonxStatusSynced: "Библиотека MeloNX синхронизирована — игры Nintendo Switch запускаются прямо в MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Синхронизируйте MeloNX, чтобы напрямую импортировать библиотеку Nintendo Switch в NeoStation. Сканирование папки ROM не требуется.",
 };

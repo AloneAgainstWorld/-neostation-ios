@@ -547,7 +547,9 @@ class DirectoriesSettingsContentState
       if (mounted) {
         AppNotification.showNotification(
           context,
-          'Linking failed: $e',
+          AppLocale.iosEmuLinkingFailed
+              .getString(context)
+              .replaceFirst('{error}', e.toString()),
           type: NotificationType.error,
         );
       }
@@ -568,9 +570,8 @@ class DirectoriesSettingsContentState
     AppNotification.showNotification(
       context,
       opened
-          ? 'Asked RetroArch for its game library — this happens in the '
-                'background, give it a few seconds.'
-          : 'Could not reach RetroArch. Is it installed?',
+          ? AppLocale.iosRetroarchSyncRequested.getString(context)
+          : AppLocale.iosRetroarchUnavailable.getString(context),
       type: opened ? NotificationType.info : NotificationType.error,
     );
   }
@@ -585,9 +586,8 @@ class DirectoriesSettingsContentState
     AppNotification.showNotification(
       context,
       opened
-          ? 'Asked ARMSX2 for its game library — ARMSX2 will return to '
-                'NeoStation automatically when the export is ready.'
-          : 'Could not reach ARMSX2. Is it installed?',
+          ? AppLocale.iosArmsx2SyncRequested.getString(context)
+          : AppLocale.iosArmsx2Unavailable.getString(context),
       type: opened ? NotificationType.info : NotificationType.error,
     );
   }
@@ -617,9 +617,8 @@ class DirectoriesSettingsContentState
     AppNotification.showNotification(
       context,
       opened
-          ? 'Asked MeloNX for its Nintendo Switch library — MeloNX will '
-                'return to NeoStation automatically when the export is ready.'
-          : 'Could not reach MeloNX. Is it installed?',
+          ? AppLocale.iosMelonxSyncRequested.getString(context)
+          : AppLocale.iosMelonxUnavailable.getString(context),
       type: opened ? NotificationType.info : NotificationType.error,
     );
   }
@@ -663,15 +662,11 @@ class DirectoriesSettingsContentState
 
     final String statusText;
     if (!isLinked) {
-      statusText =
-          'Link RetroArch\'s folder so NeoStation can see your games in '
-          'place — no copying.';
+      statusText = AppLocale.iosRetroarchStatusNeedsLink.getString(context);
     } else if (!hasSynced) {
-      statusText =
-          'Folder linked. Now sync so games launch directly in RetroArch '
-          'with one tap.';
+      statusText = AppLocale.iosRetroarchStatusNeedsSync.getString(context);
     } else {
-      statusText = 'Linked and synced — games launch directly in RetroArch.';
+      statusText = AppLocale.iosRetroarchStatusSynced.getString(context);
     }
 
     return _buildIOSEmulatorCard(
@@ -681,17 +676,16 @@ class DirectoriesSettingsContentState
       statusText: statusText,
       isLinked: isLinked,
       bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
-      successMessage:
-          'Linked. NeoStation will scan this folder in place — no copy '
-          'needed. Launching a game found here will open RetroArch '
-          'directly.',
+      successMessage: AppLocale.iosRetroarchLinkSuccess.getString(context),
       trailingAction: SizedBox(
         height: 48.r,
         child: FilledButton.icon(
           onPressed: !isLinked ? null : _syncWithRetroArch,
           icon: Icon(Symbols.bolt_rounded, size: 20.r),
           label: Text(
-            hasSynced ? 'Re-sync' : 'Sync',
+            hasSynced
+                ? AppLocale.iosEmuResync.getString(context)
+                : AppLocale.iosEmuSync.getString(context),
             style: TextStyle(fontSize: 14.r),
           ),
         ),
@@ -709,17 +703,11 @@ class DirectoriesSettingsContentState
 
     final String statusText;
     if (!isLinked) {
-      statusText =
-          'ARMSX2 uses the same ROM folder as RetroArch. Link the shared ROM '
-          'folder, then sync ARMSX2\'s library.';
+      statusText = AppLocale.iosArmsx2StatusNeedsLink.getString(context);
     } else if (!hasSynced) {
-      statusText =
-          'Shared ROM folder linked. Sync ARMSX2 to import the PS2 library '
-          'into NeoStation.';
+      statusText = AppLocale.iosArmsx2StatusNeedsSync.getString(context);
     } else {
-      statusText =
-          'Shared folder + ARMSX2 library synced — PS2 games launch directly '
-          'in ARMSX2.';
+      statusText = AppLocale.iosArmsx2StatusSynced.getString(context);
     }
 
     return _buildIOSEmulatorCard(
@@ -729,9 +717,7 @@ class DirectoriesSettingsContentState
       statusText: statusText,
       isLinked: isLinked,
       bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
-      successMessage:
-          'Shared ROM folder linked. RetroArch and ARMSX2 now use the same '
-          'NeoStation ROM source.',
+      successMessage: AppLocale.iosArmsx2LinkSuccess.getString(context),
       trailingAction: Row(
         children: [
           Expanded(
@@ -741,7 +727,9 @@ class DirectoriesSettingsContentState
                 onPressed: _syncWithArmsx2,
                 icon: Icon(Symbols.bolt_rounded, size: 20.r),
                 label: Text(
-                  hasSynced ? 'Re-sync' : 'Sync',
+                  hasSynced
+                ? AppLocale.iosEmuResync.getString(context)
+                : AppLocale.iosEmuSync.getString(context),
                   style: TextStyle(fontSize: 14.r),
                 ),
               ),
@@ -775,10 +763,8 @@ class DirectoriesSettingsContentState
     final hasSynced = MelonxLibraryService.hasSyncedLibrary;
 
     final statusText = hasSynced
-        ? 'MeloNX library synced — Nintendo Switch games launch directly in '
-              'MeloNX.'
-        : 'Sync MeloNX to import its Nintendo Switch library directly into '
-              'NeoStation. No ROM-folder scan is required.';
+        ? AppLocale.iosMelonxStatusSynced.getString(context)
+        : AppLocale.iosMelonxStatusNeedsSync.getString(context);
 
     return _buildIOSEmulatorCard(
       theme: theme,
@@ -798,7 +784,9 @@ class DirectoriesSettingsContentState
                 onPressed: _syncWithMeloNX,
                 icon: Icon(Symbols.bolt_rounded, size: 20.r),
                 label: Text(
-                  hasSynced ? 'Re-sync' : 'Sync',
+                  hasSynced
+                ? AppLocale.iosEmuResync.getString(context)
+                : AppLocale.iosEmuSync.getString(context),
                   style: TextStyle(fontSize: 14.r),
                 ),
               ),
@@ -866,7 +854,9 @@ class DirectoriesSettingsContentState
                 size: 20.r,
               ),
         label: Text(
-          isLinked ? 'Change folder' : 'Link folder',
+          isLinked
+              ? AppLocale.iosEmuChangeFolder.getString(context)
+              : AppLocale.iosEmuLinkFolder.getString(context),
           style: TextStyle(fontSize: 14.r),
         ),
       ),

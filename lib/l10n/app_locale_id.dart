@@ -994,4 +994,27 @@ const Map<String, dynamic> appLocaleId = {
   AppLocale.wizardArtPackUnavailable:
       'Paket gambar tidak dapat dijangkau saat ini. Anda dapat memasangnya '
       'nanti dari Pengaturan setelah online.',
+
+  // iOS emulator library integration
+  AppLocale.iosEmuSync: "Sinkronkan",
+  AppLocale.iosEmuResync: "Sinkronkan ulang",
+  AppLocale.iosEmuLinkFolder: "Tautkan folder",
+  AppLocale.iosEmuChangeFolder: "Ubah folder",
+  AppLocale.iosEmuLinkingFailed: "Gagal menautkan: {error}",
+  AppLocale.iosRetroarchSyncRequested: "Sinkronisasi pustaka RetroArch diminta. Proses berjalan di latar belakang; tunggu beberapa detik.",
+  AppLocale.iosRetroarchUnavailable: "Tidak dapat mengakses RetroArch. Apakah sudah terpasang?",
+  AppLocale.iosArmsx2SyncRequested: "Sinkronisasi pustaka ARMSX2 diminta. ARMSX2 akan kembali ke NeoStation secara otomatis saat ekspor siap.",
+  AppLocale.iosArmsx2Unavailable: "Tidak dapat mengakses ARMSX2. Apakah sudah terpasang?",
+  AppLocale.iosMelonxSyncRequested: "Sinkronisasi pustaka Nintendo Switch MeloNX diminta. MeloNX akan kembali ke NeoStation secara otomatis saat ekspor siap.",
+  AppLocale.iosMelonxUnavailable: "Tidak dapat mengakses MeloNX. Apakah sudah terpasang?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Tautkan folder RetroArch agar NeoStation dapat mengakses game langsung tanpa menyalinnya.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Folder sudah ditautkan. Sinkronkan pustaka agar game dapat dibuka langsung di RetroArch dengan satu ketukan.",
+  AppLocale.iosRetroarchStatusSynced: "Folder dan pustaka sudah tersinkron — game dibuka langsung di RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Folder sudah ditautkan. NeoStation akan memindainya langsung tanpa menyalin. Game yang ditemukan di sini akan dibuka langsung di RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 menggunakan folder ROM yang sama dengan RetroArch. Tautkan folder ROM bersama, lalu sinkronkan pustaka ARMSX2.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Folder ROM bersama sudah ditautkan. Sinkronkan ARMSX2 untuk mengimpor pustaka PS2 ke NeoStation.",
+  AppLocale.iosArmsx2StatusSynced: "Folder bersama dan pustaka ARMSX2 sudah tersinkron — game PS2 dibuka langsung di ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Folder ROM bersama sudah ditautkan. RetroArch dan ARMSX2 kini menggunakan sumber ROM NeoStation yang sama.",
+  AppLocale.iosMelonxStatusSynced: "Pustaka MeloNX sudah tersinkron — game Nintendo Switch dibuka langsung di MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Sinkronkan MeloNX untuk mengimpor pustaka Nintendo Switch langsung ke NeoStation. Pemindaian folder ROM tidak diperlukan.",
 };

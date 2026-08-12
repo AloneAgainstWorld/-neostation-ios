@@ -905,4 +905,27 @@ const Map<String, dynamic> appLocaleJa = {
   AppLocale.wizardArtPackUnavailable:
       '現在アートパックにアクセスできませんでした。オンラインになったら、後で'
       '設定からインストールできます。',
+
+  // iOS emulator library integration
+  AppLocale.iosEmuSync: "同期",
+  AppLocale.iosEmuResync: "再同期",
+  AppLocale.iosEmuLinkFolder: "フォルダをリンク",
+  AppLocale.iosEmuChangeFolder: "フォルダを変更",
+  AppLocale.iosEmuLinkingFailed: "リンクに失敗しました: {error}",
+  AppLocale.iosRetroarchSyncRequested: "RetroArch ライブラリの同期を要求しました。バックグラウンドで実行されるため、数秒お待ちください。",
+  AppLocale.iosRetroarchUnavailable: "RetroArch に接続できませんでした。インストールされていますか？",
+  AppLocale.iosArmsx2SyncRequested: "ARMSX2 ライブラリの同期を要求しました。エクスポートの準備が完了すると、ARMSX2 は自動的に NeoStation に戻ります。",
+  AppLocale.iosArmsx2Unavailable: "ARMSX2 に接続できませんでした。インストールされていますか？",
+  AppLocale.iosMelonxSyncRequested: "MeloNX の Nintendo Switch ライブラリの同期を要求しました。エクスポートの準備が完了すると、MeloNX は自動的に NeoStation に戻ります。",
+  AppLocale.iosMelonxUnavailable: "MeloNX に接続できませんでした。インストールされていますか？",
+  AppLocale.iosRetroarchStatusNeedsLink: "RetroArch のフォルダをリンクすると、コピーせずに NeoStation からゲームへ直接アクセスできます。",
+  AppLocale.iosRetroarchStatusNeedsSync: "フォルダをリンクしました。ライブラリを同期すると、ワンタップで RetroArch から直接ゲームを起動できます。",
+  AppLocale.iosRetroarchStatusSynced: "フォルダとライブラリを同期済み — ゲームは RetroArch で直接起動します。",
+  AppLocale.iosRetroarchLinkSuccess: "フォルダをリンクしました。NeoStation はコピーせず、その場所を直接スキャンします。ここで見つかったゲームは RetroArch で直接起動します。",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 は RetroArch と同じ ROM フォルダを使用します。共有 ROM フォルダをリンクしてから、ARMSX2 ライブラリを同期してください。",
+  AppLocale.iosArmsx2StatusNeedsSync: "共有 ROM フォルダをリンクしました。ARMSX2 を同期して PS2 ライブラリを NeoStation にインポートしてください。",
+  AppLocale.iosArmsx2StatusSynced: "共有フォルダと ARMSX2 ライブラリを同期済み — PS2 ゲームは ARMSX2 で直接起動します。",
+  AppLocale.iosArmsx2LinkSuccess: "共有 ROM フォルダをリンクしました。RetroArch と ARMSX2 は同じ NeoStation ROM ソースを使用します。",
+  AppLocale.iosMelonxStatusSynced: "MeloNX ライブラリを同期済み — Nintendo Switch ゲームは MeloNX で直接起動します。",
+  AppLocale.iosMelonxStatusNeedsSync: "MeloNX を同期して Nintendo Switch ライブラリを NeoStation に直接インポートします。ROM フォルダのスキャンは不要です。",
 };
