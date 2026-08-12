@@ -10,13 +10,10 @@ import 'new_settings_options/secondary_settings_content.dart';
 import 'new_settings_options/directories_settings_content.dart';
 import 'new_settings_options/tools_settings_content.dart';
 import 'new_settings_options/systems_settings_content.dart';
-import 'new_settings_options/launcher_settings_content.dart';
 import 'new_settings_options/about_settings_content.dart';
 import 'new_settings_options/themes_settings_content.dart';
 import 'new_settings_options/system_art_settings_content.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:neostation/services/logger_service.dart';
 import '../../providers/sqlite_config_provider.dart';
 
 /// A unified Settings dashboard featuring a master-detail layout with category navigation and contextual content panels.
@@ -48,8 +45,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
 
   /// Focus State: [true] indicates navigation within the category menu; [false] indicates content interaction.
   bool _focusOnMenu = true;
-
-  static final _log = LoggerService.instance;
 
   final List<SettingsMenuItem> _menuItems = [];
 
@@ -589,11 +584,6 @@ class _NewSettingsScreenState extends State<NewSettingsScreen> {
             _selectedContentIndex = newIndex;
           });
         },
-      );
-    } else if (selectedKey == AppLocale.launcher) {
-      return LauncherSettingsContent(
-        isContentFocused: !_focusOnMenu,
-        selectedContentIndex: _selectedContentIndex,
       );
     } else if (selectedKey == AppLocale.about) {
       return AboutSettingsContent(

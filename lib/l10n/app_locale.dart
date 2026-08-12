@@ -74,8 +74,6 @@ mixin AppLocale {
   static const String systemArtApplyBody = 'system_art_apply_body';
   static const String systemArtDownloading = 'system_art_downloading';
   static const String about = 'about';
-  static const String exit = 'exit';
-  static const String launcher = 'launcher';
   static const String themesSubtitle = 'themes_subtitle';
   static const String systemTheme = 'system_theme';
   static const String importTheme = 'import_theme';
@@ -241,12 +239,6 @@ mixin AppLocale {
   static const String clearAll = 'clear_all';
   static const String noActiveNotifications = 'no_active_notifications';
 
-  // ---------------------------------------------------------------------------
-  // Exit
-  // ---------------------------------------------------------------------------
-  static const String exitApplication = 'exit_application';
-  static const String exitConfirmation = 'exit_confirmation';
-  static const String confirmExit = 'confirm_exit';
   static const String rescanAllFolders = 'rescan_all_folders';
   static const String rescanAllFoldersSubtitle = 'rescan_all_folders_subtitle';
 

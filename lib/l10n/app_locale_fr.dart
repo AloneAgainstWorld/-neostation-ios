@@ -54,8 +54,6 @@ const Map<String, dynamic> appLocaleFr = {
       'Le pack System Art sera téléchargé pour tous les systèmes. Cela peut prendre quelques instants.',
   AppLocale.systemArtDownloading: 'Téléchargement du pack System Art...',
   AppLocale.about: 'À propos',
-  AppLocale.exit: 'Quitter',
-  AppLocale.launcher: 'Lanceur',
   AppLocale.emulators: 'Émulateurs',
   AppLocale.appearance: 'Apparence',
   AppLocale.systemsSettings: 'Systèmes',
@@ -201,10 +199,6 @@ const Map<String, dynamic> appLocaleFr = {
   AppLocale.logoImageSubtitle: 'jpg, png, webp | 512x512px ou plus petit',
   AppLocale.selectRetroArchExe: 'Sélectionner l’exécutable RetroArch',
   AppLocale.selectExecutablePath: 'Sélectionner le chemin de l’exécutable',
-
-  AppLocale.exitApplication: 'Quitter l’Application',
-  AppLocale.exitConfirmation: 'Êtes-vous sûr de vouloir quitter NeoStation ?',
-  AppLocale.confirmExit: 'Confirmer la Sortie',
   AppLocale.rescanAllFolders: 'Analyser à nouveau tous les dossiers ROM',
   AppLocale.rescanAllFoldersSubtitle:
       'Rechercher manuellement de nouveaux systèmes et ROMs',
