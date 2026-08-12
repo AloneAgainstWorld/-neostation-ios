@@ -1182,27 +1182,35 @@ class _SystemGamesListState extends State<SystemGamesList> {
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOutCubic,
             top: 12.r,
+            bottom: 12.r,
             left: GameLegendVisibility.hidden.value ? -72.r : 10.r,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 250),
               opacity: GameLegendVisibility.hidden.value ? 0.0 : 1.0,
-              child: Consumer<SyncManager>(
-                builder: (context, syncManager, child) {
-                  return GameActionButtons(
-                    system: widget.system,
-                    selectedGame: _selectedGame,
-                    syncProvider: syncManager.active,
-                    onBack: _goBack,
-                    onFavorite: _toggleFavorite,
-                    onViewMode: () => GameViewModeDropdown
-                        .globalKey
-                        .currentState
-                        ?.showDropdown(),
-                    onSettings: _openGameSettingsDialog,
-                    onRandom: _showRandomGameDialog,
-                    onScrape: () => _scrapeAction?.call(),
-                  );
-                },
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.topLeft,
+                  child: Consumer<SyncManager>(
+                    builder: (context, syncManager, child) {
+                      return GameActionButtons(
+                        system: widget.system,
+                        selectedGame: _selectedGame,
+                        syncProvider: syncManager.active,
+                        onBack: _goBack,
+                        onFavorite: _toggleFavorite,
+                        onViewMode: () => GameViewModeDropdown
+                            .globalKey
+                            .currentState
+                            ?.showDropdown(),
+                        onSettings: _openGameSettingsDialog,
+                        onRandom: _showRandomGameDialog,
+                        onScrape: () => _scrapeAction?.call(),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
           ),

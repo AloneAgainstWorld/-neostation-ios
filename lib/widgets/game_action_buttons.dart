@@ -54,7 +54,7 @@ class GameActionButtons extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: GamepadNavigation.selectHeldNotifier,
       builder: (context, selectHeld, _) {
-        return HorizontalSwipe(
+        final rail = HorizontalSwipe(
           // Swipe left on the legend to hide it (touchscreen users have no
           // Select+B chord). Reshow is a swipe-right from the screen edge,
           // handled by the host view. Hiding slides the column off-screen via
@@ -92,6 +92,28 @@ class GameActionButtons extends StatelessWidget {
             ),
           ),
         );
+
+        // NeoSync is a status, not an action. Keeping it as a positioned badge
+        // means systems that support NeoSync no longer get a taller action rail
+        // than systems that do not. The five action buttons therefore keep the
+        // exact same geometry on every console playlist.
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            rail,
+            if (!selectHeld && syncProvider != null && selectedGame != null)
+              Positioned(
+                right: -3.r,
+                bottom: -3.r,
+                child: NeoSyncStatusIcon(
+                  system: system,
+                  game: selectedGame,
+                  syncProvider: syncProvider,
+                  size: 18.0,
+                ),
+              ),
+          ],
+        );
       },
     );
   }
@@ -122,7 +144,6 @@ class GameActionButtons extends StatelessWidget {
 
   List<Widget> _buildDefaultButtons(BuildContext context) {
     final selectedGame = this.selectedGame;
-    final syncProvider = this.syncProvider;
     final scheme = Theme.of(context).colorScheme;
 
     return [
@@ -162,17 +183,7 @@ class GameActionButtons extends StatelessWidget {
         sound: GameActionButtonSound.nav,
         onTap: selectedGame != null ? onSettings : null,
       ),
-      // Compact NeoSync status indicator — always the last option.
-      // The icon renders nothing (SizedBox.shrink) when sync is unavailable
-      // for this system, so its top spacing lives inside the widget to avoid
-      // leaving a dangling gap below the settings button.
-      if (syncProvider != null && selectedGame != null)
-        NeoSyncStatusIcon(
-          system: system,
-          game: selectedGame,
-          syncProvider: syncProvider,
-          size: 28.0,
-        ),
+
     ];
   }
 
