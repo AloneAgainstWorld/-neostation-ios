@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import UniformTypeIdentifiers
+import AVFoundation
 
 /// Lets NeoStation pick a folder exposed by another app (e.g. RetroArch,
 /// which shows up under "On My iPhone > RetroArch" in the Files app) via
@@ -105,6 +106,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             openInMenu(call: call, result: result)
         case "openRawUrl":
             openRawUrl(call: call, result: result)
+        case "configureAudioSessionForSilentMode":
+            configureAudioSessionForSilentMode(result: result)
         case "openUrlWithDelayedRetry":
             openUrlWithDelayedRetry(call: call, result: result)
         case "openUrlAfterJitPreflight":
@@ -242,6 +245,29 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     private func clearBookmark(key: String, result: @escaping FlutterResult) {
         UserDefaults.standard.removeObject(forKey: Self.bookmarkDefaultsKey(for: key))
         result(nil)
+    }
+
+    // MARK: - iOS audio session
+
+    /// Uses the AVAudioSession category intended for non-primary app audio.
+    /// `.ambient` is silenced by the iPhone Ring/Silent switch and mixes with
+    /// audio from other apps. NeoStation reapplies this after SoLoud starts,
+    /// because the audio backend may activate a different category during init.
+    private func configureAudioSessionForSilentMode(result: @escaping FlutterResult) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+            result(true)
+        } catch {
+            result(
+                FlutterError(
+                    code: "AUDIO_SESSION_FAILED",
+                    message: error.localizedDescription,
+                    details: nil
+                )
+            )
+        }
     }
 
     // MARK: - Raw URL opening

@@ -108,6 +108,22 @@ class ExternalFolderAccess {
     }
   }
 
+  /// Configures NeoStation's native iOS audio session for UI/game-front-end
+  /// sounds: the hardware Ring/Silent switch mutes playback and audio may mix
+  /// with other apps. This is called after SoLoud initializes because its
+  /// backend can otherwise choose an audio-session category that ignores the
+  /// Silent switch.
+  static Future<bool?> configureAudioSessionForSilentMode() async {
+    if (!Platform.isIOS) return null;
+    try {
+      return await _channel.invokeMethod<bool>(
+        'configureAudioSessionForSilentMode',
+      );
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// Opens [url] immediately, then asks the native iOS layer to open the same
   /// URL again after [retryDelay]. The retry is kept alive with a short
   /// UIApplication background task so it has a chance to fire after the first
