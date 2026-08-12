@@ -23,10 +23,9 @@ class IosShortcutJitLaunchService {
   static const String _melonxShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/84b9d0fbdd714c6c9596ba2e3c699031';
 
-  // Add the shared iCloud URL here once the ARMSX2 Shortcut has been
-  // published. Until then, the settings button opens Apple's Shortcut
-  // creation editor so the launch flow can still be configured manually.
-  static const String _armsx2ShortcutInstallUrl = '';
+  /// One-time installer for the exact NeoStation ARMSX2 launch Shortcut.
+  static const String _armsx2ShortcutInstallUrl =
+      'https://www.icloud.com/shortcuts/1419632b150747f5bcd7b9bc65e36114';
 
   static bool get hasMeloNXShortcutInstaller =>
       _melonxShortcutInstallUrl.startsWith(
