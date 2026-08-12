@@ -1255,11 +1255,19 @@ class _GamesGridState extends State<GamesGrid> {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
           top: 12.r,
+          bottom: 12.r,
           left: GameLegendVisibility.hidden.value ? -72.r : 10.r,
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 250),
             opacity: GameLegendVisibility.hidden.value ? 0.0 : 1.0,
-            child: _chromeLegend!,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.topLeft,
+                child: _chromeLegend!,
+              ),
+            ),
           ),
         ),
         // Touch: swipe-right from the left edge reveals a hidden legend.
