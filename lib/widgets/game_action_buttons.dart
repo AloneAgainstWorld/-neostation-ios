@@ -61,7 +61,7 @@ class GameActionButtons extends StatelessWidget {
           // GameLegendVisibility.
           onSwipeLeft: GameLegendVisibility.hide,
           child: Container(
-            padding: EdgeInsets.all(6.r),
+            padding: EdgeInsets.all(8.r),
             decoration: BoxDecoration(
               // Same left-to-right falloff as the game list panel beside it,
               // so the rail and the list read as one lit surface rather than
@@ -83,7 +83,7 @@ class GameActionButtons extends StatelessWidget {
                 // gamepad, so touchscreen users can reach the chord shortcuts.
                 if (_hasChordActions) ...[
                   _buildViewToggle(context, active: selectHeld),
-                  SizedBox(height: 6.r),
+                  SizedBox(height: 8.r),
                 ],
                 ...(selectHeld
                     ? _buildChordButtons(context)
@@ -134,7 +134,7 @@ class GameActionButtons extends StatelessWidget {
         sound: GameActionButtonSound.back,
         onTap: onBack,
       ),
-      SizedBox(height: 6.r),
+      SizedBox(height: 8.r),
       GameActionButton(
         iconPath: 'assets/images/gamepad/Xbox_X_button.png',
         symbol: Symbols.grid_view_rounded,
@@ -143,7 +143,7 @@ class GameActionButtons extends StatelessWidget {
         sound: GameActionButtonSound.nav,
         onTap: onViewMode,
       ),
-      SizedBox(height: 6.r),
+      SizedBox(height: 8.r),
       GameActionButton(
         iconPath: 'assets/images/gamepad/Xbox_Y_button.png',
         symbol: Symbols.favorite_rounded,
@@ -152,7 +152,7 @@ class GameActionButtons extends StatelessWidget {
         sound: GameActionButtonSound.nav,
         onTap: selectedGame != null ? onFavorite : null,
       ),
-      SizedBox(height: 6.r),
+      SizedBox(height: 8.r),
       // Game settings — second-to-last option.
       GameActionButton(
         iconPath: 'assets/images/gamepad/Xbox_Menu_button.png',
@@ -171,7 +171,7 @@ class GameActionButtons extends StatelessWidget {
           system: system,
           game: selectedGame,
           syncProvider: syncProvider,
-          size: 24.0,
+          size: 28.0,
         ),
     ];
   }
@@ -192,7 +192,7 @@ class GameActionButtons extends StatelessWidget {
         sound: GameActionButtonSound.enter,
         onTap: selectedGame != null ? _withRevert(onScrape) : null,
       ),
-      SizedBox(height: 6.r),
+      SizedBox(height: 8.r),
       // Y — random game.
       GameActionButton(
         iconPath: 'assets/images/gamepad/Xbox_Y_button.png',
