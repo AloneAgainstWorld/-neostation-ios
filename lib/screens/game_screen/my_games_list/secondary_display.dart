@@ -435,7 +435,7 @@ extension _SecondaryDisplay on _SystemGamesListState {
 
       final mainController = VideoPlayerController.file(
         file,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
 
       await mainController.initialize();
