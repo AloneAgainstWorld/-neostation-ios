@@ -1015,4 +1015,27 @@ const Map<String, dynamic> appLocaleIt = {
   AppLocale.wizardArtPackUnavailable:
       'Al momento non è stato possibile raggiungere il pacchetto grafico. Puoi '
       'installarlo in seguito dalle Impostazioni una volta online.',
+
+  // iOS emulator library integration
+  AppLocale.iosEmuSync: "Sincronizza",
+  AppLocale.iosEmuResync: "Risincronizza",
+  AppLocale.iosEmuLinkFolder: "Collega cartella",
+  AppLocale.iosEmuChangeFolder: "Cambia cartella",
+  AppLocale.iosEmuLinkingFailed: "Collegamento non riuscito: {error}",
+  AppLocale.iosRetroarchSyncRequested: "Sincronizzazione della libreria RetroArch richiesta. Avviene in background; attendi qualche secondo.",
+  AppLocale.iosRetroarchUnavailable: "Impossibile raggiungere RetroArch. È installato?",
+  AppLocale.iosArmsx2SyncRequested: "Sincronizzazione della libreria ARMSX2 richiesta. ARMSX2 tornerà automaticamente a NeoStation quando l’esportazione sarà pronta.",
+  AppLocale.iosArmsx2Unavailable: "Impossibile raggiungere ARMSX2. È installato?",
+  AppLocale.iosMelonxSyncRequested: "Sincronizzazione della libreria Nintendo Switch di MeloNX richiesta. MeloNX tornerà automaticamente a NeoStation quando l’esportazione sarà pronta.",
+  AppLocale.iosMelonxUnavailable: "Impossibile raggiungere MeloNX. È installato?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Collega la cartella di RetroArch affinché NeoStation acceda ai giochi direttamente, senza copiarli.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Cartella collegata. Sincronizza la libreria per avviare i giochi direttamente in RetroArch con un tocco.",
+  AppLocale.iosRetroarchStatusSynced: "Cartella collegata e libreria sincronizzata — i giochi si avviano direttamente in RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Cartella collegata. NeoStation la analizzerà direttamente, senza copiarla. I giochi trovati qui si avvieranno direttamente in RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 usa la stessa cartella ROM di RetroArch. Collega la cartella ROM condivisa, quindi sincronizza la libreria ARMSX2.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Cartella ROM condivisa collegata. Sincronizza ARMSX2 per importare la libreria PS2 in NeoStation.",
+  AppLocale.iosArmsx2StatusSynced: "Cartella condivisa e libreria ARMSX2 sincronizzate — i giochi PS2 si avviano direttamente in ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Cartella ROM condivisa collegata. RetroArch e ARMSX2 ora usano la stessa sorgente ROM di NeoStation.",
+  AppLocale.iosMelonxStatusSynced: "Libreria MeloNX sincronizzata — i giochi Nintendo Switch si avviano direttamente in MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Sincronizza MeloNX per importare direttamente la sua libreria Nintendo Switch in NeoStation. Non è necessaria la scansione di una cartella ROM.",
 };

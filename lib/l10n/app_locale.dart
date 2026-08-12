@@ -944,6 +944,29 @@ mixin AppLocale {
   static const String addRomFolder = 'add_rom_folder';
   static const String removeRomFolder = 'remove_rom_folder';
 
+  // iOS emulator library integration.
+  static const String iosEmuSync = 'ios_emu_sync';
+  static const String iosEmuResync = 'ios_emu_resync';
+  static const String iosEmuLinkFolder = 'ios_emu_link_folder';
+  static const String iosEmuChangeFolder = 'ios_emu_change_folder';
+  static const String iosEmuLinkingFailed = 'ios_emu_linking_failed';
+  static const String iosRetroarchSyncRequested = 'ios_retroarch_sync_requested';
+  static const String iosRetroarchUnavailable = 'ios_retroarch_unavailable';
+  static const String iosArmsx2SyncRequested = 'ios_armsx2_sync_requested';
+  static const String iosArmsx2Unavailable = 'ios_armsx2_unavailable';
+  static const String iosMelonxSyncRequested = 'ios_melonx_sync_requested';
+  static const String iosMelonxUnavailable = 'ios_melonx_unavailable';
+  static const String iosRetroarchStatusNeedsLink = 'ios_retroarch_status_needs_link';
+  static const String iosRetroarchStatusNeedsSync = 'ios_retroarch_status_needs_sync';
+  static const String iosRetroarchStatusSynced = 'ios_retroarch_status_synced';
+  static const String iosRetroarchLinkSuccess = 'ios_retroarch_link_success';
+  static const String iosArmsx2StatusNeedsLink = 'ios_armsx2_status_needs_link';
+  static const String iosArmsx2StatusNeedsSync = 'ios_armsx2_status_needs_sync';
+  static const String iosArmsx2StatusSynced = 'ios_armsx2_status_synced';
+  static const String iosArmsx2LinkSuccess = 'ios_armsx2_link_success';
+  static const String iosMelonxStatusSynced = 'ios_melonx_status_synced';
+  static const String iosMelonxStatusNeedsSync = 'ios_melonx_status_needs_sync';
+
   // Library search & filtering.
   static const String searchTitle = 'search_title';
   static const String searchNameHint = 'search_name_hint';

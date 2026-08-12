@@ -1024,4 +1024,27 @@ const Map<String, dynamic> appLocaleDe = {
   AppLocale.wizardArtPackUnavailable:
       'Das Artwork-Paket ist derzeit nicht erreichbar. Du kannst es später in '
       'den Einstellungen installieren, sobald du online bist.',
+
+  // iOS emulator library integration
+  AppLocale.iosEmuSync: "Synchronisieren",
+  AppLocale.iosEmuResync: "Erneut synchronisieren",
+  AppLocale.iosEmuLinkFolder: "Ordner verknüpfen",
+  AppLocale.iosEmuChangeFolder: "Ordner ändern",
+  AppLocale.iosEmuLinkingFailed: "Verknüpfung fehlgeschlagen: {error}",
+  AppLocale.iosRetroarchSyncRequested: "Die Synchronisierung der RetroArch-Bibliothek wurde angefordert. Sie läuft im Hintergrund; bitte einige Sekunden warten.",
+  AppLocale.iosRetroarchUnavailable: "RetroArch konnte nicht erreicht werden. Ist es installiert?",
+  AppLocale.iosArmsx2SyncRequested: "Die Synchronisierung der ARMSX2-Bibliothek wurde angefordert. ARMSX2 kehrt automatisch zu NeoStation zurück, sobald der Export bereit ist.",
+  AppLocale.iosArmsx2Unavailable: "ARMSX2 konnte nicht erreicht werden. Ist es installiert?",
+  AppLocale.iosMelonxSyncRequested: "Die Synchronisierung der MeloNX-Nintendo-Switch-Bibliothek wurde angefordert. MeloNX kehrt automatisch zu NeoStation zurück, sobald der Export bereit ist.",
+  AppLocale.iosMelonxUnavailable: "MeloNX konnte nicht erreicht werden. Ist es installiert?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Verknüpfe den RetroArch-Ordner, damit NeoStation direkt auf deine Spiele zugreifen kann — ohne Kopieren.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Ordner verknüpft. Synchronisiere die Bibliothek, damit Spiele mit einem Tippen direkt in RetroArch starten.",
+  AppLocale.iosRetroarchStatusSynced: "Ordner verknüpft und Bibliothek synchronisiert — Spiele starten direkt in RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Ordner verknüpft. NeoStation scannt ihn direkt, ohne Kopie. Gefundene Spiele starten direkt in RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 verwendet denselben ROM-Ordner wie RetroArch. Verknüpfe den gemeinsamen ROM-Ordner und synchronisiere anschließend die ARMSX2-Bibliothek.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Gemeinsamer ROM-Ordner verknüpft. Synchronisiere ARMSX2, um die PS2-Bibliothek in NeoStation zu importieren.",
+  AppLocale.iosArmsx2StatusSynced: "Gemeinsamer Ordner und ARMSX2-Bibliothek synchronisiert — PS2-Spiele starten direkt in ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Gemeinsamer ROM-Ordner verknüpft. RetroArch und ARMSX2 verwenden jetzt dieselbe NeoStation-ROM-Quelle.",
+  AppLocale.iosMelonxStatusSynced: "MeloNX-Bibliothek synchronisiert — Nintendo-Switch-Spiele starten direkt in MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Synchronisiere MeloNX, um die Nintendo-Switch-Bibliothek direkt in NeoStation zu importieren. Ein Scan des ROM-Ordners ist nicht erforderlich.",
 };
