@@ -8,7 +8,7 @@ import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/logger_service.dart';
-import 'package:neostation/services/ios_jit_launch_service.dart';
+import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -425,13 +425,15 @@ class Armsx2LibraryService {
       try {
         final uri = Uri.parse(romPath);
         await _writeDebugFile(
-          'armsx2_launch_debug.txt',
-          'Virtual ARMSX2 library row.\n'
-              'Launching with native JIT retry: $uri',
+          'armsx2_shortcut_launch_debug.txt',
+          'STATE: SHORTCUT_REQUESTED\n'
+              'Shortcut: ${IosShortcutJitLaunchService.armsx2ShortcutName}\n'
+              'Game URL: $uri\n'
+              'Source: virtual ARMSX2 library row',
         );
-        return await IosJitLaunchService.launchWithRetry(
-          uri,
-          debugFileName: 'armsx2_jit_launch_debug.txt',
+        return await IosShortcutJitLaunchService.run(
+          shortcutName: IosShortcutJitLaunchService.armsx2ShortcutName,
+          input: uri.toString(),
         );
       } catch (e) {
         _log.e('Armsx2LibraryService: virtual launch failed: $e');
@@ -486,12 +488,26 @@ class Armsx2LibraryService {
         );
 
     try {
-      return await IosJitLaunchService.launchWithRetry(
-        uri,
-        debugFileName: 'armsx2_jit_launch_debug.txt',
+      await _writeDebugFile(
+        'armsx2_shortcut_launch_debug.txt',
+        'STATE: SHORTCUT_REQUESTED\n'
+            'Shortcut: ${IosShortcutJitLaunchService.armsx2ShortcutName}\n'
+            'Game URL: $uri\n'
+            'Source ROM: $romPath',
+      );
+      return await IosShortcutJitLaunchService.run(
+        shortcutName: IosShortcutJitLaunchService.armsx2ShortcutName,
+        input: uri.toString(),
       );
     } catch (e) {
-      _log.e('Armsx2LibraryService: failed to launch $uri: $e');
+      _log.e('Armsx2LibraryService: failed to launch $uri through Shortcut: $e');
+      await _writeDebugFile(
+        'armsx2_shortcut_launch_debug.txt',
+        'STATE: ERROR\n'
+            'Shortcut: ${IosShortcutJitLaunchService.armsx2ShortcutName}\n'
+            'Game URL: $uri\n'
+            'Error: $e',
+      );
       return false;
     }
   }

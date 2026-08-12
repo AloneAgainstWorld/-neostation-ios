@@ -13,6 +13,7 @@ class IosShortcutJitLaunchService {
   /// Keep this name in sync with the shared Shortcut. The `+` characters are
   /// part of the actual Shortcut name and are percent-encoded by [Uri] below.
   static const String melonxShortcutName = 'NeoStation+MeloNX+JIT';
+  static const String armsx2ShortcutName = 'NeoStation+ARMSX2+JIT';
 
   /// One-time installer for the exact NeoStation MeloNX launch Shortcut.
   ///
