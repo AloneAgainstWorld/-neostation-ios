@@ -183,6 +183,11 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
     }
     if (_currentTab == 1) {
       if (_totalEmulators == 0) return;
+
+      // iOS treats this tab as an installation-status view only. Selecting a
+      // row must not change the preferred/default emulator.
+      if (Platform.isIOS) return;
+
       if (_emulatorActionIndex == 1 && _usesExecutablePicker) {
         final item = _displayItems[_selectedIndex];
         if (item is EmulatorStandaloneItem) {
