@@ -336,6 +336,9 @@ class SqliteMigrations {
       case 110:
         await _migrateToVersion110(db);
         break;
+      case 111:
+        await _migrateToVersion111(db);
+        break;
       default:
         _log.w('No migration defined for version $version');
     }
@@ -5280,6 +5283,40 @@ class SqliteMigrations {
       _log.i('Migration v110 completed');
     } catch (e, stackTrace) {
       _log.e('Error in migration v110: $e');
+      _log.e('   StackTrace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// Migration v111: stores the iOS URL scheme declared by each emulator.
+  ///
+  /// iOS does not expose a general list of installed applications. NeoStation
+  /// therefore uses the emulator's registered URL scheme with `canOpenURL` to
+  /// determine whether a known emulator is installed. Keeping that scheme in
+  /// seed data makes the detection generic: future iOS emulators only need an
+  /// `ios.url_scheme` entry in their system JSON.
+  static Future<void> _migrateToVersion111(Database db) async {
+    _log.i('Migration v111: Adding ios_url_scheme to app_emulators');
+    try {
+      final tables = db.select(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_emulators'",
+      );
+      if (tables.isEmpty) {
+        _log.i('Migration v111: app_emulators table missing, nothing to do');
+        return;
+      }
+
+      final tableInfo = db.select('PRAGMA table_info(app_emulators)');
+      final columns = tableInfo.map((c) => c['name'].toString()).toList();
+      if (!columns.contains('ios_url_scheme')) {
+        db.execute('ALTER TABLE app_emulators ADD COLUMN ios_url_scheme TEXT');
+        _log.i('Column ios_url_scheme added via v111');
+      } else {
+        _log.i('Column ios_url_scheme already exists');
+      }
+      _log.i('Migration v111 completed');
+    } catch (e, stackTrace) {
+      _log.e('Error in migration v111: $e');
       _log.e('   StackTrace: $stackTrace');
       rethrow;
     }

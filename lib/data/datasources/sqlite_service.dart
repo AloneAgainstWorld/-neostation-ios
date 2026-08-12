@@ -421,7 +421,7 @@ class SqliteService {
   SqliteService._internal();
 
   // Database configuration
-  static const int _databaseVersion = 110;
+  static const int _databaseVersion = 111;
   static const String _databaseName = 'data.sqlite';
 
   DatabaseAdapter? _database;
@@ -728,6 +728,7 @@ class SqliteService {
         String? coreFilename;
         String? packageName;
         String? executable;
+        String? iosUrlScheme;
 
         if (osName == 'android') {
           packageName = platformData['package'];
@@ -783,6 +784,11 @@ class SqliteService {
           // Persist the resolved activity alongside the package so standalone
           // fallback launches have a complete component name.
           platformData['_resolved_activity_name'] = activityName;
+        } else if (osName == 'ios') {
+          iosUrlScheme = platformData['url_scheme']?.toString().trim();
+          if (iosUrlScheme != null && iosUrlScheme.isEmpty) {
+            iosUrlScheme = null;
+          }
         } else if (osName == 'windows') {
           executable = platformData['executable'];
           if (executable != null &&
@@ -865,6 +871,7 @@ class SqliteService {
             'core_filename': coreFilename,
             'android_package_name': packageName,
             'android_activity_name': platformData['_resolved_activity_name'],
+            'ios_url_scheme': iosUrlScheme,
             'is_ra_compatible': retroAchievementsCompatible ? 1 : 0,
           };
 
@@ -900,6 +907,7 @@ class SqliteService {
               'core_filename': coreFilename,
               'android_package_name': packageName,
               'android_activity_name': platformData['_resolved_activity_name'],
+              'ios_url_scheme': iosUrlScheme,
               'is_ra_compatible': retroAchievementsCompatible ? 1 : 0,
             };
             if (isDefaultCore) {
@@ -926,6 +934,7 @@ class SqliteService {
               'core_filename': coreFilename,
               'android_package_name': packageName,
               'android_activity_name': platformData['_resolved_activity_name'],
+              'ios_url_scheme': iosUrlScheme,
               // Assigned by the enforcement pass after the loop, which is the
               // only thing that can see the whole (system_id, os_id) group.
               'is_default': 0,
@@ -1718,6 +1727,7 @@ class SqliteService {
           is_ra_compatible INTEGER NOT NULL DEFAULT 0,
           android_package_name TEXT,
           android_activity_name TEXT,
+          ios_url_scheme TEXT,
           PRIMARY KEY (os_id, unique_identifier),
           FOREIGN KEY (os_id) REFERENCES app_os(id) ON DELETE CASCADE,
           FOREIGN KEY (system_id) REFERENCES app_systems(id) ON DELETE CASCADE

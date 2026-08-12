@@ -157,6 +157,13 @@ class _SystemEmulatorSettingsDialogState
   /// is `@protected` and can't be invoked from an extension.
   void rebuild(VoidCallback fn) => setState(fn);
 
+  /// Android and iOS emulators are applications, so their availability is
+  /// determined from installation state rather than an executable path.
+  bool get _usesAppInstallState => Platform.isAndroid || Platform.isIOS;
+
+  /// Only desktop platforms expose an executable-path picker.
+  bool get _usesExecutablePicker => !Platform.isAndroid && !Platform.isIOS;
+
   Future<void> _toggleRecursiveScan(bool value) async {
     setState(() {
       _system = _system.copyWith(recursiveScan: value);
@@ -332,7 +339,7 @@ class _SystemEmulatorSettingsDialogState
     if (item is EmulatorCoreItem) {
       _setAsDefault(item.core);
     } else if (item is EmulatorStandaloneItem) {
-      final isConfigured = Platform.isAndroid
+      final isConfigured = _usesAppInstallState
           ? item.isInstalled
           : item.standalone.isConfigured;
       if (isConfigured) {
