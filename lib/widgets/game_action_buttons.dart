@@ -93,22 +93,30 @@ class GameActionButtons extends StatelessWidget {
           ),
         );
 
+        // Snapshot nullable public fields into local variables. Dart can safely
+        // promote locals after the null check, whereas public widget properties
+        // cannot be promoted because they may theoretically change between reads.
+        final currentSyncProvider = syncProvider;
+        final currentSelectedGame = selectedGame;
+
         // NeoSync is a status, not an action. Keeping it as a positioned badge
         // means systems that support NeoSync no longer get a taller action rail
-        // than systems that do not. The five action buttons therefore keep the
-        // exact same geometry on every console playlist.
+        // than systems that do not. The action rail therefore keeps the exact
+        // same geometry on every console playlist.
         return Stack(
           clipBehavior: Clip.none,
           children: [
             rail,
-            if (!selectHeld && syncProvider != null && selectedGame != null)
+            if (!selectHeld &&
+                currentSyncProvider != null &&
+                currentSelectedGame != null)
               Positioned(
                 right: -3.r,
                 bottom: -3.r,
                 child: NeoSyncStatusIcon(
                   system: system,
-                  game: selectedGame,
-                  syncProvider: syncProvider,
+                  game: currentSelectedGame,
+                  syncProvider: currentSyncProvider,
                   size: 18.0,
                 ),
               ),
