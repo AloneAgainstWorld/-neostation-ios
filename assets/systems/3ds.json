@@ -336,6 +336,17 @@
           "launch_arguments": "-n org.citra.citra_emu/org.citra.citra_emu.ui.EmulationActivity\n  -a android.intent.action.VIEW\n  -e GamePath {file.path}\n  --activity-clear-task\n  --activity-clear-top\n"
         }
       }
+    },
+    {
+      "name": "RetroArch",
+      "unique_id": "3ds.ios.retroarch",
+      "description": "RetroArch for iOS. Individual core availability depends on the cores installed in RetroArch.",
+      "is_retroachievements_compatible": false,
+      "platforms": {
+        "ios": {
+          "url_scheme": "retroarch"
+        }
+      }
     }
   ],
   "neosync": {
