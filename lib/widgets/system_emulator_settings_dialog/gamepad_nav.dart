@@ -121,14 +121,22 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
   }
 
   void _navigateLeft() {
-    if (_currentTab != 1 || Platform.isAndroid || _openMenuIndex != -1) return;
+    if (_currentTab != 1 ||
+        !_usesExecutablePicker ||
+        _openMenuIndex != -1) {
+      return;
+    }
     if (_emulatorActionIndex == 0) return;
     SfxService().playNavSound();
     rebuild(() => _emulatorActionIndex = 0);
   }
 
   void _navigateRight() {
-    if (_currentTab != 1 || Platform.isAndroid || _openMenuIndex != -1) return;
+    if (_currentTab != 1 ||
+        !_usesExecutablePicker ||
+        _openMenuIndex != -1) {
+      return;
+    }
     if (_emulatorActionIndex == 1) return;
     SfxService().playNavSound();
     rebuild(() => _emulatorActionIndex = 1);
@@ -175,7 +183,7 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
     }
     if (_currentTab == 1) {
       if (_totalEmulators == 0) return;
-      if (_emulatorActionIndex == 1 && !Platform.isAndroid) {
+      if (_emulatorActionIndex == 1 && _usesExecutablePicker) {
         final item = _displayItems[_selectedIndex];
         if (item is EmulatorStandaloneItem) {
           _configureStandalonePath(item.standalone);

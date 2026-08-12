@@ -122,6 +122,39 @@ void main() {
     expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 
+  test('every iOS emulator declares a non-empty url_scheme', () {
+    final offenders = <String>[];
+    for (final system in systems) {
+      for (final emu in system.emulators) {
+        final ios = emu.platforms['ios'];
+        if (ios == null) continue;
+        final schemeIsMissing =
+            ios is! Map ||
+            (ios['url_scheme']?.toString().trim().isEmpty ?? true);
+        if (schemeIsMissing) {
+          offenders.add('${system.name}: ${emu.uniqueId}');
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'iOS emulator definitions need url_scheme for install detection:\n'
+          '${offenders.join('\n')}',
+    );
+  });
+
+  test('PS2 exposes ARMSX2 on iOS through the armsx2 URL scheme', () {
+    final ps2 = systems.firstWhere((s) => s.name == 'ps2.json');
+    final armsx2 = ps2.emulators.firstWhere(
+      (e) => e.uniqueId == 'ps2.ios.armsx2',
+    );
+    final ios = Map<String, dynamic>.from(armsx2.platforms['ios'] as Map);
+
+    expect(ios['url_scheme'], 'armsx2');
+  });
+
   test('the two systems fixed on this branch resolve to a single default', () {
     // Regression pins for the pair found on the AYN Thor.
     final switchSystem = systems.firstWhere((s) => s.name == 'switch.json');

@@ -806,8 +806,8 @@ extension _RowBuilders on _SystemEmulatorSettingsDialogState {
     final theme = Theme.of(context);
     final isPickerSelected = isSelected && _emulatorActionIndex == 1;
 
-    // Status logic (Android: installed, Desktop: configured)
-    final isConfigured = Platform.isAndroid
+    // App platforms use install state; desktop platforms use configured paths.
+    final isConfigured = _usesAppInstallState
         ? isInstalled
         : standalone.isConfigured;
 
@@ -934,7 +934,7 @@ extension _RowBuilders on _SystemEmulatorSettingsDialogState {
                                       ),
                                     ),
                                   Icon(
-                                    Platform.isAndroid
+                                    _usesAppInstallState
                                         ? (isInstalled
                                               ? Symbols.check_circle_rounded
                                               : Symbols.error_outline_rounded)
@@ -948,7 +948,7 @@ extension _RowBuilders on _SystemEmulatorSettingsDialogState {
                                   ),
                                   SizedBox(width: 4.r),
                                   Text(
-                                    Platform.isAndroid
+                                    _usesAppInstallState
                                         ? (isInstalled
                                               ? AppLocale.installed.getString(
                                                   context,
@@ -968,7 +968,7 @@ extension _RowBuilders on _SystemEmulatorSettingsDialogState {
                                           : theme.colorScheme.onSurface,
                                     ),
                                   ),
-                                  if (!Platform.isAndroid &&
+                                  if (_usesExecutablePicker &&
                                       standalone.isConfigured &&
                                       standalone.userPath != null) ...[
                                     SizedBox(width: 8.r),
@@ -1075,7 +1075,7 @@ extension _RowBuilders on _SystemEmulatorSettingsDialogState {
                 ),
 
                 // Desktop: Folder button (Persistent)
-                if (!Platform.isAndroid)
+                if (_usesExecutablePicker)
                   Tooltip(
                     message: AppLocale.selectExecutablePath.getString(context),
                     child: Container(
