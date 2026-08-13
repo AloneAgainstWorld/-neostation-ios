@@ -6,12 +6,11 @@ import '../models/game_model.dart';
 import '../models/system_model.dart';
 import '../services/game_legend_visibility.dart';
 import '../sync/i_sync_provider.dart';
-import 'package:neostation/themes/chrome_surface.dart';
-import '../themes/corner_radii.dart';
 import '../utils/gamepad_nav.dart';
 import 'game_action_button.dart';
 import 'horizontal_swipe.dart';
 import 'neo_sync_status_icon.dart';
+import 'neo_glass.dart';
 
 /// Vertical action button column shared by the game list, grid, and carousel.
 ///
@@ -60,21 +59,14 @@ class GameActionButtons extends StatelessWidget {
           // handled by the host view. Hiding slides the column off-screen via
           // GameLegendVisibility.
           onSwipeLeft: GameLegendVisibility.hide,
-          child: Container(
+          child: NeoGlass(
+            cornerRadius: 14.r,
+            blur: 3.r,
+            tint: Theme.of(
+              context,
+            ).colorScheme.surface.withValues(alpha: 0.52),
+            rimIntensity: 0.45,
             padding: EdgeInsets.all(8.r),
-            decoration: BoxDecoration(
-              // Same left-to-right falloff as the game list panel beside it,
-              // so the rail and the list read as one lit surface rather than
-              // two separate cut-outs over the fanart.
-              gradient: ChromeSurface.fadeNarrow(context),
-              borderRadius:
-                  Theme.of(context).extension<CornerRadii>()?.radiusExternal ??
-                  BorderRadius.circular(14.r),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outline,
-                width: 1.r,
-              ),
-            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
