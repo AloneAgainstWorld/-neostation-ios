@@ -12,6 +12,7 @@ import 'package:neostation/sync/i_sync_provider.dart';
 import 'package:neostation/utils/gamepad_nav.dart';
 import 'package:neostation/widgets/core_footer.dart';
 import 'package:neostation/widgets/neo_glass.dart';
+import 'package:neostation/themes/chrome_surface.dart';
 
 import 'game_settings_emulator_tab.dart';
 import 'game_settings_manage_tab.dart';
@@ -191,13 +192,18 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 640.r, maxHeight: 480.r),
         child: NeoGlass(
-          cornerRadius: 12.r,
-          blur: 3.r,
-          tint: theme.colorScheme.surface.withValues(alpha: 0.60),
-          rimIntensity: 0.5,
+          role: GlassSurfaceRole.modal,
+          borderRadius: BorderRadius.circular(12.r),
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.shadow.withValues(alpha: 0.35),
+              blurRadius: 8.r,
+              offset: const Offset(0, 4),
+            ),
+          ],
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+            mainAxisSize: MainAxisSize.min,
+            children: [
             _buildHeader(theme, displayName),
             _buildTabsHeader(theme),
             Expanded(
@@ -232,10 +238,10 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
                 ],
               ),
             ),
-            _buildFooter(theme),
-          ],
+              _buildFooter(theme),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }

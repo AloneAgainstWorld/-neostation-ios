@@ -16,6 +16,7 @@ import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import 'dart:async';
+import 'dart:ui';
 import '../../services/game_service.dart';
 import '../../utils/game_launch_utils.dart';
 import '../../services/music_player_service.dart';
@@ -47,7 +48,6 @@ import '../../widgets/game_view_mode_dropdown.dart';
 import '../../widgets/game_action_buttons.dart';
 import '../../widgets/legend_edge_reshow_zone.dart';
 import '../../widgets/letter_indicator.dart';
-import '../../widgets/neo_glass.dart';
 import '../../constants/system_folder_names.dart';
 import '../../utils/artwork_cache.dart';
 import '../../utils/game_list_update.dart';
@@ -1126,19 +1126,53 @@ class _SystemGamesListState extends State<SystemGamesList> {
                 top: 12.r,
                 bottom: 12.r,
               ),
-              child: NeoGlass(
-                cornerRadius: 14.r,
-                // The list is a large surface, so keep blur modest to avoid a
-                // costly full-height Gaussian pass while still reading as glass.
-                blur: 2.r,
-                tint: Theme.of(
-                  context,
-                ).colorScheme.surface.withValues(alpha: 0.50),
-                rimIntensity: 0.38,
-                child: SizedBox(
-                  width: 200.r,
-                  height: availableHeight,
-                  child: _buildGamesListPanel(),
+              decoration: BoxDecoration(
+                // A horizontal wash rather than a flat fill: the panel stays
+                // opaque where the row text sits and thins out towards its
+                // right edge, so the fanart bleeds through and it reads as a
+                // pane laid over the artwork instead of a cut-out block.
+                gradient: ChromeSurface.fade(context),
+                borderRadius:
+                    Theme.of(
+                      context,
+                    ).extension<CornerRadii>()?.radiusExternal ??
+                    BorderRadius.circular(14.r),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline,
+                  width: 1.r,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.shadow.withValues(alpha: 0.5),
+                    blurRadius: 3.r,
+                    offset: Offset(2.r, 2.r),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius:
+                    Theme.of(
+                      context,
+                    ).extension<CornerRadii>()?.radiusInternal ??
+                    BorderRadius.circular(9.r),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: ChromeSurface.glassBlur(
+                      context,
+                      GlassSurfaceRole.panel,
+                    ),
+                    sigmaY: ChromeSurface.glassBlur(
+                      context,
+                      GlassSurfaceRole.panel,
+                    ),
+                  ),
+                  child: SizedBox(
+                    width: 200.r,
+                    height: availableHeight,
+                    child: _buildGamesListPanel(),
+                  ),
                 ),
               ),
             ),

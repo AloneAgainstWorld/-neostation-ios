@@ -6,6 +6,8 @@ import '../models/game_model.dart';
 import '../models/system_model.dart';
 import '../services/game_legend_visibility.dart';
 import '../sync/i_sync_provider.dart';
+import 'package:neostation/themes/chrome_surface.dart';
+import '../themes/corner_radii.dart';
 import '../utils/gamepad_nav.dart';
 import 'game_action_button.dart';
 import 'horizontal_swipe.dart';
@@ -60,13 +62,12 @@ class GameActionButtons extends StatelessWidget {
           // GameLegendVisibility.
           onSwipeLeft: GameLegendVisibility.hide,
           child: NeoGlass(
-            cornerRadius: 14.r,
-            blur: 3.r,
-            tint: Theme.of(
-              context,
-            ).colorScheme.surface.withValues(alpha: 0.52),
-            rimIntensity: 0.45,
+            role: GlassSurfaceRole.rail,
+            gradient: ChromeSurface.fadeNarrow(context),
             padding: EdgeInsets.all(8.r),
+            borderRadius:
+                Theme.of(context).extension<CornerRadii>()?.radiusExternal ??
+                BorderRadius.circular(14.r),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
