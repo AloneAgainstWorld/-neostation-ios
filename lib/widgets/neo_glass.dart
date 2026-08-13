@@ -18,6 +18,15 @@ class NeoGlass extends StatelessWidget {
   final List<BoxShadow>? boxShadow;
   final double borderWidth;
 
+  /// Disables the BackdropFilter for surfaces rendered many times at once
+  /// (for example the systems grid). Transparency + rim still provide the
+  /// glass appearance without forcing a separate blur pass per item.
+  final bool enableBackdropBlur;
+
+  /// The diagonal sheen is intentionally optional on dense grids. Large chrome
+  /// surfaces keep it by default.
+  final bool showSheen;
+
   const NeoGlass({
     super.key,
     required this.child,
@@ -27,6 +36,8 @@ class NeoGlass extends StatelessWidget {
     this.padding,
     this.boxShadow,
     this.borderWidth = 1.0,
+    this.enableBackdropBlur = true,
+    this.showSheen = true,
   });
 
   @override
@@ -36,36 +47,41 @@ class NeoGlass extends StatelessWidget {
     final rim = ChromeSurface.glassRim(context, role);
     final sheen = ChromeSurface.glassSheen(context, role);
 
-    final glass = ClipRRect(
-      borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: gradient == null ? fill : null,
-            gradient: gradient,
-            borderRadius: borderRadius,
-            border: Border.all(color: rim, width: borderWidth),
-          ),
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: [
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: sheen,
-                      borderRadius: borderRadius,
-                    ),
+    final decorated = DecoratedBox(
+      decoration: BoxDecoration(
+        color: gradient == null ? fill : null,
+        gradient: gradient,
+        borderRadius: borderRadius,
+        border: Border.all(color: rim, width: borderWidth),
+      ),
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          if (showSheen)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: sheen,
+                    borderRadius: borderRadius,
                   ),
                 ),
               ),
-              if (padding != null) Padding(padding: padding!, child: child),
-              if (padding == null) child,
-            ],
-          ),
-        ),
+            ),
+          if (padding != null) Padding(padding: padding!, child: child),
+          if (padding == null) child,
+        ],
       ),
+    );
+
+    final glass = ClipRRect(
+      borderRadius: borderRadius,
+      child: enableBackdropBlur && blur > 0.01
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+              child: decorated,
+            )
+          : decorated,
     );
 
     if (boxShadow == null || boxShadow!.isEmpty) return glass;

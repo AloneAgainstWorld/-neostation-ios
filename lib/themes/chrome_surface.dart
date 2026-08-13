@@ -118,7 +118,10 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
       // System cards are numerous, so they stay clearer than modal surfaces.
       // Their artwork remains opaque; this tint is mainly visible in the rim,
       // inner spacing and logo footer.
-      GlassSurfaceRole.card => (0.42, 0.18, 0.40, 0.72),
+      // Main-menu system cards are rendered in large numbers. Keep the tint
+      // deliberately very clear; readability is provided by the artwork/logo
+      // treatment and rim rather than by an opaque slab over the theme.
+      GlassSurfaceRole.card => (0.18, 0.14, 0.16, 0.40),
     };
 
     final alpha = _adaptiveAlpha(
@@ -146,7 +149,9 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
       GlassSurfaceRole.pill => isLight ? 3.0 : 2.2,
       // Keep card blur intentionally lightweight: a systems grid can render
       // many cards at once on iPhone.
-      GlassSurfaceRole.card => isLight ? 2.2 : 1.4,
+      // Cards opt out of BackdropFilter in SystemCard for performance. This
+      // value remains as a safe fallback for any future isolated card usage.
+      GlassSurfaceRole.card => isLight ? 1.2 : 0.8,
     };
 
     return base + (vivid ? 0.4 : 0.0);
@@ -170,7 +175,7 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
       GlassSurfaceRole.rail => isLight ? 0.32 : 0.28,
       GlassSurfaceRole.chrome => isLight ? 0.28 : 0.24,
       GlassSurfaceRole.pill => isLight ? 0.26 : 0.22,
-      GlassSurfaceRole.card => isLight ? 0.30 : 0.24,
+      GlassSurfaceRole.card => isLight ? 0.24 : 0.20,
     };
 
     return mix.withValues(alpha: alpha);
@@ -183,8 +188,14 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
     GlassSurfaceRole role,
   ) {
     final theme = Theme.of(context);
-    final sheenAlpha = _isLight(theme) ? 0.035 : 0.055;
-    final primaryAlpha = role == GlassSurfaceRole.modal ? 0.025 : 0.018;
+    final sheenAlpha = role == GlassSurfaceRole.card
+        ? (_isLight(theme) ? 0.018 : 0.024)
+        : (_isLight(theme) ? 0.035 : 0.055);
+    final primaryAlpha = switch (role) {
+      GlassSurfaceRole.modal => 0.025,
+      GlassSurfaceRole.card => 0.008,
+      _ => 0.018,
+    };
 
     return LinearGradient(
       begin: Alignment.topLeft,
