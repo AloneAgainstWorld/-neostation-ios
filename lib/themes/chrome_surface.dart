@@ -52,10 +52,12 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
   /// The values every theme ships with today. Override per theme later.
   factory ChromeSurface.standard() {
     return const ChromeSurface(
-      opacity: 0.75,
-      fadeLeading: 0.78,
-      fadeTrailing: 0.38,
-      fadeTrailingNarrow: 0.48,
+      // iOS liquid-glass tuning: reveal more fanart while keeping text/chrome
+      // readable over bright artwork.
+      opacity: 0.62,
+      fadeLeading: 0.66,
+      fadeTrailing: 0.26,
+      fadeTrailingNarrow: 0.36,
     );
   }
 

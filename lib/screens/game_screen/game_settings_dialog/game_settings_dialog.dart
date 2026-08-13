@@ -11,6 +11,7 @@ import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/sync/i_sync_provider.dart';
 import 'package:neostation/utils/gamepad_nav.dart';
 import 'package:neostation/widgets/core_footer.dart';
+import 'package:neostation/widgets/neo_glass.dart';
 
 import 'game_settings_emulator_tab.dart';
 import 'game_settings_manage_tab.dart';
@@ -187,23 +188,14 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.symmetric(horizontal: 16.r, vertical: 16.r),
-      child: Container(
+      child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 640.r, maxHeight: 480.r),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: theme.colorScheme.shadow.withValues(alpha: 0.5),
-              blurRadius: 10.r,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
+        child: NeoGlass(
+          cornerRadius: 12.r,
+          blur: 3.r,
+          tint: theme.colorScheme.surface.withValues(alpha: 0.60),
+          rimIntensity: 0.5,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(theme, displayName),
@@ -243,6 +235,7 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
             _buildFooter(theme),
           ],
         ),
+      ),
       ),
     );
   }
