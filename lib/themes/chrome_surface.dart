@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 /// actual opacity and blur are derived from the active ColorScheme at runtime,
 /// so built-in and imported themes get a coherent glass treatment without
 /// requiring per-theme hardcoded values.
-enum GlassSurfaceRole { panel, rail, modal, chrome, pill }
+enum GlassSurfaceRole { panel, rail, modal, chrome, pill, card }
 
 /// Translucency tokens for NeoStation's floating chrome.
 ///
@@ -115,6 +115,10 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
       GlassSurfaceRole.modal => (0.60, 0.15, 0.58, 0.80),
       GlassSurfaceRole.chrome => (chrome.opacity, 0.10, 0.58, 0.82),
       GlassSurfaceRole.pill => (0.70, 0.10, 0.66, 0.84),
+      // System cards are numerous, so they stay clearer than modal surfaces.
+      // Their artwork remains opaque; this tint is mainly visible in the rim,
+      // inner spacing and logo footer.
+      GlassSurfaceRole.card => (0.42, 0.18, 0.40, 0.72),
     };
 
     final alpha = _adaptiveAlpha(
@@ -140,6 +144,9 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
       GlassSurfaceRole.modal => isLight ? 4.0 : 3.0,
       GlassSurfaceRole.chrome => isLight ? 3.2 : 2.4,
       GlassSurfaceRole.pill => isLight ? 3.0 : 2.2,
+      // Keep card blur intentionally lightweight: a systems grid can render
+      // many cards at once on iPhone.
+      GlassSurfaceRole.card => isLight ? 2.2 : 1.4,
     };
 
     return base + (vivid ? 0.4 : 0.0);
@@ -163,6 +170,7 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
       GlassSurfaceRole.rail => isLight ? 0.32 : 0.28,
       GlassSurfaceRole.chrome => isLight ? 0.28 : 0.24,
       GlassSurfaceRole.pill => isLight ? 0.26 : 0.22,
+      GlassSurfaceRole.card => isLight ? 0.30 : 0.24,
     };
 
     return mix.withValues(alpha: alpha);
