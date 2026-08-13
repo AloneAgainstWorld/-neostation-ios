@@ -16,6 +16,7 @@ import 'package:neostation/themes/chrome_surface.dart';
 
 import 'game_settings_emulator_tab.dart';
 import 'game_settings_manage_tab.dart';
+import 'game_settings_manual_tab.dart';
 import 'game_settings_scrapping_tab.dart';
 
 /// Steam-style settings dialog for a single game, reachable from the game
@@ -26,6 +27,7 @@ import 'game_settings_scrapping_tab.dart';
 ///  * Emulator  — per-game emulator override.
 ///  * Scrapping — force rescrape plus manual metadata/artwork editing.
 ///  * Manage    — view mode, play-time reset, and game deletion.
+///  * Manual    — download and read the locally cached PDF game manual.
 class GameSettingsDialog extends StatefulWidget {
   final GameModel game;
   final SystemModel system;
@@ -69,8 +71,9 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
   final _emulatorTabKey = GlobalKey<GameSettingsEmulatorTabState>();
   final _scrappingTabKey = GlobalKey<GameSettingsScrappingTabState>();
   final _manageTabKey = GlobalKey<GameSettingsManageTabState>();
+  final _manualTabKey = GlobalKey<GameSettingsManualTabState>();
 
-  static const _tabCount = 3;
+  static const _tabCount = 4;
 
   @override
   void initState() {
@@ -120,6 +123,8 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
         _scrappingTabKey.currentState?.moveUp();
       case 2:
         _manageTabKey.currentState?.moveUp();
+      case 3:
+        _manualTabKey.currentState?.moveUp();
     }
   }
 
@@ -131,6 +136,8 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
         _scrappingTabKey.currentState?.moveDown();
       case 2:
         _manageTabKey.currentState?.moveDown();
+      case 3:
+        _manualTabKey.currentState?.moveDown();
     }
   }
 
@@ -156,6 +163,8 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
         _scrappingTabKey.currentState?.trigger();
       case 2:
         _manageTabKey.currentState?.trigger();
+      case 3:
+        _manualTabKey.currentState?.trigger();
     }
   }
 
@@ -234,6 +243,13 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
                     isAllMode: widget.isAllMode,
                     onGameUpdated: widget.onGameUpdated,
                     onGameDeleted: _handleGameDeleted,
+                  ),
+                  GameSettingsManualTab(
+                    key: _manualTabKey,
+                    game: widget.game,
+                    system: widget.system,
+                    fileProvider: widget.fileProvider,
+                    isAllMode: widget.isAllMode,
                   ),
                 ],
               ),
@@ -327,10 +343,12 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
             ),
           ),
           _buildTabItem(theme, 0, AppLocale.emulator.getString(context)),
-          SizedBox(width: 16.r),
+          SizedBox(width: 12.r),
           _buildTabItem(theme, 1, AppLocale.scraping.getString(context)),
-          SizedBox(width: 16.r),
+          SizedBox(width: 12.r),
           _buildTabItem(theme, 2, AppLocale.manage.getString(context)),
+          SizedBox(width: 12.r),
+          _buildTabItem(theme, 3, AppLocale.manual.getString(context)),
           const Spacer(),
           Padding(
             padding: EdgeInsets.only(left: 8.r),
