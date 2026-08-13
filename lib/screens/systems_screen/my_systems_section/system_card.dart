@@ -214,18 +214,14 @@ class _SystemCardState extends State<SystemCard> {
         cursor: SystemMouseCursors.basic,
         child: NeoGlass(
           role: GlassSurfaceRole.card,
+          // The systems screen can display many cards simultaneously. A
+          // BackdropFilter per card was the source of the navigation slowdown,
+          // so cards use the lightweight glass path: transparent tint + rim.
+          enableBackdropBlur: false,
+          showSheen: false,
           borderRadius:
               Theme.of(context).extension<CornerRadii>()?.radiusExternal ??
               BorderRadius.circular(14.r),
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(
-                context,
-              ).colorScheme.shadow.withValues(alpha: 0.12),
-              blurRadius: 4.r,
-              offset: Offset(2.0.r, 2.0.r),
-            ),
-          ],
           child: ClipRRect(
             borderRadius:
                 Theme.of(context).extension<CornerRadii>()?.radiusInternal ??
