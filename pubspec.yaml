@@ -31,7 +31,7 @@ dependencies:
   external_folder_access:
     path: packages/external_folder_access
     
-  file_picker: ^12.0.0-beta.7
+  file_picker: ^11.0.2
   device_info_plus: ^13.2.0
   package_info_plus: ^10.2.1
   google_fonts: ^8.1.0
