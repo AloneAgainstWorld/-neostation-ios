@@ -14,12 +14,10 @@ import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/utils/emulator_loader.dart';
 import 'package:neostation/widgets/settings_rows.dart';
 
-/// Per-game emulator override tab for [GameSettingsDialog].
+/// Per-game emulator override settings.
 ///
-/// Lists the emulators available for the game's system.
-///
-/// On iOS, each supported system maps to one external emulator app, so the
-/// generic 'System Default' pseudo-option is intentionally hidden.
+/// iOS exposes the supported external emulator directly instead of the
+/// desktop-style "System Default" option.
 class GameSettingsEmulatorTab extends StatefulWidget {
   final GameModel game;
   final SystemModel system;
@@ -45,8 +43,8 @@ class GameSettingsEmulatorTabState extends State<GameSettingsEmulatorTab> {
   List<CoreEmulatorModel> _availableEmulators = [];
   int _selectedIndex = 0;
 
-  /// Tracks the active emulator override. Uses a sentinel to differentiate
-  /// between 'not yet loaded' and 'explicit null' (system default).
+  // The sentinel distinguishes an unloaded value from an explicit null
+  // override, which represents the system default on non-iOS platforms.
   Object? _activeEmulatorId = _sentinel;
   static const Object _sentinel = Object();
 
@@ -62,9 +60,6 @@ class GameSettingsEmulatorTabState extends State<GameSettingsEmulatorTab> {
 
   int get _totalItems {
     if (_availableEmulators.isEmpty) return 0;
-    // iOS exposes exactly one supported external emulator app per system
-    // (RetroArch, MeloNX or ARMSX2). Do not add the desktop-style
-    // "System Default" pseudo-option there; it only creates confusion.
     return Platform.isIOS
         ? _availableEmulators.length
         : 1 + _availableEmulators.length;
@@ -136,9 +131,7 @@ class GameSettingsEmulatorTabState extends State<GameSettingsEmulatorTab> {
     });
   }
 
-  /// Persists a manual emulator override for this specific game.
   Future<void> _setEmulatorOverride(CoreEmulatorModel? emulator) async {
-    // Optimistic update: reflect changes in UI immediately.
     if (mounted) setState(() => _activeEmulatorId = emulator?.uniqueId);
     try {
       final targetSystemFolder =
@@ -154,7 +147,6 @@ class GameSettingsEmulatorTabState extends State<GameSettingsEmulatorTab> {
       widget.onGameUpdated?.call();
     } catch (e) {
       _log.e('Emulator override persistence failed: $e');
-      // Rollback: revert UI state on failure.
       if (mounted) {
         setState(() => _activeEmulatorId = widget.game.emulatorName);
       }
@@ -208,9 +200,6 @@ class GameSettingsEmulatorTabState extends State<GameSettingsEmulatorTab> {
               ],
             ),
           ),
-          // Keep the generic "System Default" choice on platforms where
-          // multiple emulator/core choices are meaningful. On iOS there is one
-          // supported external app per system, so show only that real emulator.
           if (!Platform.isIOS)
             EmulatorRow(
               key: _itemKey(0),
@@ -227,7 +216,6 @@ class GameSettingsEmulatorTabState extends State<GameSettingsEmulatorTab> {
                 _setEmulatorOverride(null);
               },
             ),
-          // Individual Emulator Options.
           ..._availableEmulators.asMap().entries.map((entry) {
             final i = entry.key;
             final e = entry.value;
