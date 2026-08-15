@@ -20,9 +20,14 @@
 
 NeoStation provides a fast, lightweight, and customizable experience for managing and launching retro games across desktop and mobile devices, with seamless integration for RetroArch and standalone emulators. An iOS port extends NeoStation to iPhone and iPad with IPA builds, sideloading support, and dedicated integrations for RetroArch, MeloNX, and ARMSX2.
 
+> **Modified version / iOS port notice**  
+> This repository is a modified version of the upstream **NeoStation** project.  
+> The original NeoStation project and its existing code remain credited to the NeoStation project and its contributors.  
+> The **iOS port and iOS-specific adaptations in this repository are developed and maintained by [@TarbleFR](https://github.com/TarbleFR)**.  
+> This attribution does **not** imply endorsement by the upstream NeoStation maintainers.  
+> The complete modified work is distributed under the **GNU General Public License v3.0 (GPL-3.0)**, consistent with the upstream project.
+
 ---
-
-
 
 ## Features
 
@@ -263,27 +268,65 @@ Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines on bug reports, 
 
 If you discover a security vulnerability, please follow the instructions in [`SECURITY.md`](SECURITY.md) to report it responsibly.
 
-## Project Team
+## Project Team & Attribution
 
-### Lead
+### Upstream NeoStation Project
+
+NeoStation iOS is based on the upstream **NeoStation** project:
+
+- Upstream repository: https://github.com/misobadev/neostation-frontend
+
+#### Lead
 
 - **@misobadev**
   - Ko-fi: https://ko-fi.com/neostation
 
-### Official Co-Maintainers
+#### Official Co-Maintainers
 
 - **@androosio**
   - Ko-fi: https://ko-fi.com/androosio
 
-### Official Collaborators
+#### Official Collaborators
 
 - **@ItsRetroPup**
   - Ko-fi: https://ko-fi.com/retropup84752
 
-These co-maintainers and collaborators work very hard to make NeoStation what it is today.
+All upstream NeoStation authors and contributors retain attribution for their respective contributions.  
+See the upstream repository history and contributor list for the complete authorship record.
 
-## License
+### iOS Port
 
-This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See [`LICENSE.md`](LICENSE.md) for details.
+- **iOS port developer / maintainer: [@TarbleFR](https://github.com/TarbleFR)**
 
-Third-party components and assets have their own licenses — see [`NOTICE`](NOTICE.md).
+The iOS port includes iOS-specific platform work such as IPA/CI build support, sideloading adaptations, native iOS integration, emulator detection and launch flows, library synchronization integrations, JIT-related workflows, and iOS-specific UI/file-handling adaptations.
+
+Where applicable, individual commits and the Git history provide the authoritative record of authorship for each modification.
+
+## License & GPL-3.0 Compliance
+
+NeoStation and this modified iOS port are distributed under the **GNU General Public License v3.0 (GPL-3.0)**.
+
+When distributing or modifying this project, comply with the GPL-3.0 terms that apply to modified and redistributed versions. In particular:
+
+- Keep applicable copyright, license, and warranty notices intact.
+- Keep a copy of the GPL-3.0 license with distributions of the covered work.
+- Make the corresponding source code available when distributing covered binaries when required by GPL-3.0.
+- License covered modifications and the combined covered work under GPL-3.0 when required by the license.
+- Clearly identify modified versions and preserve attribution and notices that apply to the original project and subsequent contributors.
+- Do not use the names of the upstream NeoStation developers or the iOS port contributor in a way that falsely implies endorsement of a modified or redistributed version.
+
+See [`LICENSE.md`](LICENSE.md) for the complete license text.
+
+Third-party components, packages, artwork, trademarks, emulator projects, and other assets may be governed by their own licenses or terms. See [`NOTICE.md`](NOTICE.md) and the relevant third-party files for details.
+
+### Modification Notice
+
+This repository contains modifications to the upstream NeoStation project, including an iOS port and related platform adaptations.
+
+**iOS port attribution:**  
+Developed and maintained by **[@TarbleFR](https://github.com/TarbleFR)**.
+
+**Upstream attribution:**  
+Based on **NeoStation**, developed by the NeoStation project and its contributors.
+
+Nothing in this README changes, restricts, or replaces the rights granted by GPL-3.0.
