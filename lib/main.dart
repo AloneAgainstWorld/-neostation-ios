@@ -51,7 +51,7 @@ import 'package:neostation/services/melonx_library_service.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Politica personalizada para deshabilitar navegacion por teclado
+/// Disables keyboard focus traversal for controller-first navigation.
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
   @override
   FocusNode? findFirstFocus(
@@ -82,7 +82,7 @@ class NoFocusTraversalPolicy extends FocusTraversalPolicy {
   ) => [];
 }
 
-// Notifier global para cambios de fullscreen
+/// Tracks fullscreen state across desktop window implementations.
 class FullscreenNotifier extends ChangeNotifier {
   static final FullscreenNotifier _instance = FullscreenNotifier._internal();
   factory FullscreenNotifier() => _instance;
@@ -102,12 +102,12 @@ class FullscreenNotifier extends ChangeNotifier {
   }
 }
 
-// Intent para toggle fullscreen
+/// Intent used to toggle desktop fullscreen mode.
 class ToggleFullscreenIntent extends Intent {
   const ToggleFullscreenIntent();
 }
 
-// Action para toggle fullscreen
+/// Handles desktop fullscreen toggling.
 class ToggleFullscreenAction extends Action<ToggleFullscreenIntent> {
   @override
   Future<void> invoke(ToggleFullscreenIntent intent) async {
@@ -117,7 +117,6 @@ class ToggleFullscreenAction extends Action<ToggleFullscreenIntent> {
       LoggerService.instance.i('Toggle fullscreen (Native): $newState');
       FullScreenWindow.setFullScreen(newState);
 
-      // Notificar el cambio de fullscreen
       FullscreenNotifier().notifyFullscreenChanged(newState);
     } else if (Platform.isMacOS) {
       final isFullscreen = await windowManager.isFullScreen();
@@ -126,7 +125,6 @@ class ToggleFullscreenAction extends Action<ToggleFullscreenIntent> {
       );
       await windowManager.setFullScreen(!isFullscreen);
 
-      // Notificar el cambio de fullscreen
       await Future.delayed(const Duration(milliseconds: 100));
       final newState = await windowManager.isFullScreen();
       FullscreenNotifier().notifyFullscreenChanged(newState);
@@ -234,10 +232,7 @@ Future<void> _cleanupRemovedIflyIntegration({
     await ExternalFolderAccess.clearBookmark(key: bookmarkKey);
 
     final docsDir = await getApplicationDocumentsDirectory();
-    for (final name in const [
-      'ifly_sync_debug.txt',
-      'ifly_launch_debug.txt',
-    ]) {
+    for (final name in const ['ifly_sync_debug.txt', 'ifly_launch_debug.txt']) {
       final file = File(path.join(docsDir.path, name));
       if (await file.exists()) {
         await file.delete();
@@ -250,7 +245,9 @@ Future<void> _cleanupRemovedIflyIntegration({
   } catch (e) {
     // iFly is no longer part of NeoStation, so cleanup failure must never block
     // application startup. The migration will be attempted again next launch.
-    LoggerService.instance.w('Could not clean legacy iFly integration data: $e');
+    LoggerService.instance.w(
+      'Could not clean legacy iFly integration data: $e',
+    );
   }
 }
 
@@ -305,7 +302,7 @@ void main() async {
     });
   }
 
-  // Inicializar window_manager para desktop con tamano minimo 640x480
+  // Configure the desktop window with a 640x480 minimum size.
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     await windowManager.ensureInitialized();
 
@@ -321,7 +318,7 @@ void main() async {
       await windowManager.focus();
     });
 
-    // Cargar configuracion de fullscreen
+    // Restore the persisted fullscreen preference.
     bool isFullscreen = true;
     try {
       final config = await ConfigRepository.getUserConfig();
@@ -351,12 +348,11 @@ void main() async {
     log.i('Window manager initialized');
   }
 
-  // Inicializar fvp para soporte extendido de video (Windows, Linux, etc.)
+  // Register FVP for extended desktop video support.
   registerWith();
 
-  // Configurar manejo global de errores para evitar crashes
+  // Keep framework errors visible in the console.
   FlutterError.onError = (FlutterErrorDetails details) {
-    // Para otros errores, usar el handler por defecto en debug
     if (details.stack != null) {
       FlutterError.dumpErrorToConsole(details);
     }
@@ -371,12 +367,10 @@ void main() async {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
-      //DeviceOrientation.portraitUp,
-      //DeviceOrientation.portraitDown,
     ]);
   }
 
-  // Inicializar FileProvider
+  // Initialize application storage paths.
   final fileProvider = FileProvider();
   try {
     await fileProvider.initialize();
@@ -384,43 +378,7 @@ void main() async {
     log.e('Error initializing FileProvider: $e');
   }
 
-  // TEMPORARY iOS DIAGNOSTIC — remove once the media-display issue is
-  // resolved. Writes FileProvider's post-init state to a plain text file
-  // under the app's Documents folder (readable via the Files app, "On My
-  // iPhone > NeoStation > neostation_debug.txt") since there's no Xcode
-  // console access to check this from otherwise.
-  if (Platform.isIOS) {
-    try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final debugFile = File(path.join(docsDir.path, 'neostation_debug.txt'));
-      final buffer = StringBuffer();
-      buffer.writeln('--- NeoStation iOS debug: ${DateTime.now()} ---');
-      buffer.writeln('fileProvider.isInitialized: ${fileProvider.isInitialized}');
-      buffer.writeln('fileProvider.mediaPath: ${fileProvider.mediaPath}');
-      buffer.writeln('fileProvider.userDataPath: ${fileProvider.userDataPath}');
-      buffer.writeln('fileProvider.documentsPath: ${fileProvider.documentsPath}');
-      try {
-        final configMediaPath = await ConfigService.getMediaPath();
-        buffer.writeln('ConfigService.getMediaPath(): $configMediaPath');
-      } catch (e) {
-        buffer.writeln('ConfigService.getMediaPath() threw: $e');
-      }
-      if (fileProvider.mediaPath != null) {
-        final testDir = Directory(
-          path.join(fileProvider.mediaPath!, 'media'),
-        );
-        buffer.writeln(
-          'media dir exists at fileProvider.mediaPath/media: '
-          '${testDir.existsSync()} (${testDir.path})',
-        );
-      }
-      await debugFile.writeAsString(buffer.toString());
-    } catch (e) {
-      log.e('Failed to write iOS debug file: $e');
-    }
-  }
-
-  // Inicializar localizacion con idioma persistido
+  // Restore the persisted application language.
   String initLang = 'en';
   try {
     final rawConfig = await ConfigRepository.getUserConfig();
@@ -449,11 +407,11 @@ void main() async {
     initLanguageCode: initLang.isNotEmpty ? initLang : 'en',
   );
 
-  // Inicializar AuthService antes de mostrar la app
+  // Initialize authentication before displaying the main interface.
   final authService = AuthService();
   await authService.initialize();
 
-  // Inicializar providers criticos
+  // Initialize core providers.
   final sqliteConfigProvider = SqliteConfigProvider();
   final sqliteDatabaseProvider = SqliteDatabaseProvider();
 
@@ -468,7 +426,7 @@ void main() async {
       persist: sqliteConfigProvider.updateLegendHidden,
     );
 
-    // 2. Inicializar DatabaseProvider (carga juegos basandose en sistemas sincronizados)
+    // 2. Initialize the database using synchronized system state.
     await sqliteDatabaseProvider.initialize(
       romFolders: sqliteConfigProvider.config.romFolders,
       availableSystems: sqliteConfigProvider.availableSystems,

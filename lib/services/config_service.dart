@@ -259,7 +259,9 @@ class ConfigService {
     final sourceDir = Directory(sourcePath);
 
     if (!await sourceDir.exists()) {
-      _log.w('importFilesFromExternalFolder: source does not exist: $sourcePath');
+      _log.w(
+        'importFilesFromExternalFolder: source does not exist: $sourcePath',
+      );
       return 0;
     }
 

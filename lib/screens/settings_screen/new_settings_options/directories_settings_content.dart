@@ -728,8 +728,8 @@ class DirectoriesSettingsContentState
                 icon: Icon(Symbols.bolt_rounded, size: 20.r),
                 label: Text(
                   hasSynced
-                ? AppLocale.iosEmuResync.getString(context)
-                : AppLocale.iosEmuSync.getString(context),
+                      ? AppLocale.iosEmuResync.getString(context)
+                      : AppLocale.iosEmuSync.getString(context),
                   style: TextStyle(fontSize: 14.r),
                 ),
               ),
@@ -785,8 +785,8 @@ class DirectoriesSettingsContentState
                 icon: Icon(Symbols.bolt_rounded, size: 20.r),
                 label: Text(
                   hasSynced
-                ? AppLocale.iosEmuResync.getString(context)
-                : AppLocale.iosEmuSync.getString(context),
+                      ? AppLocale.iosEmuResync.getString(context)
+                      : AppLocale.iosEmuSync.getString(context),
                   style: TextStyle(fontSize: 14.r),
                 ),
               ),
@@ -884,10 +884,7 @@ class DirectoriesSettingsContentState
                 SizedBox(width: 10.r),
                 Text(
                   name,
-                  style: TextStyle(
-                    fontSize: 16.r,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16.r, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -952,13 +949,12 @@ class DirectoriesSettingsContentState
         // Same internal-folder approach as the setup wizard — no external
         // picker on iOS, see ConfigService.getDefaultIOSRomsFolder().
         selected = await ConfigService.getDefaultIOSRomsFolder();
-        if (selected != null &&
-            configProvider.config.romFolders.contains(selected)) {
+        if (configProvider.config.romFolders.contains(selected)) {
           if (mounted) {
             AppNotification.showNotification(
               context,
               'Already using the internal roms folder. Drop ROMs into it '
-                  'via the Files app under "On My iPhone > NeoStation > roms".',
+              'via the Files app under "On My iPhone > NeoStation > roms".',
               type: NotificationType.info,
             );
           }

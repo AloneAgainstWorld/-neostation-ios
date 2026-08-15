@@ -945,12 +945,8 @@ class _SystemCardGridViewState extends State<SystemCardGridView> {
             // designed for wide TV/desktop layouts. On iOS's phone-sized
             // screens it dwarfs every other card, so keep it at the same
             // 1x1 size as everything else there.
-            final spanW = (card.isGame && cols >= 3 && !Platform.isIOS)
-                ? 3
-                : 1;
-            final spanH = (card.isGame && cols >= 3 && !Platform.isIOS)
-                ? 2
-                : 1;
+            final spanW = (card.isGame && cols >= 3 && !Platform.isIOS) ? 3 : 1;
+            final spanH = (card.isGame && cols >= 3 && !Platform.isIOS) ? 2 : 1;
 
             final left = c * (colWidth + spX);
             final width = spanW * colWidth + (spanW - 1) * spX;

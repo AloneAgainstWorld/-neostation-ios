@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:neostation/main.dart' show rootNavigatorKey;
 import 'package:neostation/providers/sqlite_config_provider.dart';
@@ -22,7 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 ///   armsx2://library?callback=neostation://armsx2
 ///
 /// It calls NeoStation back with:
-///   neostation://armsx2?source=armsx2-ios&payload=<base64url>
+///   `neostation://armsx2?source=armsx2-ios&payload=<base64url>`
 ///
 /// Unlike the normal NeoStation filesystem scanner, this service does not
 /// require ARMSX2 games to live inside a `ps2/` subfolder. ARMSX2's exported
@@ -214,12 +213,10 @@ class Armsx2LibraryService {
   /// Existing physical rows are preferred. Games which NeoStation has never
   /// scanned get a virtual `armsx2://launch?...` row, which is enough for the
   /// PS2 system and game list to render and launch directly through ARMSX2.
-  static Future<({
-    int virtualRows,
-    int physicalRows,
-    int removedRows,
-    int totalPs2Rows,
-  })> _importIntoNeoStation(List<Map<String, dynamic>> games) async {
+  static Future<
+    ({int virtualRows, int physicalRows, int removedRows, int totalPs2Rows})
+  >
+  _importIntoNeoStation(List<Map<String, dynamic>> games) async {
     final ps2 = await SystemRepository.getSystemByFolderName('ps2');
     if (ps2?.id == null) {
       throw StateError('NeoStation PS2 system definition was not found');
@@ -261,7 +258,8 @@ class Armsx2LibraryService {
         final parsedExported = exportedLaunchUrl == null
             ? null
             : Uri.tryParse(exportedLaunchUrl);
-        final launchUri = parsedExported != null &&
+        final launchUri =
+            parsedExported != null &&
                 parsedExported.scheme.toLowerCase() == _virtualScheme
             ? parsedExported
             : Uri(
@@ -353,14 +351,17 @@ class Armsx2LibraryService {
       final context = rootNavigatorKey.currentContext;
       if (context == null) return;
 
-      await Provider.of<SqliteDatabaseProvider>(
+      final databaseProvider = Provider.of<SqliteDatabaseProvider>(
         context,
         listen: false,
-      ).loadGamesForSystem('ps2');
-      await Provider.of<SqliteConfigProvider>(
+      );
+      final configProvider = Provider.of<SqliteConfigProvider>(
         context,
         listen: false,
-      ).refreshDetectedSystems();
+      );
+
+      await databaseProvider.loadGamesForSystem('ps2');
+      await configProvider.refreshDetectedSystems();
     } catch (e) {
       _log.e('Armsx2LibraryService: UI refresh failed: $e');
     }
@@ -391,10 +392,8 @@ class Armsx2LibraryService {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
         _cache = decoded.map(
-          (key, value) => MapEntry(
-            key.toString(),
-            Map<String, dynamic>.from(value as Map),
-          ),
+          (key, value) =>
+              MapEntry(key.toString(), Map<String, dynamic>.from(value as Map)),
         );
       } else {
         _cache = {};
@@ -480,7 +479,8 @@ class Armsx2LibraryService {
         ? null
         : Uri.tryParse(exportedLaunchUrl);
 
-    final uri = exportedUri ??
+    final uri =
+        exportedUri ??
         Uri(
           scheme: 'armsx2',
           host: 'launch',
@@ -500,7 +500,9 @@ class Armsx2LibraryService {
         input: uri.toString(),
       );
     } catch (e) {
-      _log.e('Armsx2LibraryService: failed to launch $uri through Shortcut: $e');
+      _log.e(
+        'Armsx2LibraryService: failed to launch $uri through Shortcut: $e',
+      );
       await _writeDebugFile(
         'armsx2_shortcut_launch_debug.txt',
         'STATE: ERROR\n'

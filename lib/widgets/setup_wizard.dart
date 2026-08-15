@@ -100,9 +100,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   // moves up into the slot ES-DE would have occupied so the progress dots
   // match the steps the user actually walks through.
   int get _stepEsde => Platform.isIOS ? -1 : (Platform.isAndroid ? 4 : 3);
-  int get _stepArtPack => Platform.isAndroid
-      ? 5
-      : (Platform.isIOS ? 3 : 4);
+  int get _stepArtPack => Platform.isAndroid ? 5 : (Platform.isIOS ? 3 : 4);
 
   /// The art-pack step is always the final step of the wizard.
   bool get _isLastStep => _currentStep == _stepArtPack;
@@ -280,9 +278,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   // Desktop: 0=UserData, 1=FolderSelect, 2=Scanning, 3=EsdeImport,
   //          4=ArtPack (5 steps)
   // iOS:     0=UserData, 1=FolderSelect, 2=Scanning, 3=ArtPack (4 steps)
-  int get _totalSteps => Platform.isAndroid
-      ? 6
-      : (Platform.isIOS ? 4 : 5);
+  int get _totalSteps => Platform.isAndroid ? 6 : (Platform.isIOS ? 4 : 5);
 
   @override
   Widget build(BuildContext context) {
@@ -2018,7 +2014,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
             AppNotification.showNotification(
               context,
               'Linked! If your games don\'t show up in a few seconds, '
-                  'relaunch NeoStation to see them.',
+              'relaunch NeoStation to see them.',
               type: NotificationType.info,
             );
           }

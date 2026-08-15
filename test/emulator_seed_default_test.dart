@@ -140,7 +140,8 @@ void main() {
     expect(
       offenders,
       isEmpty,
-      reason: 'iOS emulator definitions need url_scheme for install detection:\n'
+      reason:
+          'iOS emulator definitions need url_scheme for install detection:\n'
           '${offenders.join('\n')}',
     );
   });
@@ -165,35 +166,43 @@ void main() {
     expect(ios['url_scheme'], 'melonx');
   });
 
-  test('systems with RetroArch definitions expose one generic iOS RetroArch app', () {
-    final offenders = <String>[];
+  test(
+    'systems with iOS RetroArch definitions expose one generic iOS RetroArch app',
+    () {
+      final offenders = <String>[];
 
-    for (final system in systems) {
-      final hasRetroArchDefinition = system.emulators.any((e) {
-        final uid = e.uniqueId.toLowerCase();
-        final platformText = jsonEncode(e.platforms).toLowerCase();
-        return uid.contains('.ra.') ||
-            uid.contains('.ra32.') ||
-            uid.contains('.ra64.') ||
-            platformText.contains('retroarch');
-      });
-      if (!hasRetroArchDefinition) continue;
+      for (final system in systems) {
+        final hasIosRetroArchDefinition = system.emulators.any((e) {
+          final uid = e.uniqueId.toLowerCase();
+          final platformText = jsonEncode(e.platforms).toLowerCase();
+          final isRetroArchDefinition =
+              uid.contains('.ra.') ||
+              uid.contains('.ra32.') ||
+              uid.contains('.ra64.') ||
+              platformText.contains('retroarch');
+          if (!isRetroArchDefinition) return false;
 
-      final iosRetroArch = system.emulators.where((e) {
-        final ios = e.platforms['ios'];
-        return ios is Map &&
-            ios['url_scheme']?.toString().toLowerCase() == 'retroarch';
-      }).toList();
+          final ios = e.platforms['ios'];
+          return ios is Map && ios.isNotEmpty;
+        });
+        if (!hasIosRetroArchDefinition) continue;
 
-      if (iosRetroArch.length != 1) {
-        offenders.add(
-          '${system.name}: expected 1 generic iOS RetroArch entry, found ${iosRetroArch.length}',
-        );
+        final iosRetroArch = system.emulators.where((e) {
+          final ios = e.platforms['ios'];
+          return ios is Map &&
+              ios['url_scheme']?.toString().toLowerCase() == 'retroarch';
+        }).toList();
+
+        if (iosRetroArch.length != 1) {
+          offenders.add(
+            '${system.name}: expected 1 generic iOS RetroArch entry, found ${iosRetroArch.length}',
+          );
+        }
       }
-    }
 
-    expect(offenders, isEmpty, reason: offenders.join('\n'));
-  });
+      expect(offenders, isEmpty, reason: offenders.join('\n'));
+    },
+  );
 
   test('the two systems fixed on this branch resolve to a single default', () {
     // Regression pins for the pair found on the AYN Thor.

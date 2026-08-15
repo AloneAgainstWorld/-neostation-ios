@@ -649,8 +649,10 @@ const Map<String, dynamic> appLocaleZh = {
   AppLocale.systemInfo: '系统信息',
   AppLocale.systemType: '类型',
   AppLocale.supportedFormats: '支持的格式',
-  AppLocale.systemInfoSummary: '{name} 是由 {manufacturer} 于 {year} 年推出的{type}。NeoStation 当前检测到该系统共有 {count} 款游戏。',
-  AppLocale.systemInfoSummaryNoManufacturer: '{name} 是于 {year} 年推出的{type}。NeoStation 当前检测到该系统共有 {count} 款游戏。',
+  AppLocale.systemInfoSummary:
+      '{name} 是由 {manufacturer} 于 {year} 年推出的{type}。NeoStation 当前检测到该系统共有 {count} 款游戏。',
+  AppLocale.systemInfoSummaryNoManufacturer:
+      '{name} 是于 {year} 年推出的{type}。NeoStation 当前检测到该系统共有 {count} 款游戏。',
   AppLocale.systemTypeConsole: '家用游戏机',
   AppLocale.systemTypeHandheld: '掌上游戏机',
   AppLocale.systemTypeComputer: '电脑系统',
@@ -919,20 +921,31 @@ const Map<String, dynamic> appLocaleZh = {
   AppLocale.iosEmuLinkingFailed: "关联失败：{error}",
   AppLocale.iosRetroarchSyncRequested: "已请求同步 RetroArch 游戏库。同步将在后台进行，请等待几秒钟。",
   AppLocale.iosRetroarchUnavailable: "无法连接 RetroArch。是否已安装？",
-  AppLocale.iosArmsx2SyncRequested: "已请求同步 ARMSX2 游戏库。导出准备完成后，ARMSX2 会自动返回 NeoStation。",
+  AppLocale.iosArmsx2SyncRequested:
+      "已请求同步 ARMSX2 游戏库。导出准备完成后，ARMSX2 会自动返回 NeoStation。",
   AppLocale.iosArmsx2Unavailable: "无法连接 ARMSX2。是否已安装？",
-  AppLocale.iosMelonxSyncRequested: "已请求同步 MeloNX 的 Nintendo Switch 游戏库。导出准备完成后，MeloNX 会自动返回 NeoStation。",
+  AppLocale.iosMelonxSyncRequested:
+      "已请求同步 MeloNX 的 Nintendo Switch 游戏库。导出准备完成后，MeloNX 会自动返回 NeoStation。",
   AppLocale.iosMelonxUnavailable: "无法连接 MeloNX。是否已安装？",
-  AppLocale.iosRetroarchStatusNeedsLink: "关联 RetroArch 文件夹，让 NeoStation 直接访问游戏，无需复制。",
-  AppLocale.iosRetroarchStatusNeedsSync: "文件夹已关联。同步游戏库后，即可一键直接在 RetroArch 中启动游戏。",
+  AppLocale.iosRetroarchStatusNeedsLink:
+      "关联 RetroArch 文件夹，让 NeoStation 直接访问游戏，无需复制。",
+  AppLocale.iosRetroarchStatusNeedsSync:
+      "文件夹已关联。同步游戏库后，即可一键直接在 RetroArch 中启动游戏。",
   AppLocale.iosRetroarchStatusSynced: "文件夹已关联且游戏库已同步——游戏可直接在 RetroArch 中启动。",
-  AppLocale.iosRetroarchLinkSuccess: "文件夹已关联。NeoStation 将直接扫描该文件夹，无需复制。此处找到的游戏将直接在 RetroArch 中启动。",
-  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 与 RetroArch 使用同一个 ROM 文件夹。先关联共享 ROM 文件夹，然后同步 ARMSX2 游戏库。",
-  AppLocale.iosArmsx2StatusNeedsSync: "共享 ROM 文件夹已关联。同步 ARMSX2，将 PS2 游戏库导入 NeoStation。",
-  AppLocale.iosArmsx2StatusSynced: "共享文件夹和 ARMSX2 游戏库已同步——PS2 游戏可直接在 ARMSX2 中启动。",
-  AppLocale.iosArmsx2LinkSuccess: "共享 ROM 文件夹已关联。RetroArch 和 ARMSX2 现在使用同一个 NeoStation ROM 来源。",
-  AppLocale.iosMelonxStatusSynced: "MeloNX 游戏库已同步——Nintendo Switch 游戏可直接在 MeloNX 中启动。",
-  AppLocale.iosMelonxStatusNeedsSync: "同步 MeloNX，将其 Nintendo Switch 游戏库直接导入 NeoStation。无需扫描 ROM 文件夹。",
+  AppLocale.iosRetroarchLinkSuccess:
+      "文件夹已关联。NeoStation 将直接扫描该文件夹，无需复制。此处找到的游戏将直接在 RetroArch 中启动。",
+  AppLocale.iosArmsx2StatusNeedsLink:
+      "ARMSX2 与 RetroArch 使用同一个 ROM 文件夹。先关联共享 ROM 文件夹，然后同步 ARMSX2 游戏库。",
+  AppLocale.iosArmsx2StatusNeedsSync:
+      "共享 ROM 文件夹已关联。同步 ARMSX2，将 PS2 游戏库导入 NeoStation。",
+  AppLocale.iosArmsx2StatusSynced:
+      "共享文件夹和 ARMSX2 游戏库已同步——PS2 游戏可直接在 ARMSX2 中启动。",
+  AppLocale.iosArmsx2LinkSuccess:
+      "共享 ROM 文件夹已关联。RetroArch 和 ARMSX2 现在使用同一个 NeoStation ROM 来源。",
+  AppLocale.iosMelonxStatusSynced:
+      "MeloNX 游戏库已同步——Nintendo Switch 游戏可直接在 MeloNX 中启动。",
+  AppLocale.iosMelonxStatusNeedsSync:
+      "同步 MeloNX，将其 Nintendo Switch 游戏库直接导入 NeoStation。无需扫描 ROM 文件夹。",
 
   // Rich System Info
   AppLocale.systemArchitecture: '架构',
@@ -942,8 +955,10 @@ const Map<String, dynamic> appLocaleZh = {
   AppLocale.systemNotableGames: '代表游戏',
   AppLocale.systemTechnicalDetails: '技术信息',
   AppLocale.systemGamesDetected: '已检测游戏',
-  AppLocale.systemInfoDetailedIntro: '{name} 是一款由 {manufacturer} 于 {year} 年推出的{type}。',
-  AppLocale.systemInfoDetailedIntroNoManufacturer: '{name} 是一款于 {year} 年推出的{type}。',
+  AppLocale.systemInfoDetailedIntro:
+      '{name} 是一款由 {manufacturer} 于 {year} 年推出的{type}。',
+  AppLocale.systemInfoDetailedIntroNoManufacturer:
+      '{name} 是一款于 {year} 年推出的{type}。',
   AppLocale.systemInfoArchitectureSentence: '其硬件架构为 {architecture}。',
   AppLocale.systemInfoGenerationSentence: '它属于第 {generation} 世代。',
   AppLocale.systemInfoProcessorSentence: '主要处理器为 {cpu}。',
@@ -951,12 +966,15 @@ const Map<String, dynamic> appLocaleZh = {
   AppLocale.systemInfoCollectionRomHacks: '此条目汇集原系统的 ROM Hack 与玩家自制变体。',
   AppLocale.systemInfoCollectionAllSystems: '此虚拟合集汇集所有已检测系统中的游戏。',
   AppLocale.systemInfoCollectionFavorites: '此虚拟合集包含用户标记为收藏的游戏。',
-  AppLocale.systemInfoCollectionDigitalStore: '此条目代表 PC 数字游戏商店；游戏目录和硬件需求会因作品而异。',
+  AppLocale.systemInfoCollectionDigitalStore:
+      '此条目代表 PC 数字游戏商店；游戏目录和硬件需求会因作品而异。',
   AppLocale.systemInfoCollectionEmulationPlatform: '此条目代表覆盖多种原始硬件系列的模拟或兼容平台。',
-  AppLocale.systemInfoCollectionFantasyConsole: '这是一种使用刻意受限虚拟硬件的幻想主机，面向小型游戏和演示。',
+  AppLocale.systemInfoCollectionFantasyConsole:
+      '这是一种使用刻意受限虚拟硬件的幻想主机，面向小型游戏和演示。',
   AppLocale.systemInfoCollectionMediaCollection: '这是媒体合集，而不是固定的游戏硬件平台。',
   AppLocale.systemInfoCollectionGameEngine: '此条目代表游戏引擎或运行环境，其作品可能跨越多个硬件世代。',
-  AppLocale.systemInfoCollectionSoftwarePlatform: '此软件平台覆盖多种硬件配置，因此架构会随设备或时代而变化。',
+  AppLocale.systemInfoCollectionSoftwarePlatform:
+      '此软件平台覆盖多种硬件配置，因此架构会随设备或时代而变化。',
   AppLocale.mediaCartridge: '卡带',
   AppLocale.mediaCdRom: 'CD-ROM',
   AppLocale.mediaDvd: 'DVD',
