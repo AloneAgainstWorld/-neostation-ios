@@ -4,7 +4,7 @@
 
 <h4>Modern, multi-platform emulation frontend built with Flutter</h4>
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Discord](https://img.shields.io/discord/1088818368129273946?label=Discord&logo=discord&color=5865f2)](https://discord.gg/xE2kgKsRVq) ![iOS Port](https://img.shields.io/badge/iOS%20Port-iPhone%20%7C%20iPad-blue?logo=apple) [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20(x64%2Farm64)%20%7C%20macOS%20%7C%20Android%20%7C%20iOS-blue)](https://github.com/TarbleFR/neostation-ios)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Discord](https://img.shields.io/discord/1088818368129273946?label=Discord&logo=discord&color=5865f2)](https://discord.gg/xE2kgKsRVq) [![Downloads](assets/readme/badges/downloads.svg)](https://github.com/TarbleFR/neostation-ios/releases) [![Build](assets/readme/badges/build.svg)](https://github.com/TarbleFR/neostation-ios/actions/workflows/ios-build.yml) [![Stars](assets/readme/badges/stars.svg)](https://github.com/TarbleFR/neostation-ios/stargazers) [![Issues](assets/readme/badges/issues.svg)](https://github.com/TarbleFR/neostation-ios/issues) ![iOS Port](https://img.shields.io/badge/iOS%20Port-iPhone%20%7C%20iPad-blue?logo=apple) [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20(x64%2Farm64)%20%7C%20macOS%20%7C%20Android%20%7C%20iOS-blue)](https://github.com/TarbleFR/neostation-ios)
 
 ![NeoStation Hero](https://repository-images.githubusercontent.com/1223168847/4e7a727d-9855-4597-a999-c07167d8552f)
 
