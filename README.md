@@ -64,7 +64,7 @@ Folders that already contain `.m3u` playlists are skipped during the scan.
 | Linux | ✅ Supported | x64, ARM64 (AppImage, Flatpak) |
 | macOS | ✅ Supported | Apple Silicon & Intel |
 | Android | ✅ Supported | ARM64, Android TV compatible |
-| iOS | ✅ Port available | ARM64, IPA sideloading / SideStore, RetroArch, MeloNX & ARMSX2 integrations |
+| iOS | ✅ Port available | ARM64, IPA sideloading / SideStore, launch support for RetroArch, MeloNX & ARMSX2 |
 
 ## Prerequisites
 
