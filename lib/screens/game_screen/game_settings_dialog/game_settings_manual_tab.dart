@@ -112,8 +112,11 @@ class GameSettingsManualTabState extends State<GameSettingsManualTab> {
 
       if (!mounted) return;
       final success = result['success'] == true;
-      final messageKey = result['message']?.toString() ??
-          (success ? AppLocale.manualDownloaded : AppLocale.manualDownloadFailed);
+      final messageKey =
+          result['message']?.toString() ??
+          (success
+              ? AppLocale.manualDownloaded
+              : AppLocale.manualDownloadFailed);
       AppNotification.showNotification(
         context,
         messageKey.getString(context),
@@ -286,7 +289,9 @@ class GameSettingsManualTabState extends State<GameSettingsManualTab> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 8.5.r,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.58,
+                      ),
                     ),
                   ),
                   if (_isDownloading) ...[
@@ -297,7 +302,9 @@ class GameSettingsManualTabState extends State<GameSettingsManualTab> {
                       AppLocale.downloadingManual.getString(context),
                       style: TextStyle(
                         fontSize: 8.r,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.6,
+                        ),
                       ),
                     ),
                   ],
@@ -326,7 +333,9 @@ class GameSettingsManualTabState extends State<GameSettingsManualTab> {
                         index: 1,
                         icon: Symbols.download_rounded,
                         title: AppLocale.redownloadManual.getString(context),
-                        subtitle: AppLocale.redownloadManualDesc.getString(context),
+                        subtitle: AppLocale.redownloadManualDesc.getString(
+                          context,
+                        ),
                         onTap: () => _downloadManual(forceOverwrite: true),
                       ),
                       SizedBox(height: 8.r),
@@ -346,7 +355,9 @@ class GameSettingsManualTabState extends State<GameSettingsManualTab> {
                         index: 0,
                         icon: Symbols.download_rounded,
                         title: AppLocale.downloadManual.getString(context),
-                        subtitle: AppLocale.downloadManualDesc.getString(context),
+                        subtitle: AppLocale.downloadManualDesc.getString(
+                          context,
+                        ),
                         onTap: () => _downloadManual(),
                       ),
                     ],
@@ -415,7 +426,9 @@ class GameSettingsManualTabState extends State<GameSettingsManualTab> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 7.8.r,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.55,
+                        ),
                       ),
                     ),
                   ],

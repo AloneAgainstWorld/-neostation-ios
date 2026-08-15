@@ -544,19 +544,25 @@ const Map<String, dynamic> appLocaleEn = {
   AppLocale.scrapeManualDesc: 'Download PDF game manuals when available.',
   AppLocale.manualReady: 'Manual downloaded',
   AppLocale.manualNotDownloaded: 'No manual downloaded',
-  AppLocale.manualDownloadHint: 'Download the game manual from ScreenScraper when available.',
+  AppLocale.manualDownloadHint:
+      'Download the game manual from ScreenScraper when available.',
   AppLocale.downloadManual: 'Download manual',
-  AppLocale.downloadManualDesc: 'Download the best available PDF for your language and region.',
+  AppLocale.downloadManualDesc:
+      'Download the best available PDF for your language and region.',
   AppLocale.readManual: 'Read manual',
-  AppLocale.readManualDesc: 'Open the cached PDF in NeoStation\'s built-in reader.',
+  AppLocale.readManualDesc:
+      'Open the cached PDF in NeoStation\'s built-in reader.',
   AppLocale.redownloadManual: 'Re-download manual',
-  AppLocale.redownloadManualDesc: 'Replace the local copy with the best available version.',
+  AppLocale.redownloadManualDesc:
+      'Replace the local copy with the best available version.',
   AppLocale.deleteManual: 'Delete manual',
   AppLocale.deleteManualDesc: 'Remove the cached PDF from this device.',
-  AppLocale.deleteManualConfirmation: 'Delete the downloaded manual for this game?',
+  AppLocale.deleteManualConfirmation:
+      'Delete the downloaded manual for this game?',
   AppLocale.manualDownloaded: 'Manual downloaded',
   AppLocale.manualDownloadFailed: 'Manual download failed',
-  AppLocale.manualNotAvailable: 'No manual is available for this game on ScreenScraper.',
+  AppLocale.manualNotAvailable:
+      'No manual is available for this game on ScreenScraper.',
   AppLocale.manualDeleted: 'Manual deleted',
   AppLocale.downloadingManual: 'Downloading manual...',
   AppLocale.pinchToZoom: 'Pinch to zoom',
@@ -723,8 +729,10 @@ const Map<String, dynamic> appLocaleEn = {
   AppLocale.systemInfo: 'System Info',
   AppLocale.systemType: 'Type',
   AppLocale.supportedFormats: 'Supported formats',
-  AppLocale.systemInfoSummary: '{name} is a {type} released by {manufacturer} in {year}. NeoStation currently detects {count} games for this system.',
-  AppLocale.systemInfoSummaryNoManufacturer: '{name} is a {type} introduced in {year}. NeoStation currently detects {count} games for this system.',
+  AppLocale.systemInfoSummary:
+      '{name} is a {type} released by {manufacturer} in {year}. NeoStation currently detects {count} games for this system.',
+  AppLocale.systemInfoSummaryNoManufacturer:
+      '{name} is a {type} introduced in {year}. NeoStation currently detects {count} games for this system.',
   AppLocale.systemTypeConsole: 'home console',
   AppLocale.systemTypeHandheld: 'handheld system',
   AppLocale.systemTypeComputer: 'computer',
@@ -1019,22 +1027,36 @@ const Map<String, dynamic> appLocaleEn = {
   AppLocale.iosEmuLinkFolder: "Link folder",
   AppLocale.iosEmuChangeFolder: "Change folder",
   AppLocale.iosEmuLinkingFailed: "Linking failed: {error}",
-  AppLocale.iosRetroarchSyncRequested: "RetroArch library sync requested. This runs in the background; wait a few seconds.",
-  AppLocale.iosRetroarchUnavailable: "Could not reach RetroArch. Is it installed?",
-  AppLocale.iosArmsx2SyncRequested: "ARMSX2 library sync requested. ARMSX2 will return to NeoStation automatically when the export is ready.",
+  AppLocale.iosRetroarchSyncRequested:
+      "RetroArch library sync requested. This runs in the background; wait a few seconds.",
+  AppLocale.iosRetroarchUnavailable:
+      "Could not reach RetroArch. Is it installed?",
+  AppLocale.iosArmsx2SyncRequested:
+      "ARMSX2 library sync requested. ARMSX2 will return to NeoStation automatically when the export is ready.",
   AppLocale.iosArmsx2Unavailable: "Could not reach ARMSX2. Is it installed?",
-  AppLocale.iosMelonxSyncRequested: "MeloNX Nintendo Switch library sync requested. MeloNX will return to NeoStation automatically when the export is ready.",
+  AppLocale.iosMelonxSyncRequested:
+      "MeloNX Nintendo Switch library sync requested. MeloNX will return to NeoStation automatically when the export is ready.",
   AppLocale.iosMelonxUnavailable: "Could not reach MeloNX. Is it installed?",
-  AppLocale.iosRetroarchStatusNeedsLink: "Link RetroArch's folder so NeoStation can access your games in place — no copying.",
-  AppLocale.iosRetroarchStatusNeedsSync: "Folder linked. Sync the library so games launch directly in RetroArch with one tap.",
-  AppLocale.iosRetroarchStatusSynced: "Folder linked and library synced — games launch directly in RetroArch.",
-  AppLocale.iosRetroarchLinkSuccess: "Folder linked. NeoStation will scan it in place — no copy needed. Games found here will launch directly in RetroArch.",
-  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 uses the same ROM folder as RetroArch. Link the shared ROM folder, then sync the ARMSX2 library.",
-  AppLocale.iosArmsx2StatusNeedsSync: "Shared ROM folder linked. Sync ARMSX2 to import the PS2 library into NeoStation.",
-  AppLocale.iosArmsx2StatusSynced: "Shared folder and ARMSX2 library synced — PS2 games launch directly in ARMSX2.",
-  AppLocale.iosArmsx2LinkSuccess: "Shared ROM folder linked. RetroArch and ARMSX2 now use the same NeoStation ROM source.",
-  AppLocale.iosMelonxStatusSynced: "MeloNX library synced — Nintendo Switch games launch directly in MeloNX.",
-  AppLocale.iosMelonxStatusNeedsSync: "Sync MeloNX to import its Nintendo Switch library directly into NeoStation. No ROM-folder scan is required.",
+  AppLocale.iosRetroarchStatusNeedsLink:
+      "Link RetroArch's folder so NeoStation can access your games in place — no copying.",
+  AppLocale.iosRetroarchStatusNeedsSync:
+      "Folder linked. Sync the library so games launch directly in RetroArch with one tap.",
+  AppLocale.iosRetroarchStatusSynced:
+      "Folder linked and library synced — games launch directly in RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess:
+      "Folder linked. NeoStation will scan it in place — no copy needed. Games found here will launch directly in RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink:
+      "ARMSX2 uses the same ROM folder as RetroArch. Link the shared ROM folder, then sync the ARMSX2 library.",
+  AppLocale.iosArmsx2StatusNeedsSync:
+      "Shared ROM folder linked. Sync ARMSX2 to import the PS2 library into NeoStation.",
+  AppLocale.iosArmsx2StatusSynced:
+      "Shared folder and ARMSX2 library synced — PS2 games launch directly in ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess:
+      "Shared ROM folder linked. RetroArch and ARMSX2 now use the same NeoStation ROM source.",
+  AppLocale.iosMelonxStatusSynced:
+      "MeloNX library synced — Nintendo Switch games launch directly in MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync:
+      "Sync MeloNX to import its Nintendo Switch library directly into NeoStation. No ROM-folder scan is required.",
 
   // Rich System Info
   AppLocale.systemArchitecture: 'Architecture',
@@ -1044,21 +1066,35 @@ const Map<String, dynamic> appLocaleEn = {
   AppLocale.systemNotableGames: 'Notable games',
   AppLocale.systemTechnicalDetails: 'Technical details',
   AppLocale.systemGamesDetected: 'Games detected',
-  AppLocale.systemInfoDetailedIntro: '{name} is a {type} released by {manufacturer} in {year}.',
-  AppLocale.systemInfoDetailedIntroNoManufacturer: '{name} is a {type} introduced in {year}.',
-  AppLocale.systemInfoArchitectureSentence: 'Its hardware architecture is {architecture}.',
-  AppLocale.systemInfoGenerationSentence: 'It belongs to generation {generation}.',
+  AppLocale.systemInfoDetailedIntro:
+      '{name} is a {type} released by {manufacturer} in {year}.',
+  AppLocale.systemInfoDetailedIntroNoManufacturer:
+      '{name} is a {type} introduced in {year}.',
+  AppLocale.systemInfoArchitectureSentence:
+      'Its hardware architecture is {architecture}.',
+  AppLocale.systemInfoGenerationSentence:
+      'It belongs to generation {generation}.',
   AppLocale.systemInfoProcessorSentence: 'Its main processor is {cpu}.',
-  AppLocale.systemInfoMediaSentence: 'Games and software were mainly distributed on {media}.',
-  AppLocale.systemInfoCollectionRomHacks: 'This entry groups ROM hacks and fan-made variants for the original system.',
-  AppLocale.systemInfoCollectionAllSystems: 'This virtual collection combines games from all detected systems.',
-  AppLocale.systemInfoCollectionFavorites: 'This virtual collection contains the games marked as favorites by the user.',
-  AppLocale.systemInfoCollectionDigitalStore: 'This entry represents a digital PC game storefront; its catalog and hardware requirements vary by title.',
-  AppLocale.systemInfoCollectionEmulationPlatform: 'This entry represents an emulation or compatibility platform covering multiple original hardware families.',
-  AppLocale.systemInfoCollectionFantasyConsole: 'This is a fantasy-console platform with deliberately constrained virtual hardware for small games and demos.',
-  AppLocale.systemInfoCollectionMediaCollection: 'This is a media collection rather than a fixed gaming hardware platform.',
-  AppLocale.systemInfoCollectionGameEngine: 'This entry represents a game engine/runtime whose titles can target different hardware generations.',
-  AppLocale.systemInfoCollectionSoftwarePlatform: 'This software platform spans multiple hardware configurations, so architecture can vary between devices or eras.',
+  AppLocale.systemInfoMediaSentence:
+      'Games and software were mainly distributed on {media}.',
+  AppLocale.systemInfoCollectionRomHacks:
+      'This entry groups ROM hacks and fan-made variants for the original system.',
+  AppLocale.systemInfoCollectionAllSystems:
+      'This virtual collection combines games from all detected systems.',
+  AppLocale.systemInfoCollectionFavorites:
+      'This virtual collection contains the games marked as favorites by the user.',
+  AppLocale.systemInfoCollectionDigitalStore:
+      'This entry represents a digital PC game storefront; its catalog and hardware requirements vary by title.',
+  AppLocale.systemInfoCollectionEmulationPlatform:
+      'This entry represents an emulation or compatibility platform covering multiple original hardware families.',
+  AppLocale.systemInfoCollectionFantasyConsole:
+      'This is a fantasy-console platform with deliberately constrained virtual hardware for small games and demos.',
+  AppLocale.systemInfoCollectionMediaCollection:
+      'This is a media collection rather than a fixed gaming hardware platform.',
+  AppLocale.systemInfoCollectionGameEngine:
+      'This entry represents a game engine/runtime whose titles can target different hardware generations.',
+  AppLocale.systemInfoCollectionSoftwarePlatform:
+      'This software platform spans multiple hardware configurations, so architecture can vary between devices or eras.',
   AppLocale.mediaCartridge: 'Cartridge',
   AppLocale.mediaCdRom: 'CD-ROM',
   AppLocale.mediaDvd: 'DVD',

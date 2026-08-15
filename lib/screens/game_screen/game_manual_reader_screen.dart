@@ -34,9 +34,7 @@ class _GameManualReaderScreenState extends State<GameManualReaderScreen> {
   @override
   void initState() {
     super.initState();
-    _gamepadNav = GamepadNavigation(
-      onBack: _close,
-    );
+    _gamepadNav = GamepadNavigation(onBack: _close);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -70,9 +68,7 @@ class _GameManualReaderScreenState extends State<GameManualReaderScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            Positioned.fill(
-              child: PdfViewer.file(widget.manualPath),
-            ),
+            Positioned.fill(child: PdfViewer.file(widget.manualPath)),
             Positioned(
               left: 12.r,
               right: 12.r,
@@ -136,7 +132,9 @@ class _GameManualReaderScreenState extends State<GameManualReaderScreen> {
                       AppLocale.pinchToZoom.getString(context),
                       style: TextStyle(
                         fontSize: 8.r,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.5,
+                        ),
                       ),
                     ),
                   ],

@@ -58,8 +58,10 @@ class ScreenscraperClient {
       _appVersion = '$name-$version-$platform';
       return _appVersion!;
     } catch (e) {
-      _log.w('Could not resolve app identity for ScreenScraper ($e) — '
-          'falling back to a generic softname.');
+      _log.w(
+        'Could not resolve app identity for ScreenScraper ($e) — '
+        'falling back to a generic softname.',
+      );
       _appVersion = 'neostation';
       return _appVersion!;
     }

@@ -143,6 +143,7 @@ class DatabaseTestHelper {
         core_filename TEXT,
         android_package_name TEXT,
         android_activity_name TEXT,
+        ios_url_scheme TEXT,
         is_default INTEGER,
         is_default_core INTEGER,
         is_default_standalone INTEGER NOT NULL DEFAULT 0,
@@ -233,12 +234,10 @@ class DatabaseTestHelper {
         updated_at TEXT
       )
     ''');
-    await db.execute(
-      r'''INSERT INTO user_screenscraper_config
+    await db.execute(r'''INSERT INTO user_screenscraper_config
         (id, scrape_mode, scrape_metadata, scrape_images, scrape_videos, scrape_media_types)
         VALUES
-        (1, 'new_only', 1, 1, 1, '["fanart","ss","wheel","box2D","video"]')''',
-    );
+        (1, 'new_only', 1, 1, 1, '["fanart","ss","wheel","box2D","video"]')''');
 
     await db.execute('''
       CREATE TABLE user_screenscraper_system_config (

@@ -92,7 +92,6 @@ class ExternalFolderAccess {
     }
   }
 
-
   /// Opens an arbitrary URL string on iOS without round-tripping through
   /// Dart's [Uri] class. This matters for custom URL schemes whose handler
   /// (incorrectly, but in practice) treats the host as case-sensitive, e.g.
@@ -183,7 +182,7 @@ class ExternalFolderAccess {
   }
 
   /// Registers a callback for URLs opened while the app is running — e.g.
-  /// RetroArch calling back via neostation://retroarch?games=<base64url>
+  /// RetroArch calling back via `neostation://retroarch?games=<base64url>`
   /// after a library export request. Replaces the app_links package for
   /// this single use case, since the native side already forwards
   /// `application(_:open:options:)` through this same channel (see

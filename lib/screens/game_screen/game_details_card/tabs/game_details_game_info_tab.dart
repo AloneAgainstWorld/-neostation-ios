@@ -96,9 +96,7 @@ class GameDetailsGameInfoTab extends StatelessWidget {
             BorderRadius.circular(14.r),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(
-              context,
-            ).colorScheme.shadow.withValues(alpha: 0.22),
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.22),
             blurRadius: 3.r,
             offset: Offset(2.0.r, 2.0.r),
           ),

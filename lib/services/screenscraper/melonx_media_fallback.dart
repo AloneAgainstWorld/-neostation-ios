@@ -55,7 +55,9 @@ class ScreenscraperMeloNxMediaFallback {
     final failures = <String>[];
 
     final imageTypes = allowedMediaTypes
-        .where((type) => const ['fanart', 'ss', 'wheel', 'box2D'].contains(type))
+        .where(
+          (type) => const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
+        )
         .toList();
 
     final sourceTypes = <String>{};
@@ -168,7 +170,8 @@ class ScreenscraperMeloNxMediaFallback {
 
           final contentType = response.headers['content-type'] ?? '';
           final bodyPrefix = _safeBodyPrefix(response.bodyBytes);
-          final isImage = response.statusCode == 200 &&
+          final isImage =
+              response.statusCode == 200 &&
               _looksLikeImage(response.bodyBytes, contentType);
 
           await _appendDebug(
@@ -238,7 +241,8 @@ class ScreenscraperMeloNxMediaFallback {
       _ => [mediaType],
     };
     for (final sourceType in relevantSourceTypes) {
-      for (final region in sourceRegionsByType[sourceType] ?? const <String>[]) {
+      for (final region
+          in sourceRegionsByType[sourceType] ?? const <String>[]) {
         addRegion(region);
       }
     }
@@ -330,7 +334,8 @@ class ScreenscraperMeloNxMediaFallback {
     final lowerType = contentType.toLowerCase();
     if (lowerType.startsWith('image/')) return true;
 
-    final isPng = bytes.length >= 8 &&
+    final isPng =
+        bytes.length >= 8 &&
         bytes[0] == 0x89 &&
         bytes[1] == 0x50 &&
         bytes[2] == 0x4e &&
@@ -344,7 +349,8 @@ class ScreenscraperMeloNxMediaFallback {
     final isJpeg = bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff;
     if (isJpeg) return true;
 
-    final isWebP = bytes.length >= 12 &&
+    final isWebP =
+        bytes.length >= 12 &&
         ascii.decode(bytes.sublist(0, 4), allowInvalid: true) == 'RIFF' &&
         ascii.decode(bytes.sublist(8, 12), allowInvalid: true) == 'WEBP';
     return isWebP;
