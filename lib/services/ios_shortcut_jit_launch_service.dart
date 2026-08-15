@@ -3,27 +3,23 @@ import 'dart:io';
 import 'package:neostation/services/logger_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Runs user-configured Apple Shortcuts used by NeoStation's iOS emulator
-/// launch flow and opens their one-time installation links.
+/// Handles iOS Shortcut installation and JIT-assisted emulator launches.
+///
+/// Shortcut setup and payload construction live here so MeloNX and ARMSX2
+/// share the same launch behavior.
 class IosShortcutJitLaunchService {
   IosShortcutJitLaunchService._();
 
   static final _log = LoggerService.instance;
 
-  /// Keep this name in sync with the shared Shortcut. The `+` characters are
-  /// part of the actual Shortcut name and are percent-encoded by [Uri] below.
+  /// Keep these names in sync with the shared Shortcuts. The `+` characters
+  /// are part of the Shortcut names and are percent-encoded by [Uri].
   static const String melonxShortcutName = 'NeoStation+MeloNX+JIT';
   static const String armsx2ShortcutName = 'NeoStation+ARMSX2+JIT';
 
-  /// One-time installer for the exact NeoStation MeloNX launch Shortcut.
-  ///
-  /// Replace the placeholder with the iCloud sharing URL copied from the
-  /// Shortcuts app before shipping the patch. Keeping the URL here gives the
-  /// settings card one stable place to manage the installer.
   static const String _melonxShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/84b9d0fbdd714c6c9596ba2e3c699031';
 
-  /// One-time installer for the exact NeoStation ARMSX2 launch Shortcut.
   static const String _armsx2ShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/1419632b150747f5bcd7b9bc65e36114';
 
@@ -37,10 +33,7 @@ class IosShortcutJitLaunchService {
         'https://www.icloud.com/shortcuts/',
       );
 
-  /// Opens the shared ARMSX2 launch Shortcut. While the iCloud sharing link
-  /// is not configured yet, fall back to Apple's official create-shortcut
-  /// URL so the user can create/duplicate the Shortcut without leaving the
-  /// NeoStation setup flow.
+  /// Opens the shared ARMSX2 Shortcut installer.
   static Future<bool> openArmsx2ShortcutInstaller() async {
     if (!Platform.isIOS) return false;
 
@@ -61,7 +54,7 @@ class IosShortcutJitLaunchService {
     }
   }
 
-  /// Opens Apple's import sheet for the shared MeloNX Shortcut.
+  /// Opens the shared MeloNX Shortcut installer.
   static Future<bool> openMeloNXShortcutInstaller() async {
     if (!Platform.isIOS || !hasMeloNXShortcutInstaller) return false;
 
@@ -78,9 +71,9 @@ class IosShortcutJitLaunchService {
     }
   }
 
-  /// Runs an installed Shortcut and passes an emulator game deeplink as text
-  /// input. The Shortcut owns the foreground sequence so StikDebug can finish
-  /// enabling JIT before it opens the game URL.
+  /// Runs an installed Shortcut with an emulator game deeplink as text input.
+  /// The Shortcut keeps control while StikDebug enables JIT, then opens the
+  /// game URL.
   static Future<bool> run({
     required String shortcutName,
     required String input,
