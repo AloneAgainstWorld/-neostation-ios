@@ -3,7 +3,14 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:video_player/video_player.dart';
+import '../../utils/image_utils.dart';
 
+/// Renders animated background media from the local filesystem.
+///
+/// GIFs keep NeoStation's shader-backed frame renderer. Supported videos
+/// (MP4/M4V/MOV) use video_player, autoplay silently, loop indefinitely and
+/// honour the same [BoxFit] contract as GIF backgrounds.
 class ShaderGifWidget extends StatefulWidget {
   final String imagePath;
   final BoxFit fit;
@@ -19,7 +26,7 @@ class ShaderGifWidget extends StatefulWidget {
 }
 
 class _ShaderGifWidgetState extends State<ShaderGifWidget>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   ui.FragmentProgram? _program;
   List<ui.Image> _frames = [];
   List<Duration> _frameDurations = [];
@@ -29,22 +36,38 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
   Duration _elapsedSinceStart = Duration.zero;
   Duration _lastTick = Duration.zero;
 
+  VideoPlayerController? _videoController;
+  bool _videoReady = false;
+
   @override
   void initState() {
     super.initState();
-    _loadShader();
-    _loadGif();
+    WidgetsBinding.instance.addObserver(this);
+    _loadMedia();
   }
 
   @override
   void didUpdateWidget(covariant ShaderGifWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.imagePath != widget.imagePath) {
-      _loadGif();
+      _loadMedia();
     }
   }
 
+  Future<void> _loadMedia() async {
+    if (ImageUtils.isVideo(widget.imagePath)) {
+      await _clearGif();
+      await _loadVideo();
+      return;
+    }
+
+    await _clearVideo();
+    await _loadShader();
+    await _loadGif();
+  }
+
   Future<void> _loadShader() async {
+    if (_program != null) return;
     try {
       final program = await ui.FragmentProgram.fromAsset(
         'assets/shaders/gif_player.frag',
@@ -59,12 +82,65 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
     }
   }
 
-  Future<void> _loadGif() async {
+  Future<void> _loadVideo() async {
+    final path = widget.imagePath;
+    final file = File(path);
+    if (!await file.exists()) return;
+
+    await _clearVideo();
+    final controller = VideoPlayerController.file(
+      file,
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
+    _videoController = controller;
+
+    try {
+      await controller.initialize();
+      if (!mounted || _videoController != controller || widget.imagePath != path) {
+        await controller.dispose();
+        return;
+      }
+      await controller.setLooping(true);
+      await controller.setVolume(0.0);
+      await controller.play();
+      if (mounted && _videoController == controller) {
+        setState(() => _videoReady = true);
+      }
+    } catch (e) {
+      debugPrint('Error loading background video "$path": $e');
+      if (_videoController == controller) {
+        _videoController = null;
+      }
+      await controller.dispose();
+      if (mounted) setState(() => _videoReady = false);
+    }
+  }
+
+  Future<void> _clearVideo() async {
+    final controller = _videoController;
+    _videoController = null;
+    _videoReady = false;
+    if (controller != null) {
+      try {
+        await controller.dispose();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _clearGif() async {
     _ticker?.stop();
-    for (var f in _frames) {
-      f.dispose();
+    _ticker?.dispose();
+    _ticker = null;
+    for (final frame in _frames) {
+      frame.dispose();
     }
     _frames = [];
+    _frameDurations = [];
+    _currentFrameIndex = 0;
+  }
+
+  Future<void> _loadGif() async {
+    await _clearGif();
 
     final file = File(widget.imagePath);
     if (!await file.exists()) return;
@@ -72,24 +148,23 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
     try {
       final bytes = await file.readAsBytes();
 
-      // First pass: Just to get the logical size
+      // First pass: get the logical source size.
       final initialCodec = await ui.instantiateImageCodec(bytes);
       final firstFrame = await initialCodec.getNextFrame();
       final int logicalWidth = firstFrame.image.width;
       final int logicalHeight = firstFrame.image.height;
+      firstFrame.image.dispose();
       initialCodec.dispose();
 
       if (logicalWidth == 0) return;
 
-      // Calculate target dimensions for efficiency (W=250 approx)
+      // Decode composed frames at a modest width. Supplying both dimensions
+      // avoids delta-frame offset artefacts while keeping card memory bounded.
       const double targetWidthBase = 250.0;
       final double scale = targetWidthBase / logicalWidth;
       final int cellWidth = targetWidthBase.toInt();
       final int cellHeight = (logicalHeight * scale).toInt();
 
-      // Second pass: Use BOTH targetWidth and targetHeight.
-      // THIS IS KEY: Providing both forces Skia to return full-size composed frames
-      // at exactly this size, solving all delta/offset issues.
       final codec = await ui.instantiateImageCodec(
         bytes,
         targetWidth: cellWidth,
@@ -107,13 +182,17 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
       }
       codec.dispose();
 
-      if (mounted) {
+      if (mounted && !ImageUtils.isVideo(widget.imagePath)) {
         setState(() {
           _frames = decodedFrames;
           _frameDurations = durations;
           _currentFrameIndex = 0;
         });
         _startAnimation();
+      } else {
+        for (final frame in decodedFrames) {
+          frame.dispose();
+        }
       }
     } catch (e) {
       debugPrint('Error loading GIF: $e');
@@ -170,16 +249,65 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = _videoController;
+    if (controller == null || !_videoReady) return;
+
+    if (state == AppLifecycleState.resumed) {
+      unawaited(controller.play());
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(controller.pause());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    final controller = _videoController;
+    _videoController = null;
+    if (controller != null) unawaited(controller.dispose());
     _ticker?.dispose();
-    for (var f in _frames) {
-      f.dispose();
+    for (final frame in _frames) {
+      frame.dispose();
     }
     super.dispose();
   }
 
+  Widget _buildVideo() {
+    final controller = _videoController;
+    if (!_videoReady || controller == null || !controller.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    final size = controller.value.size;
+    if (size.width <= 0 || size.height <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    return ClipRect(
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: widget.fit,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: VideoPlayer(controller),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (ImageUtils.isVideo(widget.imagePath)) {
+      return _buildVideo();
+    }
+
     if (_program == null || _frames.isEmpty) {
       return const SizedBox.shrink();
     }

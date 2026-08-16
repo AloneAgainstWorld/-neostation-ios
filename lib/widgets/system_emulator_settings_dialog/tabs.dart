@@ -189,13 +189,13 @@ extension _Tabs on _SystemEmulatorSettingsDialogState {
         if (!mounted) return;
         pickedPath = await TvDirectoryPicker.showFilePicker(
           context,
-          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+          extensions: ImageUtils.backgroundExtensions,
         );
       } else {
         final result = await FilePicker.pickFiles(
           type: FileType.custom,
-          allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'],
-          dialogTitle: 'Select Background Image',
+          allowedExtensions: ImageUtils.backgroundExtensions,
+          dialogTitle: 'Select Background Media',
           lockParentWindow: true,
         );
         pickedPath = result?.files.single.path;
@@ -205,6 +205,7 @@ extension _Tabs on _SystemEmulatorSettingsDialogState {
 
       final originalFile = File(pickedPath);
       if (!originalFile.existsSync()) return;
+      if (!ImageUtils.isSupportedBackground(originalFile.path)) return;
 
       final extension = path.extension(originalFile.path);
       const suffix = '_background';
@@ -220,8 +221,11 @@ extension _Tabs on _SystemEmulatorSettingsDialogState {
       // Copy file
       await originalFile.copy(targetPath);
 
-      // Evict from cache to ensure immediate UI update
-      await FileImage(File(targetPath)).evict();
+      // Evict bitmap media from cache to ensure immediate UI update. Video is
+      // managed by VideoPlayerController and must never enter the image cache.
+      if (!ImageUtils.isVideo(targetPath)) {
+        await FileImage(File(targetPath)).evict();
+      }
 
       // Nuclear option: Clear global image cache to force reload
       PaintingBinding.instance.imageCache.clear();

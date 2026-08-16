@@ -10,6 +10,13 @@ part of '../my_systems_grid.dart';
 /// the host [rebuild] bridge (`State.setState` is `@protected` and can't be invoked
 /// from an extension).
 extension _ThemeBackground on _SystemCardGridViewState {
+  bool _isVideoBackground(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.m4v') ||
+        lower.endsWith('.mov');
+  }
+
   // When secondary display signals it's active (startup or reconnect),
   // immediately push current system state so default logo never shows.
   void _onSecondaryStateChanged() {
@@ -81,7 +88,9 @@ extension _ThemeBackground on _SystemCardGridViewState {
           }
         }
         final customBg = sys.customBackgroundPath;
-        if (customBg != null && customBg.isNotEmpty) {
+        if (customBg != null &&
+            customBg.isNotEmpty &&
+            !_isVideoBackground(customBg)) {
           final file = File(customBg);
           if (file.existsSync()) {
             precacheImage(ResizeImage(FileImage(file), width: 1024), context);
@@ -89,15 +98,19 @@ extension _ThemeBackground on _SystemCardGridViewState {
         }
       } else {
         final customBg = sys.customBackgroundPath;
-        if (customBg != null && customBg.isNotEmpty) {
+        if (customBg != null &&
+            customBg.isNotEmpty &&
+            !_isVideoBackground(customBg)) {
           final file = File(customBg);
           if (file.existsSync()) {
             precacheImage(ResizeImage(FileImage(file), width: 512), context);
           }
-        } else {
+        } else if (customBg == null || customBg.isEmpty) {
           final folderName = sys.primaryFolderName ?? sys.folderName ?? '';
           final themeBg = _themeBackgrounds[folderName];
-          if (themeBg != null && themeBg.isNotEmpty) {
+          if (themeBg != null &&
+              themeBg.isNotEmpty &&
+              !_isVideoBackground(themeBg)) {
             final file = File(themeBg);
             if (file.existsSync()) {
               precacheImage(ResizeImage(FileImage(file), width: 512), context);

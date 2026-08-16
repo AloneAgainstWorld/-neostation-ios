@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../services/neo_assets_service.dart';
 import '../repositories/config_repository.dart';
@@ -10,6 +11,8 @@ final _log = LoggerService.instance;
 /// Handles theme discovery, batch downloading of assets, and persistence of the
 /// active theme selection. Uses [NeoAssetsService] for network and cache I/O.
 class NeoAssetsProvider extends ChangeNotifier {
+  static const List<String> _videoBackgroundExtensions = ['mp4', 'm4v', 'mov'];
+
   /// List of available themes fetched from the remote repository.
   List<NeoAssetsTheme> _themes = [];
 
@@ -81,8 +84,9 @@ class NeoAssetsProvider extends ChangeNotifier {
 
   /// Downloads all required assets for the specified theme and applies it.
   ///
-  /// Calculates a download plan to identify missing or outdated assets and
-  /// performs a batch download with real-time progress updates.
+  /// Existing WebP/GIF packs keep the normal bulk path. If a system has no
+  /// image/GIF background, NeoStation then probes the supported video containers
+  /// so a theme pack may provide `<system>.mp4`, `.m4v` or `.mov` instead.
   Future<void> downloadAndApplyTheme(
     String themeFolder,
     List<String> systemFolderNames,
@@ -121,6 +125,23 @@ class NeoAssetsProvider extends ChangeNotifier {
         }
       }
 
+      // The upstream asset service historically probes only WebP/GIF. Keep that
+      // fast path untouched and add video as a fallback so existing theme packs
+      // do not change behaviour or precedence.
+      for (final system in plan.systemsToDownload) {
+        final imagePath = NeoAssetsService.resolveBackgroundPathSync(
+          themeFolder,
+          system,
+        );
+        if (imagePath != null && File(imagePath).existsSync()) continue;
+
+        if (!_downloading) {
+          _downloading = true;
+          notifyListeners();
+        }
+        await _getCachedVideoBackground(themeFolder, system);
+      }
+
       if (plan.remoteMetadata != null) {
         await NeoAssetsService.writeLocalThemeMetadata(
           themeFolder,
@@ -139,23 +160,70 @@ class NeoAssetsProvider extends ChangeNotifier {
     }
   }
 
+  Future<String?> _getCachedVideoBackground(
+    String themeFolder,
+    String systemFolderName,
+  ) async {
+    for (final ext in _videoBackgroundExtensions) {
+      final localPath = await NeoAssetsService.backgroundCachePath(
+        themeFolder,
+        systemFolderName,
+        ext: ext,
+      );
+      if (await File(localPath).exists()) return localPath;
+
+      final url = NeoAssetsService.getBackgroundUrl(
+        themeFolder,
+        systemFolderName,
+        ext: ext,
+      );
+      final result = await NeoAssetsService.downloadAndCacheAsset(url, localPath);
+      if (result != null) return result;
+    }
+    return null;
+  }
+
+  String? _resolveCachedVideoBackgroundSync(
+    String themeFolder,
+    String systemFolderName,
+  ) {
+    for (final ext in _videoBackgroundExtensions) {
+      final localPath = NeoAssetsService.backgroundCachePathSync(
+        themeFolder,
+        systemFolderName,
+        ext: ext,
+      );
+      if (localPath != null && File(localPath).existsSync()) return localPath;
+    }
+    return null;
+  }
+
   /// Resolves the absolute path to a system background within the active theme.
   Future<String?> getBackgroundForSystem(String systemFolderName) async {
     if (!hasActiveTheme) return null;
-    return NeoAssetsService.getCachedBackground(
+    final image = await NeoAssetsService.getCachedBackground(
       _activeThemeFolder,
       systemFolderName,
     );
+    if (image != null) return image;
+    return _getCachedVideoBackground(_activeThemeFolder, systemFolderName);
   }
 
   /// Synchronous variant for resolving background paths.
-  /// Checks the cache for both .webp and .gif formats.
+  /// Preserves WebP/GIF precedence, then falls back to cached video media.
   String? getBackgroundForSystemSync(String systemFolderName) {
     if (!hasActiveTheme) return null;
-    return NeoAssetsService.resolveBackgroundPathSync(
+    final image = NeoAssetsService.resolveBackgroundPathSync(
       _activeThemeFolder,
       systemFolderName,
     );
+    if (image != null && File(image).existsSync()) return image;
+
+    return _resolveCachedVideoBackgroundSync(
+          _activeThemeFolder,
+          systemFolderName,
+        ) ??
+        image;
   }
 
   /// Logos are no longer loaded from remote themes.
