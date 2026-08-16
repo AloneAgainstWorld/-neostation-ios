@@ -1,4 +1,4 @@
-himport 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:neostation/l10n/app_locale.dart';
