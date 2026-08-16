@@ -33,8 +33,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed .
+      - name: Show formatting diff
+        run: |
+          dart format .
+          git diff -- lib/screens/scraper_screen/ios_scraper_login_screen.dart
+          exit 1
 
       - name: Analyze project
         run: flutter analyze
