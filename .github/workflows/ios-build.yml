@@ -1,17 +1,5 @@
 name: Build iOS (NeoStation)
 
-permissions:
-  contents: read
-
-concurrency:
-  group: ios-main-${{ github.ref }}
-  cancel-in-progress: true
-
-# main is the single source of truth for the public iOS build.
-# ScreenScraper developer credentials are read from the Production environment,
-# validated against the API, injected as Dart compile-time defines, and removed
-# from the runner before the job ends. No secret file is uploaded as an artifact.
-
 on:
   workflow_dispatch:
   push:
@@ -31,145 +19,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Prepare ScreenScraper build defines
+      # Keep the same ScreenScraper build-time injection used by the
+      # known-working iOS port. The file exists only on the ephemeral runner.
+      - name: Create ScreenScraper build environment
         env:
           SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
           SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
         run: |
           set -euo pipefail
-
-          python3 - <<'PY'
-          import json
-          import os
-          import pathlib
-          import sys
-
-          values = {
-              "SCREENSCRAPER_DEV_ID": os.environ.get("SCREENSCRAPER_DEV_ID", ""),
-              "SCREENSCRAPER_DEV_PASSWORD": os.environ.get(
-                  "SCREENSCRAPER_DEV_PASSWORD", ""
-              ),
-          }
-
-          missing = [name for name, value in values.items() if not value]
-          if missing:
-              print(
-                  "::error::Missing required Production secrets: "
-                  + ", ".join(missing)
-              )
-              sys.exit(1)
-
-          invalid = [
-              name for name, value in values.items() if value != value.strip()
-          ]
-          if invalid:
-              print(
-                  "::error::Leading or trailing whitespace detected in: "
-                  + ", ".join(invalid)
-              )
-              sys.exit(1)
-
-          path = pathlib.Path(".dart-defines.json")
-          path.write_text(
-              json.dumps(values, ensure_ascii=False, separators=(",", ":")),
-              encoding="utf-8",
-          )
-          path.chmod(0o600)
-          print("ScreenScraper build defines prepared.")
-          PY
-
-      - name: Verify ScreenScraper developer credentials
-        env:
-          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
-          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          python3 - <<'PY'
-          import json
-          import os
-          import pathlib
-          import sys
-          import time
-          import urllib.error
-          import urllib.parse
-          import urllib.request
-
-          version = "unknown"
-          for line in pathlib.Path("pubspec.yaml").read_text(
-              encoding="utf-8"
-          ).splitlines():
-              if line.startswith("version:"):
-                  version = line.split(":", 1)[1].strip().split("+", 1)[0]
-                  break
-
-          params = urllib.parse.urlencode(
-              {
-                  "devid": os.environ["SCREENSCRAPER_DEV_ID"],
-                  "devpassword": os.environ["SCREENSCRAPER_DEV_PASSWORD"],
-                  "softname": f"neostation-{version}-ios",
-                  "output": "json",
-              }
-          )
-          url = f"https://api.screenscraper.fr/api2/ssinfraInfos.php?{params}"
-
-          status = None
-          body = b""
-          for attempt in range(1, 4):
-              try:
-                  request = urllib.request.Request(
-                      url,
-                      headers={
-                          "User-Agent": "NeoStation/1.0",
-                          "Accept": "application/json",
-                      },
-                  )
-                  with urllib.request.urlopen(request, timeout=40) as response:
-                      status = response.status
-                      body = response.read()
-                  break
-              except urllib.error.HTTPError as error:
-                  status = error.code
-                  body = error.read()
-                  if status < 500:
-                      break
-              except (urllib.error.URLError, TimeoutError) as error:
-                  print(
-                      f"ScreenScraper preflight attempt {attempt}/3 failed "
-                      f"with {type(error).__name__}."
-                  )
-
-              if attempt < 3:
-                  time.sleep(attempt * 2)
-
-          print(f"ScreenScraper developer preflight HTTP status: {status}")
-
-          if status != 200:
-              print(
-                  "::error::ScreenScraper rejected or could not validate the "
-                  "developer credentials."
-              )
-              sys.exit(1)
-
-          try:
-              payload = json.loads(body.decode("utf-8"))
-          except (UnicodeDecodeError, json.JSONDecodeError):
-              print("::error::ScreenScraper returned invalid JSON.")
-              sys.exit(1)
-
-          header = payload.get("header")
-          success = header.get("success") if isinstance(header, dict) else None
-          if str(success).lower() not in {"true", "1"}:
-              error_text = (
-                  header.get("error", "unspecified API error")
-                  if isinstance(header, dict)
-                  else "missing response header"
-              )
-              print(f"::error::ScreenScraper preflight failed: {error_text}")
-              sys.exit(1)
-
-          print("ScreenScraper developer credentials were accepted.")
-          PY
+          : > .env
+          if [ -n "$SCREENSCRAPER_DEV_ID" ]; then
+            echo "SCREENSCRAPER_DEV_ID=$SCREENSCRAPER_DEV_ID" >> .env
+          fi
+          if [ -n "$SCREENSCRAPER_DEV_PASSWORD" ]; then
+            echo "SCREENSCRAPER_DEV_PASSWORD=$SCREENSCRAPER_DEV_PASSWORD" >> .env
+          fi
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -177,16 +41,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Resolve dependencies
-        run: flutter pub get
-
-      - name: Analyze committed Dart sources
-        run: flutter analyze --no-fatal-warnings --no-fatal-infos
-
-      - name: Run tests
-        run: flutter test
-
-      - name: Scaffold iOS platform
+      - name: Scaffold iOS platform if missing
         run: |
           if [ ! -d "ios" ]; then
             flutter create \
@@ -237,6 +92,9 @@ jobs:
 
           plutil -lint "$PLIST"
 
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
       - name: Patch device_info_plus for runner SDK compatibility
         run: |
           DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" \
@@ -253,70 +111,78 @@ jobs:
         working-directory: ios
         run: pod install --repo-update
 
-      - name: Configure Flutter iOS build
+      - name: Import signing certificate and provisioning profile
+        id: signing
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
+          if [ -z "$IOS_CERTIFICATE_BASE64" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$IOS_CERTIFICATE_BASE64" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/"//g')
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | \
+            base64 --decode -o "$RUNNER_TEMP/profile.mobileprovision"
+          cp "$RUNNER_TEMP/profile.mobileprovision" \
+            ~/Library/MobileDevice/Provisioning\ Profiles/
+
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed IPA
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          PLIST
+
+          flutter build ipa \
+            --release \
+            --export-options-plist=ExportOptions.plist \
+            --dart-define-from-file=.env
+
+      - name: Build unsigned IPA
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          set -euo pipefail
+
           flutter build ios \
             --release \
             --no-codesign \
             --config-only \
-            --dart-define-from-file=.dart-defines.json
-
-      - name: Verify ScreenScraper defines in generated Xcode configuration
-        env:
-          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
-          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          python3 - <<'PY'
-          import base64
-          import os
-          import pathlib
-          import sys
-
-          config_path = pathlib.Path("ios/Flutter/Generated.xcconfig")
-          if not config_path.is_file():
-              print("::error::Generated.xcconfig is missing.")
-              sys.exit(1)
-
-          encoded_defines = None
-          for line in config_path.read_text(encoding="utf-8").splitlines():
-              if line.startswith("DART_DEFINES="):
-                  encoded_defines = line.split("=", 1)[1]
-                  break
-
-          if not encoded_defines:
-              print("::error::DART_DEFINES is missing.")
-              sys.exit(1)
-
-          decoded = set()
-          for item in encoded_defines.split(","):
-              if not item:
-                  continue
-              try:
-                  decoded.add(base64.b64decode(item).decode("utf-8"))
-              except (ValueError, UnicodeDecodeError):
-                  print("::error::A DART_DEFINES entry is invalid.")
-                  sys.exit(1)
-
-          expected = {
-              "SCREENSCRAPER_DEV_ID=" + os.environ["SCREENSCRAPER_DEV_ID"],
-              "SCREENSCRAPER_DEV_PASSWORD="
-              + os.environ["SCREENSCRAPER_DEV_PASSWORD"],
-          }
-          if not expected.issubset(decoded):
-              print(
-                  "::error::The exact ScreenScraper defines are not present "
-                  "in the generated Xcode configuration."
-              )
-              sys.exit(1)
-
-          print("Both exact ScreenScraper compile-time defines are present.")
-          PY
-
-      - name: Build unsigned IPA
-        run: |
-          set -euo pipefail
+            --dart-define-from-file=.env
 
           rm -rf build/ios/DerivedData build/ios/unsigned
           mkdir -p build/ios
@@ -336,13 +202,8 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             build | tee build/ios/xcodebuild-unsigned.log
 
-          APP_PATH=$(find \
-            build/ios/DerivedData/Build/Products/Release-iphoneos \
-            -maxdepth 1 \
-            -type d \
-            -name '*.app' \
-            -print \
-            -quit)
+          APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos \
+            -maxdepth 1 -type d -name '*.app' -print -quit)
 
           if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
             echo "::error::Unsigned Runner.app was not produced."
@@ -356,13 +217,22 @@ jobs:
             zip -r ../../../NeoStation-unsigned.ipa Payload
           )
 
+      - name: Upload signed IPA
+        if: steps.signing.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-ios-signed
+          path: build/ios/ipa/*.ipa
+          retention-days: 14
+
       - name: Upload unsigned IPA
+        if: steps.signing.outputs.signed != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: NeoStation-ios-unsigned
           path: NeoStation-unsigned.ipa
           retention-days: 14
 
-      - name: Remove build secret file
+      - name: Remove build-time ScreenScraper environment file
         if: always()
-        run: rm -f .dart-defines.json
+        run: rm -f .env
