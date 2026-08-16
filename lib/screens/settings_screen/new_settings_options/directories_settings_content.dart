@@ -69,11 +69,9 @@ class DirectoriesSettingsContentState
   String? _currentUserDataPath;
   bool _isLoading = true;
 
-  // iOS-only: live-linking an external folder (e.g. RetroArch's) via a
-  // persisted security-scoped bookmark, see external_folder_access. Holds
-  // the bookmark key currently being picked ('retroarch', 'armsx2', ...) so
-  // only that emulator's own button shows a spinner, rather than every card
-  // freezing at once as it would with a single shared boolean.
+  // iOS-only: live-linking RetroArch's external folder via a persisted
+  // security-scoped bookmark. ARMSX2 and MeloNX are sync-only and never
+  // expose a folder picker in this screen.
   String? _linkingFolderKey;
 
   // Migration progress state (shown inline, no dialog).
@@ -409,7 +407,6 @@ class DirectoriesSettingsContentState
       );
     } else if (result != null) {
       if (!result.gamelistsDirFound) {
-        // No gamelists/ dir — the picked folder isn't an ES-DE installation.
         GlobalNotificationService().update(
           id: notificationId,
           message: localeEsdeImportNotEsdeFolder,
@@ -417,7 +414,6 @@ class DirectoriesSettingsContentState
           progress: null,
         );
       } else if (result.gamesImported == 0 && result.systemsMatched == 0) {
-        // Valid ES-DE folder, but nothing here mapped to a NeoStation system.
         GlobalNotificationService().update(
           id: notificationId,
           message: localeEsdeImportNothingFound,
@@ -438,10 +434,6 @@ class DirectoriesSettingsContentState
     }
 
     if (!mounted) return;
-    // Only surface the result summary for an import that actually ran against a
-    // real ES-DE folder and touched something — not for an exception, a
-    // "not an ES-DE folder" bail-out, or a matched-nothing no-op (those get a
-    // notification instead, so a zeroed summary box would just be noise).
     final showSummary =
         error == null &&
         result != null &&
@@ -467,9 +459,6 @@ class DirectoriesSettingsContentState
 
     try {
       final cleared = await EsdeImportService.reset();
-      // Fully disconnect ES-DE: also clear the selected folder so the section
-      // returns to its initial "Select ES-DE Folder" state. Goes through the
-      // provider (not the DB directly) so the cached config + UI update too.
       if (mounted) {
         await context.read<SqliteConfigProvider>().updateEsdeFolderPath('');
       }
@@ -501,14 +490,8 @@ class DirectoriesSettingsContentState
   // iOS: link + sync with RetroArch
   // ---------------------------------------------------------------------------
 
-  /// Live-links an external folder (e.g. RetroArch's) via a persisted
-  /// security-scoped bookmark instead of copying its contents in. See
-  /// ExternalFolderAccess and ConfigService.linkedExternalFolderPath.
-  /// Links a folder for the emulator identified by [bookmarkKey]. Each
-  /// emulator gets its own security-scoped bookmark natively, so linking
-  /// ARMSX2's folder never invalidates RetroArch's (the plugin originally
-  /// held a single global bookmark, which made two linked emulators
-  /// impossible).
+  /// Live-links RetroArch's external folder via a persisted security-scoped
+  /// bookmark instead of copying its contents in.
   Future<void> _linkExternalFolder({
     required String bookmarkKey,
     required String successMessage,
@@ -522,9 +505,6 @@ class DirectoriesSettingsContentState
       );
       if (selected == null || !mounted) return;
 
-      // iOS uses one shared ROM source for RetroArch and ARMSX2. Both cards
-      // therefore update the same persisted bookmark/path instead of creating
-      // a second ROM root that would be scanned twice.
       ConfigService.linkedExternalFolderPath = selected;
 
       final configProvider = Provider.of<SqliteConfigProvider>(
@@ -558,12 +538,6 @@ class DirectoriesSettingsContentState
     }
   }
 
-  /// Triggers RetroArch's library-export protocol
-  /// (retroarch://library?scheme=neostation). RetroArch calls back
-  /// asynchronously with its full game list — see
-  /// RetroArchLibraryService.handleIncomingUri, wired up in main.dart.
-  /// This just opens the request; the actual sync completing happens in
-  /// the background and there's no reliable callback point to await here.
   Future<void> _syncWithRetroArch() async {
     final opened = await RetroArchLibraryService.requestLibrarySync();
     if (!mounted) return;
@@ -576,10 +550,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Triggers ARMSX2 iOS's library-export protocol. ARMSX2 returns to
-  /// NeoStation through neostation://armsx2 with a base64url JSON payload.
-  /// Armsx2LibraryService imports that payload directly into NeoStation's PS2
-  /// catalogue, so ARMSX2 and RetroArch can share the same ROM folder.
   Future<void> _syncWithArmsx2() async {
     final opened = await Armsx2LibraryService.requestLibrarySync();
     if (!mounted) return;
@@ -592,9 +562,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Opens the one-time Apple Shortcut setup used for ARMSX2 direct
-  /// launching. Once the shared iCloud link is published this opens the
-  /// ready-made Shortcut; until then the service opens the Shortcut editor.
   Future<void> _configureArmsx2Launch() async {
     final opened =
         await IosShortcutJitLaunchService.openArmsx2ShortcutInstaller();
@@ -607,10 +574,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Triggers MeloNX's alternate-frontend library export. MeloNX returns a
-  /// base64url JSON GameScheme array through neostation://melonx. The service
-  /// imports it directly into NeoStation's Nintendo Switch catalogue; no ROM
-  /// folder scan or shared filesystem access is required.
   Future<void> _syncWithMeloNX() async {
     final opened = await MelonxLibraryService.requestLibrarySync();
     if (!mounted) return;
@@ -623,9 +586,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Opens the one-time Apple Shortcut installer used for MeloNX direct
-  /// launching. The user still confirms the import in Shortcuts; after that,
-  /// NeoStation can run the shortcut automatically for every game launch.
   Future<void> _configureMeloNXLaunch() async {
     final opened =
         await IosShortcutJitLaunchService.openMeloNXShortcutInstaller();
@@ -638,12 +598,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Cards shown only on iOS, one per emulator NeoStation can hand games
-  /// to. Rendered as non-navigable rows at the top of the directory list
-  /// (see build) rather than as entries in [_directoryItems] — that list
-  /// drives index-sensitive section-header placement ([_esdeSectionStart]
-  /// etc.) that new entries could easily throw off without a way to
-  /// compile-check the change end to end.
   List<Widget> _iosEmulatorCards(ThemeData theme) {
     if (!Platform.isIOS) return const [];
 
@@ -654,8 +608,6 @@ class DirectoriesSettingsContentState
     ];
   }
 
-  /// RetroArch: link its folder, then sync its library so games launch
-  /// straight into it with one tap via its URL scheme.
   Widget _buildIOSRetroArchSection(ThemeData theme) {
     final isLinked = ConfigService.linkedExternalFolderPath != null;
     final hasSynced = RetroArchLibraryService.hasSyncedLibrary;
@@ -693,31 +645,23 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// ARMSX2 (PS2) uses the exact same ROM source as RetroArch/NeoStation.
-  /// There is deliberately no second bookmark: Sync imports ARMSX2's exported
-  /// library into NeoStation, including PS2 games that the normal folder-based
-  /// detector cannot see because they are not inside a `ps2/` subfolder.
+  /// ARMSX2 is sync-only, like MeloNX. Its exported library is authoritative
+  /// for PS2 discovery and does not require a user-selected folder.
   Widget _buildIOSArmsx2Section(ThemeData theme) {
-    final isLinked = ConfigService.linkedExternalFolderPath != null;
     final hasSynced = Armsx2LibraryService.hasSyncedLibrary;
-
-    final String statusText;
-    if (!isLinked) {
-      statusText = AppLocale.iosArmsx2StatusNeedsLink.getString(context);
-    } else if (!hasSynced) {
-      statusText = AppLocale.iosArmsx2StatusNeedsSync.getString(context);
-    } else {
-      statusText = AppLocale.iosArmsx2StatusSynced.getString(context);
-    }
+    final statusText = hasSynced
+        ? AppLocale.iosArmsx2StatusSynced.getString(context)
+        : AppLocale.iosArmsx2StatusNeedsSync.getString(context);
 
     return _buildIOSEmulatorCard(
       theme: theme,
       name: 'ARMSX2',
       icon: Symbols.stadia_controller_rounded,
       statusText: statusText,
-      isLinked: isLinked,
+      isLinked: true,
       bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
-      successMessage: AppLocale.iosArmsx2LinkSuccess.getString(context),
+      successMessage: '',
+      showLinkButton: false,
       trailingAction: Row(
         children: [
           Expanded(
@@ -728,8 +672,8 @@ class DirectoriesSettingsContentState
                 icon: Icon(Symbols.bolt_rounded, size: 20.r),
                 label: Text(
                   hasSynced
-                ? AppLocale.iosEmuResync.getString(context)
-                : AppLocale.iosEmuSync.getString(context),
+                      ? AppLocale.iosEmuResync.getString(context)
+                      : AppLocale.iosEmuSync.getString(context),
                   style: TextStyle(fontSize: 14.r),
                 ),
               ),
@@ -756,9 +700,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// MeloNX exports its own Nintendo Switch catalogue through a URL scheme,
-  /// so unlike RetroArch/ARMSX2 it does not need a linked ROM folder at all.
-  /// Sync alone imports the exported GameScheme JSON directly into NeoStation.
   Widget _buildIOSMeloNXSection(ThemeData theme) {
     final hasSynced = MelonxLibraryService.hasSyncedLibrary;
 
@@ -785,8 +726,8 @@ class DirectoriesSettingsContentState
                 icon: Icon(Symbols.bolt_rounded, size: 20.r),
                 label: Text(
                   hasSynced
-                ? AppLocale.iosEmuResync.getString(context)
-                : AppLocale.iosEmuSync.getString(context),
+                      ? AppLocale.iosEmuResync.getString(context)
+                      : AppLocale.iosEmuSync.getString(context),
                   style: TextStyle(fontSize: 14.r),
                 ),
               ),
@@ -816,8 +757,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// Shared card shell for an external emulator: name, status line, an
-  /// optional folder-link button, and an optional extra action (Sync).
   Widget _buildIOSEmulatorCard({
     required ThemeData theme,
     required String name,
@@ -830,8 +769,6 @@ class DirectoriesSettingsContentState
     Widget? trailingAction,
   }) {
     final isLinkingThis = _linkingFolderKey == bookmarkKey;
-    // Any pick in flight blocks the others: iOS presents one document
-    // picker at a time, and a second request while one is open is dropped.
     final isAnyLinkInFlight = _linkingFolderKey != null;
 
     final linkButton = SizedBox(
@@ -949,8 +886,6 @@ class DirectoriesSettingsContentState
           }
         }
       } else if (Platform.isIOS) {
-        // Same internal-folder approach as the setup wizard — no external
-        // picker on iOS, see ConfigService.getDefaultIOSRomsFolder().
         selected = await ConfigService.getDefaultIOSRomsFolder();
         if (selected != null &&
             configProvider.config.romFolders.contains(selected)) {
@@ -1008,10 +943,6 @@ class DirectoriesSettingsContentState
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // User data location picker + migration
-  // ---------------------------------------------------------------------------
-
   Future<void> _selectUserDataLocation() async {
     try {
       String? selected;
@@ -1022,9 +953,6 @@ class DirectoriesSettingsContentState
         if (isTV) {
           selected = await TvDirectoryPicker.show(context);
         } else {
-          // Regular Android: SAF picker → resolve to accessible path.
-          // On Android 15+, SD card volumes require app-specific external
-          // storage dirs; resolveAndroidUserDataPath handles this automatically.
           try {
             final uri = await PermissionService.requestFolderAccess();
             if (uri != null) {
@@ -1058,9 +986,6 @@ class DirectoriesSettingsContentState
       final current = _currentUserDataPath;
       if (current == null || selected == current) return;
 
-      // Relocating actually MOVES data (copy + delete of NeoStation's own
-      // files), so confirm the source → destination move explicitly, noting
-      // when the destination already contains files.
       final entryCount = await UserDataLocationService.countDirectoryEntries(
         selected,
       );
@@ -1115,9 +1040,6 @@ class DirectoriesSettingsContentState
         },
       );
       await UserDataLocationService.setCustomPath(destPath);
-      // Reinforce the SharedPreferences setup flag so that if the new path
-      // (e.g. SD card) is temporarily unavailable on next boot, the wizard
-      // is not shown again.
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(PermissionCheckWrapper.setupCompletedKey, true);
     } catch (e) {
@@ -1149,10 +1071,6 @@ class DirectoriesSettingsContentState
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Public interface for parent (gamepad delegation)
-  // ---------------------------------------------------------------------------
-
   int getItemCount() => _directoryItems.length;
 
   void selectItem(int index) {
@@ -1160,10 +1078,6 @@ class DirectoriesSettingsContentState
       _handleItemTap(_directoryItems[index]);
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
 
   Widget _buildMigrationProgress(ThemeData theme) {
     if (!_isMigrating) return const SizedBox.shrink();
@@ -1277,7 +1191,6 @@ class DirectoriesSettingsContentState
           ClipRRect(
             borderRadius: BorderRadius.circular(4.r),
             child: LinearProgressIndicator(
-              // null = indeterminate while system count not yet known
               value: provider.totalSystemsToScan > 0
                   ? provider.scanProgress
                   : null,
@@ -1338,30 +1251,18 @@ class DirectoriesSettingsContentState
             Expanded(
               child: Builder(
                 builder: (context) {
-                  // Precompute visual rows: either a section header or a
-                  // navigable item, so header insertion stays robust as the
-                  // ROM-folder count changes.
                   final visualRows = <Map<String, dynamic>>[];
 
-                  // The iOS emulator cards ride inside the list rather than
-                  // sitting pinned above it: two cards plus the title left
-                  // almost no room for the directory rows on a landscape
-                  // phone, and a fixed header can't scroll out of the way.
-                  // They're not navigable rows — like section headers, they
-                  // carry no 'nav' index, so gamepad indices still line up
-                  // 1:1 with _directoryItems.
                   for (final card in _iosEmulatorCards(theme)) {
                     visualRows.add({'card': card});
                   }
 
                   for (var i = 0; i < _directoryItems.length; i++) {
-                    // "ROM Directories" header before add_rom (nav index 2).
                     if (i == 2) {
                       visualRows.add({
                         'header': AppLocale.romDirectories.getString(context),
                       });
                     }
-                    // "ES-DE Import" header before the first ES-DE item.
                     if (i == _esdeSectionStart) {
                       visualRows.add({
                         'header': AppLocale.esdeImport.getString(context),
@@ -1555,13 +1456,11 @@ class DirectoriesSettingsContentState
                                         ),
                                     ],
                                   ),
-                                  // Show current ES-DE folder under its select item
                                   if (item['action'] == 'esde_select_folder' &&
                                       _esdePath.trim().isNotEmpty) ...[
                                     SizedBox(height: 6.r),
                                     _buildPathChip(theme, _esdePath),
                                   ],
-                                  // Show current path under user_data item
                                   if (isUserData &&
                                       _currentUserDataPath != null) ...[
                                     SizedBox(height: 6.r),

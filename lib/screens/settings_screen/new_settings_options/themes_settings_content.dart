@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:neostation/l10n/app_locale.dart';
+import 'package:neostation/l10n/custom_background_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:provider/provider.dart';
@@ -14,15 +15,15 @@ import 'package:neostation/widgets/theme_card.dart';
 import 'package:neostation/widgets/custom_notification.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/widgets/tv_directory_picker.dart';
+import 'package:neostation/widgets/shaders/shader_gif_widget.dart';
+import 'package:neostation/utils/image_utils.dart';
 import 'package:neostation/responsive.dart';
 import 'package:neostation/utils/gamepad_nav.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'settings_title.dart';
 
-/// A specialized content panel for selecting application color themes and visual themes.
-///
-/// Implements a responsive grid layout with hardware-mapped gamepad navigation
-/// (Up/Down/Left/Right) and real-time theme application via ThemeProvider.
+/// A specialized content panel for selecting application color themes and a
+/// global custom background independent from the color palette.
 class ThemesSettingsContent extends StatefulWidget {
   final bool isContentFocused;
   final int selectedContentIndex;
@@ -52,12 +53,11 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     _initializeKeys();
   }
 
-  /// Populates the key list based on the total number of available themes.
+  /// Native System Theme + Registered Theme Variants + Custom Background + Import.
   void _initializeKeys() {
     _itemKeys.clear();
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    // Total Items: Native System Theme + Registered Theme Variants + Import tile.
-    final count = themeProvider.getThemeList().length + 2;
+    final count = themeProvider.getThemeList().length + 3;
     for (int i = 0; i < count; i++) {
       _itemKeys.add(GlobalKey());
     }
@@ -69,17 +69,13 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     super.dispose();
   }
 
-  /// Resolves the total theme count.
   int getItemCount(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    // System theme + registered variants + Import tile.
-    return themeProvider.getThemeList().length + 2;
+    return themeProvider.getThemeList().length + 3;
   }
 
-  /// Dynamic Grid Resolution: Column count based on display geometry.
   int get _gridColumns => Responsive.getThemesCrossAxisCount(context);
 
-  /// Vertical Progression: Moves focus to the element above in the grid.
   void navigateUp() {
     final newIndex = GridNavUtils.navigateUp(
       currentIndex: widget.selectedContentIndex,
@@ -90,7 +86,6 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     _ensureSelectedItemVisible(newIndex);
   }
 
-  /// Vertical Progression: Moves focus to the element below in the grid.
   void navigateDown() {
     final newIndex = GridNavUtils.navigateDown(
       currentIndex: widget.selectedContentIndex,
@@ -101,12 +96,9 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     _ensureSelectedItemVisible(newIndex);
   }
 
-  /// Horizontal Progression: Moves focus left or exits to the master menu if at boundary.
   bool navigateLeft() {
     final currentCol = widget.selectedContentIndex % _gridColumns;
-    if (currentCol == 0) {
-      return true; // Boundary reached: Return focus to the master menu.
-    }
+    if (currentCol == 0) return true;
 
     final newIndex = GridNavUtils.navigateLeft(
       currentIndex: widget.selectedContentIndex,
@@ -118,7 +110,6 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     return false;
   }
 
-  /// Horizontal Progression: Moves focus to the next element on the right.
   void navigateRight() {
     final newIndex = GridNavUtils.navigateRight(
       currentIndex: widget.selectedContentIndex,
@@ -129,7 +120,6 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     _ensureSelectedItemVisible(newIndex);
   }
 
-  /// Orchestrates visual alignment to ensure the focused theme card is within the viewport.
   void _ensureSelectedItemVisible(int index) {
     if (index >= 0 && index < _itemKeys.length) {
       final context = _itemKeys[index].currentContext;
@@ -144,19 +134,19 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     }
   }
 
-  /// Persistence Protocol: Updates the active application theme.
   void selectItem(int index) async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final themes = themeProvider.getThemeList();
+    final customBackgroundIndex = themes.length + 1;
 
     if (index == 0) {
-      // Index 0: Native System/Dynamic theme resolution.
       await themeProvider.setTheme('system');
     } else if (index - 1 < themes.length) {
-      // Indices >0: Specific registered theme variants.
       await themeProvider.setTheme(themes[index - 1]['name']!);
+    } else if (index == customBackgroundIndex) {
+      await _pickCustomBackground();
+      return;
     } else {
-      // Last item: the "Import theme" tile.
       await _importTheme();
       return;
     }
@@ -164,8 +154,61 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     widget.onSelectionChanged?.call(index);
   }
 
-  /// Opens a file picker, imports the selected daisyUI theme JSON, and applies
-  /// it. Surfaces success/failure via [AppNotification].
+  Future<void> _pickCustomBackground() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    try {
+      String? filePath;
+
+      if (Platform.isAndroid && await PermissionService.isTelevision()) {
+        if (mounted) {
+          filePath = await TvDirectoryPicker.showFilePicker(
+            context,
+            extensions: ImageUtils.backgroundExtensions,
+          );
+        }
+      } else {
+        final result = await FilePicker.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ImageUtils.backgroundExtensions,
+          dialogTitle: CustomBackgroundLocale.title(context),
+        );
+        filePath = result?.files.single.path;
+      }
+
+      if (filePath == null) return;
+      await themeProvider.setCustomBackground(File(filePath));
+      if (!mounted) return;
+      setState(() {});
+      AppNotification.showNotification(
+        context,
+        CustomBackgroundLocale.updated(context),
+        type: NotificationType.success,
+      );
+    } catch (e) {
+      _log.e('Custom background selection failed: $e');
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          '$e',
+          type: NotificationType.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _clearCustomBackground() async {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    await themeProvider.clearCustomBackground();
+    if (!mounted) return;
+    setState(() {});
+    AppNotification.showNotification(
+      context,
+      CustomBackgroundLocale.removed(context),
+      type: NotificationType.info,
+    );
+  }
+
+  /// Opens a file picker, imports the selected daisyUI theme JSON, and applies it.
   Future<void> _importTheme() async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final pickerTitle = AppLocale.importTheme.getString(context);
@@ -173,7 +216,6 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
       String? filePath;
 
       if (Platform.isAndroid && await PermissionService.isTelevision()) {
-        // Android TV has no system file picker; use the in-app one.
         if (mounted) {
           filePath = await TvDirectoryPicker.showFilePicker(
             context,
@@ -228,20 +270,25 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     }
   }
 
-  /// Gamepad entry point: deletes the theme at [index] if it is a custom
-  /// (imported) one. No-op for built-ins, 'system', or the Import tile.
+  /// Gamepad entry point: deletes the custom background or an imported theme.
   void deleteFocusedTheme(int index) {
     if (index <= 0) return;
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final themes = themeProvider.getThemeList();
+    final customBackgroundIndex = themes.length + 1;
+
+    if (index == customBackgroundIndex) {
+      if (themeProvider.hasCustomBackground) _clearCustomBackground();
+      return;
+    }
+
     final themeIndex = index - 1;
-    if (themeIndex >= themes.length) return; // Import tile.
+    if (themeIndex >= themes.length) return;
     final t = themes[themeIndex];
     if (!themeProvider.isCustomTheme(t['name']!)) return;
     _deleteTheme(t['name']!, t['displayName']!);
   }
 
-  /// Confirms and deletes a user-imported theme.
   Future<void> _deleteTheme(String themeName, String displayName) async {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final confirmed = await ConfirmActionDialog.show(
@@ -263,7 +310,6 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
-    // Contextual Theme Model construction.
     final List<Map<String, String>> allThemes = [
       {
         'name': 'system',
@@ -272,8 +318,11 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
       ...themeProvider.getThemeList(),
     ];
 
-    // Synchronization of GlobalKeys with the dynamic theme list (+1 = Import tile).
-    if (_itemKeys.length != allThemes.length + 1) {
+    final customBackgroundIndex = allThemes.length;
+    final importIndex = allThemes.length + 1;
+    final itemCount = allThemes.length + 2;
+
+    if (_itemKeys.length != itemCount) {
       _initializeKeys();
     }
 
@@ -292,7 +341,7 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: allThemes.length + 1,
+            itemCount: itemCount,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: _gridColumns,
               crossAxisSpacing: 8.r,
@@ -300,13 +349,33 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
               childAspectRatio: 1.05,
             ),
             itemBuilder: (context, index) {
-              // Focus Resolution: Determines if the item is currently highlighted via gamepad.
               final isFocused =
                   widget.isContentFocused &&
                   widget.selectedContentIndex == index;
 
-              // Last item: the "Import theme" tile.
-              if (index == allThemes.length) {
+              if (index == customBackgroundIndex) {
+                return Container(
+                  key: _itemKeys[index],
+                  child: _CustomBackgroundCard(
+                    path: themeProvider.customBackgroundPath,
+                    label: CustomBackgroundLocale.title(context),
+                    subtitle: themeProvider.hasCustomBackground
+                        ? CustomBackgroundLocale.active(context)
+                        : CustomBackgroundLocale.subtitle(context),
+                    isFocused: isFocused,
+                    onTap: () {
+                      SfxService().playNavSound();
+                      widget.onSelectionChanged?.call(index);
+                      _pickCustomBackground();
+                    },
+                    onDelete: themeProvider.hasCustomBackground
+                        ? _clearCustomBackground
+                        : null,
+                  ),
+                );
+              }
+
+              if (index == importIndex) {
                 return Container(
                   key: _itemKeys[index],
                   child: ImportThemeCard(
@@ -322,12 +391,9 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
               }
 
               final t = allThemes[index];
-
-              // State Resolution: Determines if the theme is currently active.
               final isSelected =
                   themeProvider.currentThemeName == t['name'] ||
                   (index == 0 && themeProvider.currentThemeName == 'system');
-
               final isCustom = themeProvider.isCustomTheme(t['name']!);
 
               return Container(
@@ -354,6 +420,153 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CustomBackgroundCard extends StatelessWidget {
+  const _CustomBackgroundCard({
+    required this.path,
+    required this.label,
+    required this.subtitle,
+    required this.isFocused,
+    required this.onTap,
+    this.onDelete,
+  });
+
+  final String? path;
+  final String label;
+  final String subtitle;
+  final bool isFocused;
+  final VoidCallback onTap;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final backgroundPath = path;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AspectRatio(
+          aspectRatio: 4 / 3,
+          child: Container(
+            margin: EdgeInsets.symmetric(vertical: 4.h),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(
+                color: isFocused
+                    ? accent
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.25),
+                width: 2.r,
+              ),
+              boxShadow: isFocused
+                  ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.3),
+                        blurRadius: 8.r,
+                        spreadRadius: 1.r,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6.r),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (backgroundPath == null)
+                    Center(
+                      child: Icon(
+                        Symbols.wallpaper_rounded,
+                        color: isFocused
+                            ? accent
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                        size: 34.r,
+                      ),
+                    )
+                  else if (ImageUtils.isAnimatedBackground(backgroundPath))
+                    ShaderGifWidget(
+                      imagePath: backgroundPath,
+                      key: ValueKey('custom_background_preview_$backgroundPath'),
+                      fit: BoxFit.cover,
+                    )
+                  else
+                    Image.file(
+                      File(backgroundPath),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Icon(
+                          Symbols.broken_image_rounded,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                          size: 30.r,
+                        ),
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        canRequestFocus: false,
+                        onTap: onTap,
+                      ),
+                    ),
+                  ),
+                  if (onDelete != null)
+                    Positioned(
+                      top: 4.r,
+                      right: 4.r,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          canRequestFocus: false,
+                          onTap: onDelete,
+                          child: Padding(
+                            padding: EdgeInsets.all(3.r),
+                            child: Icon(
+                              Symbols.close_rounded,
+                              color: Colors.white,
+                              size: 16.r,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 4.r),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: isFocused
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            fontWeight: isFocused ? FontWeight.bold : FontWeight.normal,
+            fontSize: 12.r,
+          ),
+        ),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+            fontSize: 8.r,
+          ),
+        ),
+      ],
     );
   }
 }
