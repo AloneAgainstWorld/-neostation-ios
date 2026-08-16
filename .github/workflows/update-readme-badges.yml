@@ -2,6 +2,11 @@ name: Update README badges
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/update-readme-badges.yml'
   schedule:
     - cron: '17 */6 * * *'
   issues:
