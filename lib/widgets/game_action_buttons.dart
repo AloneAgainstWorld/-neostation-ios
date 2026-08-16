@@ -184,6 +184,7 @@ class GameActionButtons extends StatelessWidget {
         sound: GameActionButtonSound.nav,
         onTap: selectedGame != null ? onSettings : null,
       ),
+
     ];
   }
 

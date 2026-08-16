@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -49,7 +50,9 @@ class RetroArchLibraryService {
   /// app_links package. Returns whether the request URL was opened at all
   /// (not whether RetroArch actually responded).
   static Future<bool> requestLibrarySync() async {
-    return launchUrl(Uri.parse('retroarch://library?scheme=$_callbackScheme'));
+    return launchUrl(
+      Uri.parse('retroarch://library?scheme=$_callbackScheme'),
+    );
   }
 
   /// Call this with every incoming URI the app receives (from
@@ -59,11 +62,6 @@ class RetroArchLibraryService {
     if (uri.scheme != _callbackScheme || uri.host != 'retroarch') {
       return false;
     }
-
-    final context = rootNavigatorKey.currentContext;
-    final configProvider = context == null
-        ? null
-        : Provider.of<SqliteConfigProvider>(context, listen: false);
 
     final gamesParam = uri.queryParameters['games'];
     if (gamesParam == null) {
@@ -138,7 +136,13 @@ class RetroArchLibraryService {
       // root navigator's context since this is a plain service class with
       // no BuildContext of its own.
       try {
-        await configProvider?.scanSystems();
+        final context = rootNavigatorKey.currentContext;
+        if (context != null) {
+          await Provider.of<SqliteConfigProvider>(
+            context,
+            listen: false,
+          ).scanSystems();
+        }
       } catch (e) {
         _log.e('RetroArchLibraryService: post-sync rescan failed: $e');
       }
@@ -165,8 +169,10 @@ class RetroArchLibraryService {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
         _cache = decoded.map(
-          (key, value) =>
-              MapEntry(key.toString(), Map<String, dynamic>.from(value as Map)),
+          (key, value) => MapEntry(
+            key.toString(),
+            Map<String, dynamic>.from(value as Map),
+          ),
         );
       } else {
         _cache = {};
@@ -240,12 +246,14 @@ class RetroArchLibraryService {
 
   /// Writes diagnostic info to a plain text file under the app's Documents
   /// folder, readable via the Files app ("On My iPhone > NeoStation >
-  /// `<name>`) — there's no Xcode console access to check this otherwise.
+  /// <name>") — there's no Xcode console access to check this otherwise.
   static Future<void> _writeDebugFile(String name, String content) async {
     try {
       final docsDir = await getApplicationDocumentsDirectory();
       final file = File(path.join(docsDir.path, name));
-      await file.writeAsString('--- ${DateTime.now()} ---\n$content');
+      await file.writeAsString(
+        '--- ${DateTime.now()} ---\n$content',
+      );
     } catch (e) {
       _log.e('RetroArchLibraryService: failed writing debug file $name: $e');
     }

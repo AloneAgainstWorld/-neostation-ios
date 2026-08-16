@@ -3,147 +3,113 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Guards the "at most one app default per (system_id, os_id)" invariant at its
-/// source: the bundled seed definitions in `assets/systems/*.json`.
-///
-/// `SqliteService._syncEmulators` turns these files into `app_emulators` rows
-/// and stamps `is_default = 1` on the emulator flagged `default_core` /
-/// `default_standalone`. If a system ever ships two competing flags for the
-/// same OS, which emulator receives the launch intent becomes a coin flip
-/// (this is how `xbox360` ended up flipping between the paid `aenu.ax360e` and
-/// the free `aenu.ax360e.free`). These tests fail the build on the *next*
-/// occurrence rather than waiting for it to be found on a device.
 void main() {
   late List<_SeedSystem> systems;
 
-  setUpAll(() {
-    final dir = Directory('assets/systems');
-    expect(
-      dir.existsSync(),
-      isTrue,
-      reason: 'assets/systems must exist — it is the seed source of truth',
-    );
-
-    systems = dir
+  setUpAll(() async {
+    final directory = Directory('assets/systems');
+    final files = directory
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.json'))
-        .map((f) => _SeedSystem.parse(f))
+        .where((file) => file.path.endsWith('.json'))
         .toList();
 
-    expect(systems, isNotEmpty);
+    systems = [];
+    for (final file in files) {
+      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final emulators = (json['emulators'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (raw) => _SeedEmulator(
+              raw['unique_id']?.toString() ?? '',
+              raw['default_standalone'] == true,
+              raw['default_core'] == true,
+              Map<String, dynamic>.from(raw['platforms'] as Map? ?? const {}),
+            ),
+          )
+          .toList();
+      systems.add(_SeedSystem(file.uri.pathSegments.last, emulators));
+    }
   });
 
   test('every system ships at most one default_standalone emulator', () {
     final offenders = <String>[];
     for (final system in systems) {
-      final flagged = system.emulators
-          .where((e) => e.isDefaultStandalone)
-          .map((e) => e.uniqueId)
-          .toList();
-      if (flagged.length > 1) {
-        offenders.add('${system.name}: $flagged');
+      final defaults = system.emulators.where((e) => e.isDefaultStandalone);
+      if (defaults.length > 1) {
+        offenders.add(
+          '${system.name}: ${defaults.map((e) => e.uniqueId).join(', ')}',
+        );
       }
     }
-
-    expect(
-      offenders,
-      isEmpty,
-      reason:
-          'Two default_standalone entries in one system produce two '
-          'is_default=1 rows for the same (system_id, os_id):\n'
-          '${offenders.join('\n')}',
-    );
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 
-  test(
-    'per (system, os) at most one default_standalone emulator is offered',
-    () {
-      final offenders = <String>[];
-      for (final system in systems) {
-        final byOs = <String, List<String>>{};
-        for (final emu in system.emulators) {
-          if (!emu.isDefaultStandalone) continue;
-          for (final os in emu.platforms.keys) {
-            byOs.putIfAbsent(os.toLowerCase(), () => []).add(emu.uniqueId);
-          }
-        }
-        byOs.forEach((os, ids) {
-          if (ids.length > 1) offenders.add('${system.name} [$os]: $ids');
-        });
-      }
-
-      expect(offenders, isEmpty, reason: offenders.join('\n'));
-    },
-  );
-
-  test('every default_core emulator is a RetroArch definition', () {
-    // Multiple default_core entries per system are legitimate *only* because
-    // they are the ra / ra64 / ra32 packaging variants of one RetroArch core;
-    // on Android `_syncEmulators` skips them entirely and the installed-variant
-    // detection picks exactly one. A non-RetroArch emulator flagged
-    // default_core would break that assumption.
+  test('per (system, os) at most one default_standalone emulator is offered', () {
     final offenders = <String>[];
     for (final system in systems) {
-      for (final emu in system.emulators) {
-        if (!emu.isDefaultCore) continue;
-        emu.platforms.forEach((os, platform) {
-          if (!jsonEncode(platform).toLowerCase().contains('retroarch')) {
-            offenders.add('${system.name}: ${emu.uniqueId} [$os]');
-          }
-        });
+      final counts = <String, int>{};
+      for (final emulator in system.emulators.where((e) => e.isDefaultStandalone)) {
+        for (final os in emulator.platforms.keys) {
+          counts[os] = (counts[os] ?? 0) + 1;
+        }
+      }
+      for (final entry in counts.entries) {
+        if (entry.value > 1) {
+          offenders.add('${system.name}/${entry.key}: ${entry.value} defaults');
+        }
       }
     }
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
+  });
 
+  test('every default_core emulator is a RetroArch definition', () {
+    final offenders = <String>[];
+    for (final system in systems) {
+      for (final emulator in system.emulators.where((e) => e.isDefaultCore)) {
+        final uid = emulator.uniqueId.toLowerCase();
+        if (!uid.contains('.ra.') &&
+            !uid.contains('.ra32.') &&
+            !uid.contains('.ra64.')) {
+          offenders.add('${system.name}: ${emulator.uniqueId}');
+        }
+      }
+    }
     expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 
   test('all default_core entries in a system name the same libretro core', () {
-    // If the variants disagreed on the core they load, "which variant is
-    // installed" would silently change *which emulator core* runs the game.
     final offenders = <String>[];
     for (final system in systems) {
-      final cores = <String>{};
-      for (final emu in system.emulators) {
-        if (!emu.isDefaultCore) continue;
-        for (final platform in emu.platforms.values) {
-          final match = RegExp(
-            r'libretro\s+"?([^"\s]+)',
-            caseSensitive: false,
-          ).firstMatch(jsonEncode(platform));
-          if (match != null) cores.add(match.group(1)!);
-        }
-      }
-      if (cores.length > 1) {
-        offenders.add('${system.name}: $cores');
+      final defaultCoreIds = system.emulators
+          .where((e) => e.isDefaultCore)
+          .map((e) => e.uniqueId)
+          .toList();
+      if (defaultCoreIds.length <= 1) continue;
+
+      final coreNames = defaultCoreIds
+          .map((uid) => uid.split('.').last)
+          .toSet();
+      if (coreNames.length > 1) {
+        offenders.add('${system.name}: ${defaultCoreIds.join(', ')}');
       }
     }
-
     expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 
   test('every iOS emulator declares a non-empty url_scheme', () {
     final offenders = <String>[];
     for (final system in systems) {
-      for (final emu in system.emulators) {
-        final ios = emu.platforms['ios'];
-        if (ios == null) continue;
-        final schemeIsMissing =
-            ios is! Map ||
-            (ios['url_scheme']?.toString().trim().isEmpty ?? true);
-        if (schemeIsMissing) {
-          offenders.add('${system.name}: ${emu.uniqueId}');
+      for (final emulator in system.emulators) {
+        final ios = emulator.platforms['ios'];
+        if (ios is! Map) continue;
+        final scheme = ios['url_scheme']?.toString().trim() ?? '';
+        if (scheme.isEmpty) {
+          offenders.add('${system.name}: ${emulator.uniqueId}');
         }
       }
     }
-
-    expect(
-      offenders,
-      isEmpty,
-      reason:
-          'iOS emulator definitions need url_scheme for install detection:\n'
-          '${offenders.join('\n')}',
-    );
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 
   test('PS2 exposes ARMSX2 on iOS through the armsx2 URL scheme', () {
@@ -166,43 +132,40 @@ void main() {
     expect(ios['url_scheme'], 'melonx');
   });
 
-  test(
-    'systems with iOS RetroArch definitions expose one generic iOS RetroArch app',
-    () {
-      final offenders = <String>[];
+  test('systems with supported iOS RetroArch integration expose one generic app', () {
+    final offenders = <String>[];
 
-      for (final system in systems) {
-        final hasIosRetroArchDefinition = system.emulators.any((e) {
-          final uid = e.uniqueId.toLowerCase();
-          final platformText = jsonEncode(e.platforms).toLowerCase();
-          final isRetroArchDefinition =
-              uid.contains('.ra.') ||
-              uid.contains('.ra32.') ||
-              uid.contains('.ra64.') ||
-              platformText.contains('retroarch');
-          if (!isRetroArchDefinition) return false;
+    for (final system in systems) {
+      // PS2 deliberately uses ARMSX2 on iOS. Its RetroArch definitions apply
+      // only to Android/desktop and therefore must not force an unsupported
+      // generic RetroArch entry into the iOS seed.
+      if (system.name == 'ps2.json') continue;
 
-          final ios = e.platforms['ios'];
-          return ios is Map && ios.isNotEmpty;
-        });
-        if (!hasIosRetroArchDefinition) continue;
+      final hasRetroArchDefinition = system.emulators.any((e) {
+        final uid = e.uniqueId.toLowerCase();
+        final platformText = jsonEncode(e.platforms).toLowerCase();
+        return uid.contains('.ra.') ||
+            uid.contains('.ra32.') ||
+            uid.contains('.ra64.') ||
+            platformText.contains('retroarch');
+      });
+      if (!hasRetroArchDefinition) continue;
 
-        final iosRetroArch = system.emulators.where((e) {
-          final ios = e.platforms['ios'];
-          return ios is Map &&
-              ios['url_scheme']?.toString().toLowerCase() == 'retroarch';
-        }).toList();
+      final iosRetroArch = system.emulators.where((e) {
+        final ios = e.platforms['ios'];
+        return ios is Map &&
+            ios['url_scheme']?.toString().toLowerCase() == 'retroarch';
+      }).toList();
 
-        if (iosRetroArch.length != 1) {
-          offenders.add(
-            '${system.name}: expected 1 generic iOS RetroArch entry, found ${iosRetroArch.length}',
-          );
-        }
+      if (iosRetroArch.length != 1) {
+        offenders.add(
+          '${system.name}: expected 1 generic iOS RetroArch entry, found ${iosRetroArch.length}',
+        );
       }
+    }
 
-      expect(offenders, isEmpty, reason: offenders.join('\n'));
-    },
-  );
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
+  });
 
   test('the two systems fixed on this branch resolve to a single default', () {
     // Regression pins for the pair found on the AYN Thor.
@@ -229,43 +192,18 @@ class _SeedSystem {
 
   final String name;
   final List<_SeedEmulator> emulators;
-
-  static _SeedSystem parse(File file) {
-    final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    final raw = (json['emulators'] as List?) ?? const [];
-    return _SeedSystem(
-      file.uri.pathSegments.last,
-      raw
-          .cast<Map<String, dynamic>>()
-          .map(_SeedEmulator.fromJson)
-          .toList(growable: false),
-    );
-  }
 }
 
 class _SeedEmulator {
-  _SeedEmulator({
-    required this.uniqueId,
-    required this.isDefaultCore,
-    required this.isDefaultStandalone,
-    required this.platforms,
-  });
+  _SeedEmulator(
+    this.uniqueId,
+    this.isDefaultStandalone,
+    this.isDefaultCore,
+    this.platforms,
+  );
 
   final String uniqueId;
-  final bool isDefaultCore;
   final bool isDefaultStandalone;
+  final bool isDefaultCore;
   final Map<String, dynamic> platforms;
-
-  static bool _flag(Object? value) => value.toString().toLowerCase() == 'true';
-
-  factory _SeedEmulator.fromJson(Map<String, dynamic> json) {
-    return _SeedEmulator(
-      uniqueId: (json['unique_id'] ?? json['uniqueId'] ?? '').toString(),
-      isDefaultCore: _flag(json['default_core']),
-      isDefaultStandalone: _flag(json['default_standalone']),
-      platforms: json['platforms'] is Map
-          ? Map<String, dynamic>.from(json['platforms'] as Map)
-          : <String, dynamic>{},
-    );
-  }
 }

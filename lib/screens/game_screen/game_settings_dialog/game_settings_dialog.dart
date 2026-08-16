@@ -213,47 +213,47 @@ class _GameSettingsDialogState extends State<GameSettingsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildHeader(theme, displayName),
-              _buildTabsHeader(theme),
-              Expanded(
-                child: IndexedStack(
-                  index: _currentTab,
-                  children: [
-                    GameSettingsEmulatorTab(
-                      key: _emulatorTabKey,
-                      game: widget.game,
-                      system: widget.system,
-                      isAllMode: widget.isAllMode,
-                      onGameUpdated: widget.onGameUpdated,
-                    ),
-                    GameSettingsScrappingTab(
-                      key: _scrappingTabKey,
-                      game: widget.game,
-                      system: widget.system,
-                      fileProvider: widget.fileProvider,
-                      isAllMode: widget.isAllMode,
-                      onGameUpdated: widget.onGameUpdated,
-                    ),
-                    GameSettingsManageTab(
-                      key: _manageTabKey,
-                      game: widget.game,
-                      system: widget.system,
-                      fileProvider: widget.fileProvider,
-                      syncProvider: widget.syncProvider,
-                      isAllMode: widget.isAllMode,
-                      onGameUpdated: widget.onGameUpdated,
-                      onGameDeleted: _handleGameDeleted,
-                    ),
-                    GameSettingsManualTab(
-                      key: _manualTabKey,
-                      game: widget.game,
-                      system: widget.system,
-                      fileProvider: widget.fileProvider,
-                      isAllMode: widget.isAllMode,
-                    ),
-                  ],
-                ),
+            _buildHeader(theme, displayName),
+            _buildTabsHeader(theme),
+            Expanded(
+              child: IndexedStack(
+                index: _currentTab,
+                children: [
+                  GameSettingsEmulatorTab(
+                    key: _emulatorTabKey,
+                    game: widget.game,
+                    system: widget.system,
+                    isAllMode: widget.isAllMode,
+                    onGameUpdated: widget.onGameUpdated,
+                  ),
+                  GameSettingsScrappingTab(
+                    key: _scrappingTabKey,
+                    game: widget.game,
+                    system: widget.system,
+                    fileProvider: widget.fileProvider,
+                    isAllMode: widget.isAllMode,
+                    onGameUpdated: widget.onGameUpdated,
+                  ),
+                  GameSettingsManageTab(
+                    key: _manageTabKey,
+                    game: widget.game,
+                    system: widget.system,
+                    fileProvider: widget.fileProvider,
+                    syncProvider: widget.syncProvider,
+                    isAllMode: widget.isAllMode,
+                    onGameUpdated: widget.onGameUpdated,
+                    onGameDeleted: _handleGameDeleted,
+                  ),
+                  GameSettingsManualTab(
+                    key: _manualTabKey,
+                    game: widget.game,
+                    system: widget.system,
+                    fileProvider: widget.fileProvider,
+                    isAllMode: widget.isAllMode,
+                  ),
+                ],
               ),
+            ),
               _buildFooter(theme),
             ],
           ),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:neostation/main.dart' show rootNavigatorKey;
@@ -23,7 +24,7 @@ import 'package:url_launcher/url_launcher.dart';
 ///   melonx://gameInfo?scheme=neostation
 ///
 /// MeloNX callback:
-///   `neostation://melonx?games=<base64url(JSON [GameScheme])>`
+///   neostation://melonx?games=<base64url(JSON [GameScheme])>
 ///
 /// A MeloNX GameScheme contains titleName, titleId, developer, version and
 /// iconData. NeoStation imports the human-readable metadata and uses iconData
@@ -235,21 +236,16 @@ class MelonxLibraryService {
   /// the same title name), that row is reused and enriched. Otherwise a virtual
   /// `melonx://game?...` row is created. A normal ROM-folder rescan therefore
   /// isn't required for MeloNX-only games to appear in the main Switch library.
-  static Future<
-    ({
-      int virtualRows,
-      int physicalRows,
-      int artworkRows,
-      int removedRows,
-      int totalSwitchRows,
-    })
-  >
-  _importIntoNeoStation(List<Map<String, dynamic>> games) async {
+  static Future<({
+    int virtualRows,
+    int physicalRows,
+    int artworkRows,
+    int removedRows,
+    int totalSwitchRows,
+  })> _importIntoNeoStation(List<Map<String, dynamic>> games) async {
     final switchSystem = await SystemRepository.getSystemByFolderName('switch');
     if (switchSystem?.id == null) {
-      throw StateError(
-        'NeoStation Nintendo Switch system definition was not found',
-      );
+      throw StateError('NeoStation Nintendo Switch system definition was not found');
     }
 
     final systemId = switchSystem!.id!;
@@ -517,17 +513,14 @@ class MelonxLibraryService {
       final context = rootNavigatorKey.currentContext;
       if (context == null) return;
 
-      final databaseProvider = Provider.of<SqliteDatabaseProvider>(
+      await Provider.of<SqliteDatabaseProvider>(
         context,
         listen: false,
-      );
-      final configProvider = Provider.of<SqliteConfigProvider>(
+      ).loadGamesForSystem('switch');
+      await Provider.of<SqliteConfigProvider>(
         context,
         listen: false,
-      );
-
-      await databaseProvider.loadGamesForSystem('switch');
-      await configProvider.refreshDetectedSystems();
+      ).refreshDetectedSystems();
     } catch (e) {
       _log.e('MelonxLibraryService: UI refresh failed: $e');
     }
@@ -585,8 +578,10 @@ class MelonxLibraryService {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
         _cache = decoded.map(
-          (key, value) =>
-              MapEntry(key.toString(), Map<String, dynamic>.from(value as Map)),
+          (key, value) => MapEntry(
+            key.toString(),
+            Map<String, dynamic>.from(value as Map),
+          ),
         );
       } else {
         _cache = {};
@@ -655,7 +650,7 @@ class MelonxLibraryService {
             : null) ??
         (normalizedTitleName.isNotEmpty
             ? cache[normalizedTitleName] ??
-                  cache[normalizedTitleName.toLowerCase()]
+                cache[normalizedTitleName.toLowerCase()]
             : null);
 
     await _writeDebugFile(

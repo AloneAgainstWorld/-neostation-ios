@@ -552,29 +552,22 @@ const Map<String, dynamic> appLocaleRu = {
   AppLocale.gameInfo: 'Инфо об игре',
   AppLocale.manage: 'Управление',
   AppLocale.manual: 'Руководство',
-  AppLocale.scrapeManualDesc:
-      'Загружать руководства к играм в PDF, если они доступны.',
+  AppLocale.scrapeManualDesc: 'Загружать руководства к играм в PDF, если они доступны.',
   AppLocale.manualReady: 'Руководство загружено',
   AppLocale.manualNotDownloaded: 'Руководство не загружено',
-  AppLocale.manualDownloadHint:
-      'Загрузите руководство к игре из ScreenScraper, если оно доступно.',
+  AppLocale.manualDownloadHint: 'Загрузите руководство к игре из ScreenScraper, если оно доступно.',
   AppLocale.downloadManual: 'Скачать руководство',
-  AppLocale.downloadManualDesc:
-      'Скачать лучший доступный PDF для вашего языка и региона.',
+  AppLocale.downloadManualDesc: 'Скачать лучший доступный PDF для вашего языка и региона.',
   AppLocale.readManual: 'Читать руководство',
-  AppLocale.readManualDesc:
-      'Открыть сохранённый PDF во встроенном просмотрщике NeoStation.',
+  AppLocale.readManualDesc: 'Открыть сохранённый PDF во встроенном просмотрщике NeoStation.',
   AppLocale.redownloadManual: 'Скачать заново',
-  AppLocale.redownloadManualDesc:
-      'Заменить локальную копию лучшей доступной версией.',
+  AppLocale.redownloadManualDesc: 'Заменить локальную копию лучшей доступной версией.',
   AppLocale.deleteManual: 'Удалить руководство',
   AppLocale.deleteManualDesc: 'Удалить сохранённый PDF с этого устройства.',
-  AppLocale.deleteManualConfirmation:
-      'Удалить загруженное руководство для этой игры?',
+  AppLocale.deleteManualConfirmation: 'Удалить загруженное руководство для этой игры?',
   AppLocale.manualDownloaded: 'Руководство загружено',
   AppLocale.manualDownloadFailed: 'Не удалось загрузить руководство',
-  AppLocale.manualNotAvailable:
-      'Для этой игры на ScreenScraper нет доступного руководства.',
+  AppLocale.manualNotAvailable: 'Для этой игры на ScreenScraper нет доступного руководства.',
   AppLocale.manualDeleted: 'Руководство удалено',
   AppLocale.downloadingManual: 'Загрузка руководства...',
   AppLocale.pinchToZoom: 'Сведите пальцы для масштаба',
@@ -736,10 +729,8 @@ const Map<String, dynamic> appLocaleRu = {
   AppLocale.systemInfo: 'О системе',
   AppLocale.systemType: 'Тип',
   AppLocale.supportedFormats: 'Поддерживаемые форматы',
-  AppLocale.systemInfoSummary:
-      '{name} — это {type}, выпущенная компанией {manufacturer} в {year} году. NeoStation сейчас обнаруживает {count} игр для этой системы.',
-  AppLocale.systemInfoSummaryNoManufacturer:
-      '{name} — это {type}, появившаяся в {year} году. NeoStation сейчас обнаруживает {count} игр для этой системы.',
+  AppLocale.systemInfoSummary: '{name} — это {type}, выпущенная компанией {manufacturer} в {year} году. NeoStation сейчас обнаруживает {count} игр для этой системы.',
+  AppLocale.systemInfoSummaryNoManufacturer: '{name} — это {type}, появившаяся в {year} году. NeoStation сейчас обнаруживает {count} игр для этой системы.',
   AppLocale.systemTypeConsole: 'домашняя консоль',
   AppLocale.systemTypeHandheld: 'портативная система',
   AppLocale.systemTypeComputer: 'компьютер',
@@ -1032,38 +1023,22 @@ const Map<String, dynamic> appLocaleRu = {
   AppLocale.iosEmuLinkFolder: "Подключить папку",
   AppLocale.iosEmuChangeFolder: "Изменить папку",
   AppLocale.iosEmuLinkingFailed: "Не удалось подключить папку: {error}",
-  AppLocale.iosRetroarchSyncRequested:
-      "Запрошена синхронизация библиотеки RetroArch. Она выполняется в фоновом режиме; подождите несколько секунд.",
-  AppLocale.iosRetroarchUnavailable:
-      "Не удалось связаться с RetroArch. Он установлен?",
-  AppLocale.iosArmsx2SyncRequested:
-      "Запрошена синхронизация библиотеки ARMSX2. ARMSX2 автоматически вернётся в NeoStation, когда экспорт будет готов.",
-  AppLocale.iosArmsx2Unavailable:
-      "Не удалось связаться с ARMSX2. Он установлен?",
-  AppLocale.iosMelonxSyncRequested:
-      "Запрошена синхронизация библиотеки Nintendo Switch из MeloNX. MeloNX автоматически вернётся в NeoStation, когда экспорт будет готов.",
-  AppLocale.iosMelonxUnavailable:
-      "Не удалось связаться с MeloNX. Он установлен?",
-  AppLocale.iosRetroarchStatusNeedsLink:
-      "Подключите папку RetroArch, чтобы NeoStation мог обращаться к играм напрямую, без копирования.",
-  AppLocale.iosRetroarchStatusNeedsSync:
-      "Папка подключена. Синхронизируйте библиотеку, чтобы запускать игры прямо в RetroArch одним нажатием.",
-  AppLocale.iosRetroarchStatusSynced:
-      "Папка подключена, библиотека синхронизирована — игры запускаются прямо в RetroArch.",
-  AppLocale.iosRetroarchLinkSuccess:
-      "Папка подключена. NeoStation будет сканировать её напрямую, без копирования. Найденные здесь игры будут запускаться прямо в RetroArch.",
-  AppLocale.iosArmsx2StatusNeedsLink:
-      "ARMSX2 использует ту же папку ROM, что и RetroArch. Подключите общую папку ROM, затем синхронизируйте библиотеку ARMSX2.",
-  AppLocale.iosArmsx2StatusNeedsSync:
-      "Общая папка ROM подключена. Синхронизируйте ARMSX2, чтобы импортировать библиотеку PS2 в NeoStation.",
-  AppLocale.iosArmsx2StatusSynced:
-      "Общая папка и библиотека ARMSX2 синхронизированы — игры PS2 запускаются прямо в ARMSX2.",
-  AppLocale.iosArmsx2LinkSuccess:
-      "Общая папка ROM подключена. RetroArch и ARMSX2 теперь используют один источник ROM в NeoStation.",
-  AppLocale.iosMelonxStatusSynced:
-      "Библиотека MeloNX синхронизирована — игры Nintendo Switch запускаются прямо в MeloNX.",
-  AppLocale.iosMelonxStatusNeedsSync:
-      "Синхронизируйте MeloNX, чтобы напрямую импортировать библиотеку Nintendo Switch в NeoStation. Сканирование папки ROM не требуется.",
+  AppLocale.iosRetroarchSyncRequested: "Запрошена синхронизация библиотеки RetroArch. Она выполняется в фоновом режиме; подождите несколько секунд.",
+  AppLocale.iosRetroarchUnavailable: "Не удалось связаться с RetroArch. Он установлен?",
+  AppLocale.iosArmsx2SyncRequested: "Запрошена синхронизация библиотеки ARMSX2. ARMSX2 автоматически вернётся в NeoStation, когда экспорт будет готов.",
+  AppLocale.iosArmsx2Unavailable: "Не удалось связаться с ARMSX2. Он установлен?",
+  AppLocale.iosMelonxSyncRequested: "Запрошена синхронизация библиотеки Nintendo Switch из MeloNX. MeloNX автоматически вернётся в NeoStation, когда экспорт будет готов.",
+  AppLocale.iosMelonxUnavailable: "Не удалось связаться с MeloNX. Он установлен?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Подключите папку RetroArch, чтобы NeoStation мог обращаться к играм напрямую, без копирования.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Папка подключена. Синхронизируйте библиотеку, чтобы запускать игры прямо в RetroArch одним нажатием.",
+  AppLocale.iosRetroarchStatusSynced: "Папка подключена, библиотека синхронизирована — игры запускаются прямо в RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Папка подключена. NeoStation будет сканировать её напрямую, без копирования. Найденные здесь игры будут запускаться прямо в RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 использует ту же папку ROM, что и RetroArch. Подключите общую папку ROM, затем синхронизируйте библиотеку ARMSX2.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Общая папка ROM подключена. Синхронизируйте ARMSX2, чтобы импортировать библиотеку PS2 в NeoStation.",
+  AppLocale.iosArmsx2StatusSynced: "Общая папка и библиотека ARMSX2 синхронизированы — игры PS2 запускаются прямо в ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Общая папка ROM подключена. RetroArch и ARMSX2 теперь используют один источник ROM в NeoStation.",
+  AppLocale.iosMelonxStatusSynced: "Библиотека MeloNX синхронизирована — игры Nintendo Switch запускаются прямо в MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Синхронизируйте MeloNX, чтобы напрямую импортировать библиотеку Nintendo Switch в NeoStation. Сканирование папки ROM не требуется.",
 
   // Rich System Info
   AppLocale.systemArchitecture: 'Архитектура',
@@ -1073,34 +1048,21 @@ const Map<String, dynamic> appLocaleRu = {
   AppLocale.systemNotableGames: 'Знаковые игры',
   AppLocale.systemTechnicalDetails: 'Технические сведения',
   AppLocale.systemGamesDetected: 'Найдено игр',
-  AppLocale.systemInfoDetailedIntro:
-      '{name} — система типа {type}, выпущенная компанией {manufacturer} в {year} году.',
-  AppLocale.systemInfoDetailedIntroNoManufacturer:
-      '{name} — система типа {type}, появившаяся в {year} году.',
-  AppLocale.systemInfoArchitectureSentence:
-      'Аппаратная архитектура: {architecture}.',
+  AppLocale.systemInfoDetailedIntro: '{name} — система типа {type}, выпущенная компанией {manufacturer} в {year} году.',
+  AppLocale.systemInfoDetailedIntroNoManufacturer: '{name} — система типа {type}, появившаяся в {year} году.',
+  AppLocale.systemInfoArchitectureSentence: 'Аппаратная архитектура: {architecture}.',
   AppLocale.systemInfoGenerationSentence: 'Относится к поколению {generation}.',
   AppLocale.systemInfoProcessorSentence: 'Основной процессор — {cpu}.',
-  AppLocale.systemInfoMediaSentence:
-      'Игры и программы в основном распространялись на {media}.',
-  AppLocale.systemInfoCollectionRomHacks:
-      'Эта запись объединяет ROM-хаки и фанатские варианты для исходной системы.',
-  AppLocale.systemInfoCollectionAllSystems:
-      'Эта виртуальная коллекция объединяет игры всех обнаруженных систем.',
-  AppLocale.systemInfoCollectionFavorites:
-      'Эта виртуальная коллекция содержит игры, отмеченные пользователем как избранные.',
-  AppLocale.systemInfoCollectionDigitalStore:
-      'Эта запись представляет цифровой магазин ПК-игр; каталог и требования к оборудованию зависят от конкретной игры.',
-  AppLocale.systemInfoCollectionEmulationPlatform:
-      'Эта запись представляет платформу эмуляции или совместимости, охватывающую несколько семейств исходного оборудования.',
-  AppLocale.systemInfoCollectionFantasyConsole:
-      'Это фантазийная консоль с намеренно ограниченным виртуальным оборудованием для небольших игр и демо.',
-  AppLocale.systemInfoCollectionMediaCollection:
-      'Это медиаколлекция, а не фиксированная игровая аппаратная платформа.',
-  AppLocale.systemInfoCollectionGameEngine:
-      'Эта запись представляет игровой движок или среду выполнения, игры которой могут относиться к разным поколениям оборудования.',
-  AppLocale.systemInfoCollectionSoftwarePlatform:
-      'Эта программная платформа работает на разных конфигурациях оборудования, поэтому архитектура зависит от устройства или эпохи.',
+  AppLocale.systemInfoMediaSentence: 'Игры и программы в основном распространялись на {media}.',
+  AppLocale.systemInfoCollectionRomHacks: 'Эта запись объединяет ROM-хаки и фанатские варианты для исходной системы.',
+  AppLocale.systemInfoCollectionAllSystems: 'Эта виртуальная коллекция объединяет игры всех обнаруженных систем.',
+  AppLocale.systemInfoCollectionFavorites: 'Эта виртуальная коллекция содержит игры, отмеченные пользователем как избранные.',
+  AppLocale.systemInfoCollectionDigitalStore: 'Эта запись представляет цифровой магазин ПК-игр; каталог и требования к оборудованию зависят от конкретной игры.',
+  AppLocale.systemInfoCollectionEmulationPlatform: 'Эта запись представляет платформу эмуляции или совместимости, охватывающую несколько семейств исходного оборудования.',
+  AppLocale.systemInfoCollectionFantasyConsole: 'Это фантазийная консоль с намеренно ограниченным виртуальным оборудованием для небольших игр и демо.',
+  AppLocale.systemInfoCollectionMediaCollection: 'Это медиаколлекция, а не фиксированная игровая аппаратная платформа.',
+  AppLocale.systemInfoCollectionGameEngine: 'Эта запись представляет игровой движок или среду выполнения, игры которой могут относиться к разным поколениям оборудования.',
+  AppLocale.systemInfoCollectionSoftwarePlatform: 'Эта программная платформа работает на разных конфигурациях оборудования, поэтому архитектура зависит от устройства или эпохи.',
   AppLocale.mediaCartridge: 'Картридж',
   AppLocale.mediaCdRom: 'CD-ROM',
   AppLocale.mediaDvd: 'DVD',
