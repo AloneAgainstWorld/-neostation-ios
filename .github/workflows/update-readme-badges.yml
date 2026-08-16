@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
