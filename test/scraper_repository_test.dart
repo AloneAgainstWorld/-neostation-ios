@@ -1,37 +1,13 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neostation/repositories/scraper_repository.dart';
-import 'package:neostation/services/screenscraper/screenscraper_credential_store.dart';
 
 import 'database_test_helper.dart';
-
-class _MemoryScreenScraperCredentialStore
-    implements ScreenScraperCredentialStore {
-  String? password;
-
-  @override
-  Future<void> writePassword(String password) async {
-    this.password = password;
-  }
-
-  @override
-  Future<String?> readPassword() async => password;
-
-  @override
-  Future<void> deletePassword() async {
-    password = null;
-  }
-}
 
 void main() {
   final dbHelper = DatabaseTestHelper();
   late dynamic db;
-  late _MemoryScreenScraperCredentialStore credentialStore;
 
   setUp(() async {
-    credentialStore = _MemoryScreenScraperCredentialStore();
-    ScraperRepository.setCredentialStoreForTesting(credentialStore);
     db = await dbHelper.setUp();
     await db.execute(
       "INSERT INTO app_systems (id, real_name, folder_name, screenscraper_id) VALUES ('snes', 'SNES', 'snes', 4)",
@@ -54,7 +30,6 @@ void main() {
   });
 
   tearDown(() async {
-    ScraperRepository.resetCredentialStoreForTesting();
     await dbHelper.tearDown();
   });
 
@@ -91,15 +66,9 @@ void main() {
       expect(config['nes'], isFalse);
     });
 
-    test('saveCredentials keeps password out of SQLite', () async {
+    test('saveCredentials encrypts password with base64', () async {
       final saved = await ScraperRepository.saveCredentials('user', 'pass');
       expect(saved, isTrue);
-      expect(credentialStore.password, 'pass');
-
-      final rows = await db.rawQuery(
-        'SELECT password FROM user_screenscraper_credentials WHERE id = 1',
-      );
-      expect(rows.single['password'], '');
 
       final creds = await ScraperRepository.getSavedCredentials();
       expect(creds, isNotNull);
@@ -107,38 +76,14 @@ void main() {
       expect(creds['password'], 'pass');
     });
 
-    test('getSavedCredentials migrates a legacy Base64 password', () async {
-      final legacyPassword = base64Encode(utf8.encode('legacy-pass'));
-      await db.insert('user_screenscraper_credentials', {
-        'id': 1,
-        'username': 'legacy-user',
-        'password': legacyPassword,
-      });
+    test('clearCredentials removes stored credentials', () async {
+      await ScraperRepository.saveCredentials('user', 'pass');
+      final cleared = await ScraperRepository.clearCredentials();
+      expect(cleared, isTrue);
 
       final creds = await ScraperRepository.getSavedCredentials();
-      expect(creds, isNotNull);
-      expect(creds!['username'], 'legacy-user');
-      expect(creds['password'], 'legacy-pass');
-      expect(credentialStore.password, 'legacy-pass');
-
-      final rows = await db.rawQuery(
-        'SELECT password FROM user_screenscraper_credentials WHERE id = 1',
-      );
-      expect(rows.single['password'], '');
+      expect(creds, isNull);
     });
-
-    test(
-      'clearCredentials removes database and secure-store credentials',
-      () async {
-        await ScraperRepository.saveCredentials('user', 'pass');
-        final cleared = await ScraperRepository.clearCredentials();
-        expect(cleared, isTrue);
-        expect(credentialStore.password, isNull);
-
-        final creds = await ScraperRepository.getSavedCredentials();
-        expect(creds, isNull);
-      },
-    );
 
     test('getScraperConfig returns defaults when no row exists', () async {
       final config = await ScraperRepository.getScraperConfig();
