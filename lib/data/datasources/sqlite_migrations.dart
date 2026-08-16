@@ -5334,9 +5334,7 @@ class SqliteMigrations {
   /// not pay for an unnecessary library rescan. Future media additions are
   /// handled generically by ScraperRepository.saveEnabledMediaTypes().
   static Future<void> _migrateToVersion112(Database db) async {
-    _log.i(
-      'Migration v112: Repairing ScreenScraper completion state for manuals',
-    );
+    _log.i('Migration v112: Repairing ScreenScraper completion state for manuals');
     try {
       final tables = db.select(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
@@ -5352,9 +5350,7 @@ class SqliteMigrations {
           .map((row) => row['name'].toString())
           .toSet();
       if (!configColumns.contains('scrape_media_types')) {
-        _log.i(
-          'Migration v112: scrape_media_types column missing, nothing to do',
-        );
+        _log.i('Migration v112: scrape_media_types column missing, nothing to do');
         return;
       }
 
@@ -5365,9 +5361,7 @@ class SqliteMigrations {
 
       final selected = configRows.first['scrape_media_types']?.toString() ?? '';
       if (!selected.contains('"manuel"')) {
-        _log.i(
-          'Migration v112: manuals are disabled; completion state unchanged',
-        );
+        _log.i('Migration v112: manuals are disabled; completion state unchanged');
         return;
       }
 
@@ -5385,4 +5379,5 @@ class SqliteMigrations {
       rethrow;
     }
   }
+
 }

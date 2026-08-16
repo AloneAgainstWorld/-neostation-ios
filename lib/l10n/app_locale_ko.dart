@@ -666,10 +666,8 @@ const Map<String, dynamic> appLocaleKo = {
   AppLocale.systemInfo: '시스템 정보',
   AppLocale.systemType: '유형',
   AppLocale.supportedFormats: '지원 형식',
-  AppLocale.systemInfoSummary:
-      '{name}은(는) {manufacturer}에서 {year}년에 출시한 {type}입니다. NeoStation은 현재 이 시스템에서 {count}개의 게임을 감지합니다.',
-  AppLocale.systemInfoSummaryNoManufacturer:
-      '{name}은(는) {year}년에 등장한 {type}입니다. NeoStation은 현재 이 시스템에서 {count}개의 게임을 감지합니다.',
+  AppLocale.systemInfoSummary: '{name}은(는) {manufacturer}에서 {year}년에 출시한 {type}입니다. NeoStation은 현재 이 시스템에서 {count}개의 게임을 감지합니다.',
+  AppLocale.systemInfoSummaryNoManufacturer: '{name}은(는) {year}년에 등장한 {type}입니다. NeoStation은 현재 이 시스템에서 {count}개의 게임을 감지합니다.',
   AppLocale.systemTypeConsole: '가정용 콘솔',
   AppLocale.systemTypeHandheld: '휴대용 게임기',
   AppLocale.systemTypeComputer: '컴퓨터',
@@ -945,35 +943,22 @@ const Map<String, dynamic> appLocaleKo = {
   AppLocale.iosEmuLinkFolder: "폴더 연결",
   AppLocale.iosEmuChangeFolder: "폴더 변경",
   AppLocale.iosEmuLinkingFailed: "연결 실패: {error}",
-  AppLocale.iosRetroarchSyncRequested:
-      "RetroArch 라이브러리 동기화를 요청했습니다. 백그라운드에서 진행되므로 몇 초 기다려 주세요.",
+  AppLocale.iosRetroarchSyncRequested: "RetroArch 라이브러리 동기화를 요청했습니다. 백그라운드에서 진행되므로 몇 초 기다려 주세요.",
   AppLocale.iosRetroarchUnavailable: "RetroArch에 연결할 수 없습니다. 설치되어 있나요?",
-  AppLocale.iosArmsx2SyncRequested:
-      "ARMSX2 라이브러리 동기화를 요청했습니다. 내보내기가 준비되면 ARMSX2가 자동으로 NeoStation으로 돌아옵니다.",
+  AppLocale.iosArmsx2SyncRequested: "ARMSX2 라이브러리 동기화를 요청했습니다. 내보내기가 준비되면 ARMSX2가 자동으로 NeoStation으로 돌아옵니다.",
   AppLocale.iosArmsx2Unavailable: "ARMSX2에 연결할 수 없습니다. 설치되어 있나요?",
-  AppLocale.iosMelonxSyncRequested:
-      "MeloNX Nintendo Switch 라이브러리 동기화를 요청했습니다. 내보내기가 준비되면 MeloNX가 자동으로 NeoStation으로 돌아옵니다.",
+  AppLocale.iosMelonxSyncRequested: "MeloNX Nintendo Switch 라이브러리 동기화를 요청했습니다. 내보내기가 준비되면 MeloNX가 자동으로 NeoStation으로 돌아옵니다.",
   AppLocale.iosMelonxUnavailable: "MeloNX에 연결할 수 없습니다. 설치되어 있나요?",
-  AppLocale.iosRetroarchStatusNeedsLink:
-      "RetroArch 폴더를 연결하면 복사 없이 NeoStation에서 게임에 직접 접근할 수 있습니다.",
-  AppLocale.iosRetroarchStatusNeedsSync:
-      "폴더가 연결되었습니다. 라이브러리를 동기화하면 한 번의 탭으로 RetroArch에서 게임을 바로 실행할 수 있습니다.",
-  AppLocale.iosRetroarchStatusSynced:
-      "폴더와 라이브러리가 동기화되었습니다 — 게임이 RetroArch에서 바로 실행됩니다.",
-  AppLocale.iosRetroarchLinkSuccess:
-      "폴더가 연결되었습니다. NeoStation이 복사 없이 해당 위치를 직접 스캔합니다. 여기서 찾은 게임은 RetroArch에서 바로 실행됩니다.",
-  AppLocale.iosArmsx2StatusNeedsLink:
-      "ARMSX2는 RetroArch와 같은 ROM 폴더를 사용합니다. 공유 ROM 폴더를 연결한 뒤 ARMSX2 라이브러리를 동기화하세요.",
-  AppLocale.iosArmsx2StatusNeedsSync:
-      "공유 ROM 폴더가 연결되었습니다. ARMSX2를 동기화하여 PS2 라이브러리를 NeoStation으로 가져오세요.",
-  AppLocale.iosArmsx2StatusSynced:
-      "공유 폴더와 ARMSX2 라이브러리가 동기화되었습니다 — PS2 게임이 ARMSX2에서 바로 실행됩니다.",
-  AppLocale.iosArmsx2LinkSuccess:
-      "공유 ROM 폴더가 연결되었습니다. RetroArch와 ARMSX2가 이제 동일한 NeoStation ROM 소스를 사용합니다.",
-  AppLocale.iosMelonxStatusSynced:
-      "MeloNX 라이브러리가 동기화되었습니다 — Nintendo Switch 게임이 MeloNX에서 바로 실행됩니다.",
-  AppLocale.iosMelonxStatusNeedsSync:
-      "MeloNX를 동기화하여 Nintendo Switch 라이브러리를 NeoStation으로 직접 가져옵니다. ROM 폴더 스캔은 필요하지 않습니다.",
+  AppLocale.iosRetroarchStatusNeedsLink: "RetroArch 폴더를 연결하면 복사 없이 NeoStation에서 게임에 직접 접근할 수 있습니다.",
+  AppLocale.iosRetroarchStatusNeedsSync: "폴더가 연결되었습니다. 라이브러리를 동기화하면 한 번의 탭으로 RetroArch에서 게임을 바로 실행할 수 있습니다.",
+  AppLocale.iosRetroarchStatusSynced: "폴더와 라이브러리가 동기화되었습니다 — 게임이 RetroArch에서 바로 실행됩니다.",
+  AppLocale.iosRetroarchLinkSuccess: "폴더가 연결되었습니다. NeoStation이 복사 없이 해당 위치를 직접 스캔합니다. 여기서 찾은 게임은 RetroArch에서 바로 실행됩니다.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2는 RetroArch와 같은 ROM 폴더를 사용합니다. 공유 ROM 폴더를 연결한 뒤 ARMSX2 라이브러리를 동기화하세요.",
+  AppLocale.iosArmsx2StatusNeedsSync: "공유 ROM 폴더가 연결되었습니다. ARMSX2를 동기화하여 PS2 라이브러리를 NeoStation으로 가져오세요.",
+  AppLocale.iosArmsx2StatusSynced: "공유 폴더와 ARMSX2 라이브러리가 동기화되었습니다 — PS2 게임이 ARMSX2에서 바로 실행됩니다.",
+  AppLocale.iosArmsx2LinkSuccess: "공유 ROM 폴더가 연결되었습니다. RetroArch와 ARMSX2가 이제 동일한 NeoStation ROM 소스를 사용합니다.",
+  AppLocale.iosMelonxStatusSynced: "MeloNX 라이브러리가 동기화되었습니다 — Nintendo Switch 게임이 MeloNX에서 바로 실행됩니다.",
+  AppLocale.iosMelonxStatusNeedsSync: "MeloNX를 동기화하여 Nintendo Switch 라이브러리를 NeoStation으로 직접 가져옵니다. ROM 폴더 스캔은 필요하지 않습니다.",
 
   // Rich System Info
   AppLocale.systemArchitecture: '아키텍처',
@@ -983,32 +968,21 @@ const Map<String, dynamic> appLocaleKo = {
   AppLocale.systemNotableGames: '대표 게임',
   AppLocale.systemTechnicalDetails: '기술 정보',
   AppLocale.systemGamesDetected: '감지된 게임',
-  AppLocale.systemInfoDetailedIntro:
-      '{name}은(는) {manufacturer}가 {year}년에 출시한 {type} 시스템입니다.',
-  AppLocale.systemInfoDetailedIntroNoManufacturer:
-      '{name}은(는) {year}년에 등장한 {type} 시스템입니다.',
+  AppLocale.systemInfoDetailedIntro: '{name}은(는) {manufacturer}가 {year}년에 출시한 {type} 시스템입니다.',
+  AppLocale.systemInfoDetailedIntroNoManufacturer: '{name}은(는) {year}년에 등장한 {type} 시스템입니다.',
   AppLocale.systemInfoArchitectureSentence: '하드웨어 아키텍처는 {architecture}입니다.',
   AppLocale.systemInfoGenerationSentence: '{generation}세대에 속합니다.',
   AppLocale.systemInfoProcessorSentence: '주요 프로세서는 {cpu}입니다.',
   AppLocale.systemInfoMediaSentence: '게임과 소프트웨어는 주로 {media} 매체로 배포되었습니다.',
-  AppLocale.systemInfoCollectionRomHacks:
-      '이 항목은 원본 시스템용 ROM 해킹과 커뮤니티 제작 변형을 모아 둔 컬렉션입니다.',
-  AppLocale.systemInfoCollectionAllSystems:
-      '이 가상 컬렉션은 감지된 모든 시스템의 게임을 한곳에 모읍니다.',
-  AppLocale.systemInfoCollectionFavorites:
-      '이 가상 컬렉션에는 사용자가 즐겨찾기로 표시한 게임이 포함됩니다.',
-  AppLocale.systemInfoCollectionDigitalStore:
-      '이 항목은 PC 디지털 게임 스토어를 나타내며 카탈로그와 하드웨어 요구 사항은 게임마다 다릅니다.',
-  AppLocale.systemInfoCollectionEmulationPlatform:
-      '이 항목은 여러 원본 하드웨어 계열을 다루는 에뮬레이션 또는 호환성 플랫폼을 나타냅니다.',
-  AppLocale.systemInfoCollectionFantasyConsole:
-      '작은 게임과 데모를 위해 의도적으로 제한된 가상 하드웨어를 사용하는 판타지 콘솔입니다.',
-  AppLocale.systemInfoCollectionMediaCollection:
-      '고정된 게임 하드웨어 플랫폼이 아니라 미디어 컬렉션입니다.',
-  AppLocale.systemInfoCollectionGameEngine:
-      '이 항목은 게임 엔진 또는 런타임을 나타내며 타이틀이 여러 하드웨어 세대에 걸칠 수 있습니다.',
-  AppLocale.systemInfoCollectionSoftwarePlatform:
-      '이 소프트웨어 플랫폼은 여러 하드웨어 구성에서 동작하므로 아키텍처가 장치나 시대에 따라 달라집니다.',
+  AppLocale.systemInfoCollectionRomHacks: '이 항목은 원본 시스템용 ROM 해킹과 커뮤니티 제작 변형을 모아 둔 컬렉션입니다.',
+  AppLocale.systemInfoCollectionAllSystems: '이 가상 컬렉션은 감지된 모든 시스템의 게임을 한곳에 모읍니다.',
+  AppLocale.systemInfoCollectionFavorites: '이 가상 컬렉션에는 사용자가 즐겨찾기로 표시한 게임이 포함됩니다.',
+  AppLocale.systemInfoCollectionDigitalStore: '이 항목은 PC 디지털 게임 스토어를 나타내며 카탈로그와 하드웨어 요구 사항은 게임마다 다릅니다.',
+  AppLocale.systemInfoCollectionEmulationPlatform: '이 항목은 여러 원본 하드웨어 계열을 다루는 에뮬레이션 또는 호환성 플랫폼을 나타냅니다.',
+  AppLocale.systemInfoCollectionFantasyConsole: '작은 게임과 데모를 위해 의도적으로 제한된 가상 하드웨어를 사용하는 판타지 콘솔입니다.',
+  AppLocale.systemInfoCollectionMediaCollection: '고정된 게임 하드웨어 플랫폼이 아니라 미디어 컬렉션입니다.',
+  AppLocale.systemInfoCollectionGameEngine: '이 항목은 게임 엔진 또는 런타임을 나타내며 타이틀이 여러 하드웨어 세대에 걸칠 수 있습니다.',
+  AppLocale.systemInfoCollectionSoftwarePlatform: '이 소프트웨어 플랫폼은 여러 하드웨어 구성에서 동작하므로 아키텍처가 장치나 시대에 따라 달라집니다.',
   AppLocale.mediaCartridge: '카트리지',
   AppLocale.mediaCdRom: 'CD-ROM',
   AppLocale.mediaDvd: 'DVD',

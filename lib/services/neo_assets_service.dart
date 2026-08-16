@@ -247,7 +247,7 @@ class NeoAssetsService {
           .cast<Map<String, dynamic>>()
           .map(NeoAssetsTheme.fromJson)
           .toList();
-      return await Future.wait(
+      return Future.wait(
         baseList.map((theme) async {
           final metadata = await _fetchThemeMetadata(theme.folder);
           if (metadata == null) return theme;

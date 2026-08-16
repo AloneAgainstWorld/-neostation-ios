@@ -125,14 +125,7 @@ class GameRepository {
     final strippedBase = _stripExtension(romBaseName);
     final strippedFilename = _stripExtension(filename);
 
-    const mediaTypes = [
-      'screenshots',
-      'fanarts',
-      'wheels',
-      'box2d',
-      'videos',
-      'manuals',
-    ];
+    const mediaTypes = ['screenshots', 'fanarts', 'wheels', 'box2d', 'videos', 'manuals'];
     const extensions = ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'pdf'];
     int deletedMedia = 0;
 

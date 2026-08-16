@@ -481,7 +481,9 @@ extension _SystemInfoTab on _SystemEmulatorSettingsDialogState {
       decoration: BoxDecoration(
         color: scheme.onSurface.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+        border: Border.all(
+          color: scheme.outline.withValues(alpha: 0.12),
+        ),
       ),
       child: Text(
         text,

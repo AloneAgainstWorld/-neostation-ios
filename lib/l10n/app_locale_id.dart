@@ -180,8 +180,7 @@ const Map<String, dynamic> appLocaleId = {
 
   AppLocale.configureDirectories: 'Konfigurasi Direktori',
   AppLocale.configureLaunch: 'Konfigurasikan peluncuran',
-  AppLocale.shortcutSetupOpenError:
-      'Tidak dapat membuka konfigurasi peluncuran.',
+  AppLocale.shortcutSetupOpenError: 'Tidak dapat membuka konfigurasi peluncuran.',
   AppLocale.configureRomsFolder: 'Konfigurasi Folder ROM',
   AppLocale.cannotAccessFolder: 'Tidak dapat mengakses folder',
   AppLocale.backgroundImage: 'Gambar Latar Belakang',
@@ -548,24 +547,19 @@ const Map<String, dynamic> appLocaleId = {
   AppLocale.scrapeManualDesc: 'Unduh manual game PDF jika tersedia.',
   AppLocale.manualReady: 'Manual telah diunduh',
   AppLocale.manualNotDownloaded: 'Belum ada manual yang diunduh',
-  AppLocale.manualDownloadHint:
-      'Unduh manual game dari ScreenScraper jika tersedia.',
+  AppLocale.manualDownloadHint: 'Unduh manual game dari ScreenScraper jika tersedia.',
   AppLocale.downloadManual: 'Unduh manual',
-  AppLocale.downloadManualDesc:
-      'Unduh PDF terbaik yang tersedia untuk bahasa dan wilayah Anda.',
+  AppLocale.downloadManualDesc: 'Unduh PDF terbaik yang tersedia untuk bahasa dan wilayah Anda.',
   AppLocale.readManual: 'Baca manual',
   AppLocale.readManualDesc: 'Buka PDF tersimpan di pembaca bawaan NeoStation.',
   AppLocale.redownloadManual: 'Unduh ulang manual',
-  AppLocale.redownloadManualDesc:
-      'Ganti salinan lokal dengan versi terbaik yang tersedia.',
+  AppLocale.redownloadManualDesc: 'Ganti salinan lokal dengan versi terbaik yang tersedia.',
   AppLocale.deleteManual: 'Hapus manual',
   AppLocale.deleteManualDesc: 'Hapus PDF tersimpan dari perangkat ini.',
-  AppLocale.deleteManualConfirmation:
-      'Hapus manual yang telah diunduh untuk game ini?',
+  AppLocale.deleteManualConfirmation: 'Hapus manual yang telah diunduh untuk game ini?',
   AppLocale.manualDownloaded: 'Manual telah diunduh',
   AppLocale.manualDownloadFailed: 'Gagal mengunduh manual',
-  AppLocale.manualNotAvailable:
-      'Tidak ada manual untuk game ini di ScreenScraper.',
+  AppLocale.manualNotAvailable: 'Tidak ada manual untuk game ini di ScreenScraper.',
   AppLocale.manualDeleted: 'Manual dihapus',
   AppLocale.downloadingManual: 'Mengunduh manual...',
   AppLocale.pinchToZoom: 'Cubit untuk memperbesar',
@@ -732,10 +726,8 @@ const Map<String, dynamic> appLocaleId = {
   AppLocale.systemInfo: 'Info Sistem',
   AppLocale.systemType: 'Tipe',
   AppLocale.supportedFormats: 'Format yang didukung',
-  AppLocale.systemInfoSummary:
-      '{name} adalah {type} yang dirilis oleh {manufacturer} pada {year}. NeoStation saat ini mendeteksi {count} game untuk sistem ini.',
-  AppLocale.systemInfoSummaryNoManufacturer:
-      '{name} adalah {type} yang diperkenalkan pada {year}. NeoStation saat ini mendeteksi {count} game untuk sistem ini.',
+  AppLocale.systemInfoSummary: '{name} adalah {type} yang dirilis oleh {manufacturer} pada {year}. NeoStation saat ini mendeteksi {count} game untuk sistem ini.',
+  AppLocale.systemInfoSummaryNoManufacturer: '{name} adalah {type} yang diperkenalkan pada {year}. NeoStation saat ini mendeteksi {count} game untuk sistem ini.',
   AppLocale.systemTypeConsole: 'konsol rumahan',
   AppLocale.systemTypeHandheld: 'sistem genggam',
   AppLocale.systemTypeComputer: 'komputer',
@@ -1033,38 +1025,22 @@ const Map<String, dynamic> appLocaleId = {
   AppLocale.iosEmuLinkFolder: "Tautkan folder",
   AppLocale.iosEmuChangeFolder: "Ubah folder",
   AppLocale.iosEmuLinkingFailed: "Gagal menautkan: {error}",
-  AppLocale.iosRetroarchSyncRequested:
-      "Sinkronisasi pustaka RetroArch diminta. Proses berjalan di latar belakang; tunggu beberapa detik.",
-  AppLocale.iosRetroarchUnavailable:
-      "Tidak dapat mengakses RetroArch. Apakah sudah terpasang?",
-  AppLocale.iosArmsx2SyncRequested:
-      "Sinkronisasi pustaka ARMSX2 diminta. ARMSX2 akan kembali ke NeoStation secara otomatis saat ekspor siap.",
-  AppLocale.iosArmsx2Unavailable:
-      "Tidak dapat mengakses ARMSX2. Apakah sudah terpasang?",
-  AppLocale.iosMelonxSyncRequested:
-      "Sinkronisasi pustaka Nintendo Switch MeloNX diminta. MeloNX akan kembali ke NeoStation secara otomatis saat ekspor siap.",
-  AppLocale.iosMelonxUnavailable:
-      "Tidak dapat mengakses MeloNX. Apakah sudah terpasang?",
-  AppLocale.iosRetroarchStatusNeedsLink:
-      "Tautkan folder RetroArch agar NeoStation dapat mengakses game langsung tanpa menyalinnya.",
-  AppLocale.iosRetroarchStatusNeedsSync:
-      "Folder sudah ditautkan. Sinkronkan pustaka agar game dapat dibuka langsung di RetroArch dengan satu ketukan.",
-  AppLocale.iosRetroarchStatusSynced:
-      "Folder dan pustaka sudah tersinkron — game dibuka langsung di RetroArch.",
-  AppLocale.iosRetroarchLinkSuccess:
-      "Folder sudah ditautkan. NeoStation akan memindainya langsung tanpa menyalin. Game yang ditemukan di sini akan dibuka langsung di RetroArch.",
-  AppLocale.iosArmsx2StatusNeedsLink:
-      "ARMSX2 menggunakan folder ROM yang sama dengan RetroArch. Tautkan folder ROM bersama, lalu sinkronkan pustaka ARMSX2.",
-  AppLocale.iosArmsx2StatusNeedsSync:
-      "Folder ROM bersama sudah ditautkan. Sinkronkan ARMSX2 untuk mengimpor pustaka PS2 ke NeoStation.",
-  AppLocale.iosArmsx2StatusSynced:
-      "Folder bersama dan pustaka ARMSX2 sudah tersinkron — game PS2 dibuka langsung di ARMSX2.",
-  AppLocale.iosArmsx2LinkSuccess:
-      "Folder ROM bersama sudah ditautkan. RetroArch dan ARMSX2 kini menggunakan sumber ROM NeoStation yang sama.",
-  AppLocale.iosMelonxStatusSynced:
-      "Pustaka MeloNX sudah tersinkron — game Nintendo Switch dibuka langsung di MeloNX.",
-  AppLocale.iosMelonxStatusNeedsSync:
-      "Sinkronkan MeloNX untuk mengimpor pustaka Nintendo Switch langsung ke NeoStation. Pemindaian folder ROM tidak diperlukan.",
+  AppLocale.iosRetroarchSyncRequested: "Sinkronisasi pustaka RetroArch diminta. Proses berjalan di latar belakang; tunggu beberapa detik.",
+  AppLocale.iosRetroarchUnavailable: "Tidak dapat mengakses RetroArch. Apakah sudah terpasang?",
+  AppLocale.iosArmsx2SyncRequested: "Sinkronisasi pustaka ARMSX2 diminta. ARMSX2 akan kembali ke NeoStation secara otomatis saat ekspor siap.",
+  AppLocale.iosArmsx2Unavailable: "Tidak dapat mengakses ARMSX2. Apakah sudah terpasang?",
+  AppLocale.iosMelonxSyncRequested: "Sinkronisasi pustaka Nintendo Switch MeloNX diminta. MeloNX akan kembali ke NeoStation secara otomatis saat ekspor siap.",
+  AppLocale.iosMelonxUnavailable: "Tidak dapat mengakses MeloNX. Apakah sudah terpasang?",
+  AppLocale.iosRetroarchStatusNeedsLink: "Tautkan folder RetroArch agar NeoStation dapat mengakses game langsung tanpa menyalinnya.",
+  AppLocale.iosRetroarchStatusNeedsSync: "Folder sudah ditautkan. Sinkronkan pustaka agar game dapat dibuka langsung di RetroArch dengan satu ketukan.",
+  AppLocale.iosRetroarchStatusSynced: "Folder dan pustaka sudah tersinkron — game dibuka langsung di RetroArch.",
+  AppLocale.iosRetroarchLinkSuccess: "Folder sudah ditautkan. NeoStation akan memindainya langsung tanpa menyalin. Game yang ditemukan di sini akan dibuka langsung di RetroArch.",
+  AppLocale.iosArmsx2StatusNeedsLink: "ARMSX2 menggunakan folder ROM yang sama dengan RetroArch. Tautkan folder ROM bersama, lalu sinkronkan pustaka ARMSX2.",
+  AppLocale.iosArmsx2StatusNeedsSync: "Folder ROM bersama sudah ditautkan. Sinkronkan ARMSX2 untuk mengimpor pustaka PS2 ke NeoStation.",
+  AppLocale.iosArmsx2StatusSynced: "Folder bersama dan pustaka ARMSX2 sudah tersinkron — game PS2 dibuka langsung di ARMSX2.",
+  AppLocale.iosArmsx2LinkSuccess: "Folder ROM bersama sudah ditautkan. RetroArch dan ARMSX2 kini menggunakan sumber ROM NeoStation yang sama.",
+  AppLocale.iosMelonxStatusSynced: "Pustaka MeloNX sudah tersinkron — game Nintendo Switch dibuka langsung di MeloNX.",
+  AppLocale.iosMelonxStatusNeedsSync: "Sinkronkan MeloNX untuk mengimpor pustaka Nintendo Switch langsung ke NeoStation. Pemindaian folder ROM tidak diperlukan.",
 
   // Rich System Info
   AppLocale.systemArchitecture: 'Arsitektur',
@@ -1074,35 +1050,21 @@ const Map<String, dynamic> appLocaleId = {
   AppLocale.systemNotableGames: 'Game ikonik',
   AppLocale.systemTechnicalDetails: 'Detail teknis',
   AppLocale.systemGamesDetected: 'Game terdeteksi',
-  AppLocale.systemInfoDetailedIntro:
-      '{name} adalah sistem jenis {type} yang dirilis oleh {manufacturer} pada {year}.',
-  AppLocale.systemInfoDetailedIntroNoManufacturer:
-      '{name} adalah sistem jenis {type} yang diperkenalkan pada {year}.',
-  AppLocale.systemInfoArchitectureSentence:
-      'Arsitektur perangkat kerasnya adalah {architecture}.',
-  AppLocale.systemInfoGenerationSentence:
-      'Sistem ini termasuk generasi {generation}.',
+  AppLocale.systemInfoDetailedIntro: '{name} adalah sistem jenis {type} yang dirilis oleh {manufacturer} pada {year}.',
+  AppLocale.systemInfoDetailedIntroNoManufacturer: '{name} adalah sistem jenis {type} yang diperkenalkan pada {year}.',
+  AppLocale.systemInfoArchitectureSentence: 'Arsitektur perangkat kerasnya adalah {architecture}.',
+  AppLocale.systemInfoGenerationSentence: 'Sistem ini termasuk generasi {generation}.',
   AppLocale.systemInfoProcessorSentence: 'Prosesor utamanya adalah {cpu}.',
-  AppLocale.systemInfoMediaSentence:
-      'Game dan perangkat lunak terutama didistribusikan melalui {media}.',
-  AppLocale.systemInfoCollectionRomHacks:
-      'Entri ini mengelompokkan ROM hack dan varian buatan komunitas untuk sistem asli.',
-  AppLocale.systemInfoCollectionAllSystems:
-      'Koleksi virtual ini menggabungkan game dari semua sistem yang terdeteksi.',
-  AppLocale.systemInfoCollectionFavorites:
-      'Koleksi virtual ini berisi game yang ditandai sebagai favorit oleh pengguna.',
-  AppLocale.systemInfoCollectionDigitalStore:
-      'Entri ini mewakili toko game PC digital; katalog dan kebutuhan perangkat keras berbeda untuk setiap judul.',
-  AppLocale.systemInfoCollectionEmulationPlatform:
-      'Entri ini mewakili platform emulasi atau kompatibilitas yang mencakup beberapa keluarga perangkat keras asli.',
-  AppLocale.systemInfoCollectionFantasyConsole:
-      'Ini adalah fantasy console dengan perangkat keras virtual yang sengaja dibatasi untuk game dan demo kecil.',
-  AppLocale.systemInfoCollectionMediaCollection:
-      'Ini adalah koleksi media, bukan platform perangkat keras game tetap.',
-  AppLocale.systemInfoCollectionGameEngine:
-      'Entri ini mewakili engine atau runtime game yang judulnya dapat mencakup beberapa generasi perangkat keras.',
-  AppLocale.systemInfoCollectionSoftwarePlatform:
-      'Platform perangkat lunak ini mencakup banyak konfigurasi perangkat keras, sehingga arsitektur berbeda menurut perangkat atau era.',
+  AppLocale.systemInfoMediaSentence: 'Game dan perangkat lunak terutama didistribusikan melalui {media}.',
+  AppLocale.systemInfoCollectionRomHacks: 'Entri ini mengelompokkan ROM hack dan varian buatan komunitas untuk sistem asli.',
+  AppLocale.systemInfoCollectionAllSystems: 'Koleksi virtual ini menggabungkan game dari semua sistem yang terdeteksi.',
+  AppLocale.systemInfoCollectionFavorites: 'Koleksi virtual ini berisi game yang ditandai sebagai favorit oleh pengguna.',
+  AppLocale.systemInfoCollectionDigitalStore: 'Entri ini mewakili toko game PC digital; katalog dan kebutuhan perangkat keras berbeda untuk setiap judul.',
+  AppLocale.systemInfoCollectionEmulationPlatform: 'Entri ini mewakili platform emulasi atau kompatibilitas yang mencakup beberapa keluarga perangkat keras asli.',
+  AppLocale.systemInfoCollectionFantasyConsole: 'Ini adalah fantasy console dengan perangkat keras virtual yang sengaja dibatasi untuk game dan demo kecil.',
+  AppLocale.systemInfoCollectionMediaCollection: 'Ini adalah koleksi media, bukan platform perangkat keras game tetap.',
+  AppLocale.systemInfoCollectionGameEngine: 'Entri ini mewakili engine atau runtime game yang judulnya dapat mencakup beberapa generasi perangkat keras.',
+  AppLocale.systemInfoCollectionSoftwarePlatform: 'Platform perangkat lunak ini mencakup banyak konfigurasi perangkat keras, sehingga arsitektur berbeda menurut perangkat atau era.',
   AppLocale.mediaCartridge: 'Kartrid',
   AppLocale.mediaCdRom: 'CD-ROM',
   AppLocale.mediaDvd: 'DVD',

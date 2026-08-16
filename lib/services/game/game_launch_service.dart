@@ -113,8 +113,7 @@ class GameLaunchService {
           // rather than filesystem paths. They remain launchable even when
           // NeoStation cannot see the underlying ROM file itself.
           romExists = true;
-        } else if (Platform.isAndroid &&
-            game.romPath!.startsWith('content://')) {
+        } else if (Platform.isAndroid && game.romPath!.startsWith('content://')) {
           romExists = true;
         } else {
           romExists = await File(game.romPath!).exists();
@@ -139,11 +138,7 @@ class GameLaunchService {
       // This needs one extra tap the first few times; iOS promotes
       // frequently-used apps to the front of that list afterwards.
       if (Platform.isIOS) {
-        GameSessionManager.registerGameLaunch(
-          system,
-          game,
-          'ios_direct_launch',
-        );
+        GameSessionManager.registerGameLaunch(system, game, 'ios_direct_launch');
         await FavoritesService.recordGamePlayed(game);
 
         // Nintendo Switch: MeloNX exposes an alternate-frontend library export
@@ -234,7 +229,9 @@ class GameLaunchService {
             );
             if (updated) {
               final opened = await launchUrl(
-                Uri.parse('shortcuts://run-shortcut?name=ResumeNeoStation'),
+                Uri.parse(
+                  'shortcuts://run-shortcut?name=ResumeNeoStation',
+                ),
               );
               if (opened) return GameLaunchResult.success();
             }
@@ -272,12 +269,10 @@ class GameLaunchService {
         // context we were handed; falls back to a small on-screen rect if
         // the render tree isn't available for some reason.
         Rect sharePositionOrigin = const Rect.fromLTWH(0, 0, 1, 1);
-        if (context.mounted) {
-          final renderObject = context.findRenderObject();
-          if (renderObject is RenderBox && renderObject.hasSize) {
-            sharePositionOrigin =
-                renderObject.localToGlobal(Offset.zero) & renderObject.size;
-          }
+        final renderObject = context.findRenderObject();
+        if (renderObject is RenderBox && renderObject.hasSize) {
+          sharePositionOrigin =
+              renderObject.localToGlobal(Offset.zero) & renderObject.size;
         }
 
         try {

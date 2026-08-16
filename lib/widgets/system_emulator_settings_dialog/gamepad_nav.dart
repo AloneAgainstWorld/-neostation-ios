@@ -121,7 +121,9 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
   }
 
   void _navigateLeft() {
-    if (_currentTab != 1 || !_usesExecutablePicker || _openMenuIndex != -1) {
+    if (_currentTab != 1 ||
+        !_usesExecutablePicker ||
+        _openMenuIndex != -1) {
       return;
     }
     if (_emulatorActionIndex == 0) return;
@@ -130,7 +132,9 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
   }
 
   void _navigateRight() {
-    if (_currentTab != 1 || !_usesExecutablePicker || _openMenuIndex != -1) {
+    if (_currentTab != 1 ||
+        !_usesExecutablePicker ||
+        _openMenuIndex != -1) {
       return;
     }
     if (_emulatorActionIndex == 1) return;

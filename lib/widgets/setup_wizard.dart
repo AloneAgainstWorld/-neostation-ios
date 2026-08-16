@@ -38,7 +38,8 @@ class SetupWizard extends StatefulWidget {
 }
 
 class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
-  int _currentStep = 0;
+  // iOS skips the user-data location screen: app-private storage is the default.
+  int _currentStep = Platform.isIOS ? 1 : 0;
   bool _isSelectingFolder = false;
   bool _isSelectingUserDataFolder = false;
   String? _selectedFolder;
@@ -87,7 +88,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   //   Android: 0=UserData, 1=Permissions, 2=Folder, 3=Scanning,
   //            4=EsdeImport, 5=ArtPack
   //   Desktop: 0=UserData, 1=Folder, 2=Scanning, 3=EsdeImport, 4=ArtPack
-  //   iOS:     0=UserData, 1=Folder, 2=Scanning, 3=ArtPack (no ES-DE)
+  //   iOS:     UserData is skipped; 1=Folder, 2=Scanning, 3=ArtPack (no ES-DE)
   // The Permissions step covers both All-Files access and the accessibility
   // (Screen Return) service.
   int get _stepUserData => 0;
@@ -100,7 +101,13 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   // moves up into the slot ES-DE would have occupied so the progress dots
   // match the steps the user actually walks through.
   int get _stepEsde => Platform.isIOS ? -1 : (Platform.isAndroid ? 4 : 3);
-  int get _stepArtPack => Platform.isAndroid ? 5 : (Platform.isIOS ? 3 : 4);
+  int get _stepArtPack => Platform.isAndroid
+      ? 5
+      : (Platform.isIOS ? 3 : 4);
+
+  // iOS keeps the existing internal step indices to avoid touching the
+  // established navigation logic, but its visible progress starts at Folder.
+  int get _progressStep => Platform.isIOS ? _currentStep - 1 : _currentStep;
 
   /// The art-pack step is always the final step of the wizard.
   bool get _isLastStep => _currentStep == _stepArtPack;
@@ -277,8 +284,10 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   //          4=EsdeImport, 5=ArtPack (6 steps)
   // Desktop: 0=UserData, 1=FolderSelect, 2=Scanning, 3=EsdeImport,
   //          4=ArtPack (5 steps)
-  // iOS:     0=UserData, 1=FolderSelect, 2=Scanning, 3=ArtPack (4 steps)
-  int get _totalSteps => Platform.isAndroid ? 6 : (Platform.isIOS ? 4 : 5);
+  // iOS:     FolderSelect, Scanning, ArtPack (3 visible steps)
+  int get _totalSteps => Platform.isAndroid
+      ? 6
+      : (Platform.isIOS ? 3 : 5);
 
   @override
   Widget build(BuildContext context) {
@@ -492,8 +501,8 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(_totalSteps, (index) {
-        final isCompleted = index < _currentStep;
-        final isCurrent = index == _currentStep;
+        final isCompleted = index < _progressStep;
+        final isCurrent = index == _progressStep;
 
         return Column(
           children: [
@@ -554,8 +563,8 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: List.generate(_totalSteps, (index) {
-          final isCompleted = index < _currentStep;
-          final isCurrent = index == _currentStep;
+          final isCompleted = index < _progressStep;
+          final isCurrent = index == _progressStep;
 
           return Row(
             children: [
@@ -2014,7 +2023,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
             AppNotification.showNotification(
               context,
               'Linked! If your games don\'t show up in a few seconds, '
-              'relaunch NeoStation to see them.',
+                  'relaunch NeoStation to see them.',
               type: NotificationType.info,
             );
           }
