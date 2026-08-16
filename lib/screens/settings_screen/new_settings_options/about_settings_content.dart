@@ -3,6 +3,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
+import 'package:neostation/l10n/fork_credit_locale.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
@@ -86,24 +87,27 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
   }
 
   int getItemCount() {
-    return 5;
+    return 6;
   }
 
   void selectItem(int index) {
     switch (index) {
       case 0:
-        _launchUrl('https://github.com/misobadev/neostation-frontend');
+        _launchUrl('https://github.com/TarbleFR/neostation-ios');
         break;
       case 1:
-        _launchUrl('https://ko-fi.com/neostation');
+        _launchUrl('https://github.com/misobadev/neostation-frontend');
         break;
       case 2:
-        _launchUrl('https://www.patreon.com/cw/NeoStation');
+        _launchUrl('https://ko-fi.com/neostation');
         break;
       case 3:
-        _launchUrl('https://discord.gg/xE2kgKsRVq');
+        _launchUrl('https://www.patreon.com/cw/NeoStation');
         break;
       case 4:
+        _launchUrl('https://discord.gg/xE2kgKsRVq');
+        break;
+      case 5:
         _launchUrl('https://neostation.dev/');
         break;
     }
@@ -178,6 +182,17 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                     children: [
                       _buildInfoCard(
                         icon: Symbols.code_rounded,
+                        title: ForkCreditLocale.title(context),
+                        value: ForkCreditLocale.description(context),
+                        url: 'https://github.com/TarbleFR/neostation-ios',
+                        theme: theme,
+                        isFocused:
+                            widget.isContentFocused &&
+                            widget.selectedContentIndex == 0,
+                      ),
+                      SizedBox(height: 8.h),
+                      _buildInfoCard(
+                        icon: Symbols.code_rounded,
                         title: AppLocale.openSourceLicense.getString(context),
                         value: AppLocale.openSourceLicenseDesc.getString(
                           context,
@@ -186,7 +201,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
-                            widget.selectedContentIndex == 0,
+                            widget.selectedContentIndex == 1,
                       ),
                       SizedBox(height: 8.h),
                       _buildInfoCard(
@@ -197,7 +212,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
-                            widget.selectedContentIndex == 1,
+                            widget.selectedContentIndex == 2,
                       ),
                       SizedBox(height: 8.h),
                       _buildInfoCard(
@@ -208,7 +223,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
-                            widget.selectedContentIndex == 2,
+                            widget.selectedContentIndex == 3,
                       ),
                       SizedBox(height: 8.h),
                       _buildInfoCard(
@@ -219,7 +234,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
-                            widget.selectedContentIndex == 3,
+                            widget.selectedContentIndex == 4,
                       ),
                       SizedBox(height: 8.h),
                       _buildInfoCard(
@@ -230,7 +245,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
-                            widget.selectedContentIndex == 4,
+                            widget.selectedContentIndex == 5,
                       ),
                     ],
                   ),
