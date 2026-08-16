@@ -31,10 +31,7 @@ class ScreenscraperMediaDownloader {
   /// fallback permanently win even though the ScreenScraper image downloaded
   /// successfully.
   static Future<void> _removeCompetingImageVariants(String fullPath) async {
-    final targetExt = path
-        .extension(fullPath)
-        .replaceFirst('.', '')
-        .toLowerCase();
+    final targetExt = path.extension(fullPath).replaceFirst('.', '').toLowerCase();
     if (!const {'png', 'jpg', 'jpeg'}.contains(targetExt)) return;
 
     final base = path.withoutExtension(fullPath);

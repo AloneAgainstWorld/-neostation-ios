@@ -683,11 +683,9 @@ class ScreenScraperService {
                 password: credentials['password']?.toString() ?? '',
                 allowedMediaTypes: allowedMediaTypes,
                 alreadyDownloadedTypes: [
-                  ...(downloadResult['downloadedTypes'] as List<dynamic>? ??
-                          const [])
+                  ...(downloadResult['downloadedTypes'] as List<dynamic>? ?? const [])
                       .map((e) => e.toString()),
-                  ...(downloadResult['existingTypes'] as List<dynamic>? ??
-                          const [])
+                  ...(downloadResult['existingTypes'] as List<dynamic>? ?? const [])
                       .map((e) => e.toString()),
                 ],
                 sourceMedias: medias,
@@ -700,12 +698,10 @@ class ScreenScraperService {
                   .toSet();
           final requestedImageTypes = allowedMediaTypes
               .where(
-                (type) =>
-                    const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
+                (type) => const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
               )
               .toSet();
-          mediaSuccess =
-              requestedImageTypes.isEmpty ||
+          mediaSuccess = requestedImageTypes.isEmpty ||
               requestedImageTypes.any(successfulTypes.contains);
         }
       }
@@ -783,8 +779,7 @@ class ScreenScraperService {
       final medias = gameInfo['medias'] as List<dynamic>? ?? const [];
       final credentials = await getSavedCredentials();
       final preferredLanguage = credentials?['preferred_language'] ?? 'en';
-      final regionPriority =
-          await ScreenscraperRegionConfig.getRegionPriority();
+      final regionPriority = await ScreenscraperRegionConfig.getRegionPriority();
       final selectedManual = ScreenscraperMediaResolver.selectBestMedia(
         medias,
         'manuel',
@@ -825,8 +820,7 @@ class ScreenScraperService {
         '$cleanRomName.$extension',
       );
 
-      final downloaded =
-          result['success'] == true && await File(manualPath).exists();
+      final downloaded = result['success'] == true && await File(manualPath).exists();
       return {
         'success': downloaded,
         'message': downloaded
@@ -1185,12 +1179,10 @@ class ScreenScraperService {
                       .toSet();
               final requestedImageTypes = allowedTypes
                   .where(
-                    (type) =>
-                        const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
+                    (type) => const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
                   )
                   .toSet();
-              mediaSucceeded =
-                  requestedImageTypes.isEmpty ||
+              mediaSucceeded = requestedImageTypes.isEmpty ||
                   requestedImageTypes.any(successfulTypes.contains);
             }
           }
