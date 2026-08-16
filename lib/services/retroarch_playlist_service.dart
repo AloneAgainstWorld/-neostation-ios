@@ -115,14 +115,10 @@ class RetroArchPlaylistService {
       }
 
       debug.writeln('matchedInFile: $matchedInFile');
-      debug.writeln(
-        'matchingEntry: ${matchingEntry != null ? jsonEncode(matchingEntry) : "null"}',
-      );
+      debug.writeln('matchingEntry: ${matchingEntry != null ? jsonEncode(matchingEntry) : "null"}');
 
       if (matchingEntry == null) {
-        debug.writeln(
-          'RESULT: false (no matching entry found in any playlist)',
-        );
+        debug.writeln('RESULT: false (no matching entry found in any playlist)');
         return false;
       }
 
@@ -135,16 +131,12 @@ class RetroArchPlaylistService {
         try {
           final decoded = jsonDecode(await historyFile.readAsString());
           if (decoded is! Map<String, dynamic>) {
-            debug.writeln(
-              'RESULT: false ($_historyFileName is not a JSON object)',
-            );
+            debug.writeln('RESULT: false ($_historyFileName is not a JSON object)');
             return false;
           }
           history = decoded;
         } catch (e) {
-          debug.writeln(
-            'RESULT: false (failed to parse $_historyFileName: $e)',
-          );
+          debug.writeln('RESULT: false (failed to parse $_historyFileName: $e)');
           return false;
         }
       } else {

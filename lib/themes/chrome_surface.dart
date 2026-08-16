@@ -83,8 +83,9 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
     double min = 0.0,
     double max = 1.0,
   }) {
-    final value =
-        darkBase + (_isLight(theme) ? lightBoost : 0.0) + _vividBoost(theme);
+    final value = darkBase +
+        (_isLight(theme) ? lightBoost : 0.0) +
+        _vividBoost(theme);
     return value.clamp(min, max).toDouble();
   }
 
@@ -161,8 +162,7 @@ class ChromeSurface extends ThemeExtension<ChromeSurface> {
   static Color glassRim(BuildContext context, GlassSurfaceRole role) {
     final theme = Theme.of(context);
     final isLight = _isLight(theme);
-    final mix =
-        Color.lerp(
+    final mix = Color.lerp(
           theme.colorScheme.outline,
           theme.colorScheme.onSurface,
           isLight ? 0.16 : 0.28,

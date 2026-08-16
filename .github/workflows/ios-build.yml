@@ -1,16 +1,33 @@
 name: Build iOS (NeoStation)
 
-# Dedicated iOS build workflow. It remains separate from the main release
-# pipeline while the iOS port is maintained independently.
+# Standalone workflow for the iOS port, kept separate from
+# build-and-deploy.yml so it can't break the existing release pipeline while
+# this platform is still experimental.
 #
-# Signed builds require:
-#   IOS_CERTIFICATE_BASE64
-#   IOS_CERTIFICATE_PASSWORD
-#   IOS_PROVISIONING_PROFILE_BASE64
-#   IOS_TEAM_ID
+# WHAT THIS DOES
+#   1. Scaffolds the ios/ Xcode project via `flutter create` (it isn't
+#      committed to the repo yet — this generates it fresh on the runner
+#      every time, which avoids hand-writing a project.pbxproj).
+#   2. Patches Info.plist with the entries NeoStation needs (landscape,
+#      Files/document access, local networking for NeoSync discovery, etc).
+#   3. Runs `pod install` and `flutter build ios`.
+#   4a. If Apple signing secrets are configured (see below), exports a
+#       properly signed, installable .ipa.
+#   4b. Otherwise, builds with --no-codesign and zips the raw .app so you
+#       still get an artifact to inspect / sign yourself later in Xcode.
 #
-# Without signing secrets, the workflow produces an unsigned IPA that can be
-# signed by the installer before sideloading.
+# REQUIRED SECRETS FOR A SIGNED, INSTALLABLE IPA
+#   IOS_CERTIFICATE_BASE64       - your .p12 signing certificate, base64-encoded
+#   IOS_CERTIFICATE_PASSWORD     - password for that .p12
+#   IOS_PROVISIONING_PROFILE_BASE64 - your .mobileprovision file, base64-encoded
+#   IOS_TEAM_ID                  - your Apple Developer Team ID
+# Without these, the workflow still runs and gives you an unsigned .app you
+# can open/sign manually in Xcode, or sideload via AltStore/Sideloadly which
+# do their own signing.
+#
+# To encode a file for a secret:
+#   base64 -i Certificates.p12 | pbcopy      (macOS)
+#   base64 -w 0 Certificates.p12             (Linux)
 
 on:
   workflow_dispatch:
@@ -66,8 +83,7 @@ jobs:
       - name: Patch Info.plist
         run: |
           PLIST=ios/Runner/Info.plist
-
-          # NeoStation uses a landscape-only interface on iOS and iPadOS.
+          # Landscape-only, matching the Windows/Linux/macOS/Android UI.
           /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
@@ -77,11 +93,19 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
 
-          # Expose the app's Documents directory through iOS document APIs.
+          # Lets the app show up as a destination in the Files app / document
+          # picker so ROM folders can eventually be selected there (phase 2).
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || true
 
-          # Register NeoStation's callback URL scheme for emulator integrations.
+          # Registers neostation:// as a URL scheme this app can be opened
+          # with — RetroArch's library-export protocol calls back via
+          # neostation://retroarch?games=<base64url>, handled natively via
+          # external_folder_access's application(_:open:options:) rather
+          # than the app_links package. Confirmed via isolation testing
+          # that these two plist additions were not what caused the
+          # "requires a selected Development Team" build failure seen
+          # earlier — that was unrelated (see IOS_PORT.md).
           /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
@@ -89,7 +113,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
 
-          # Allow availability checks and launches for supported iOS integrations.
+          # External-emulator URL schemes used by NeoStation must be in
+          # LSApplicationQueriesSchemes for canOpenURL/launchUrl checks to
+          # succeed. RetroArch provides library export + direct launching;
+          # ARMSX2 provides its iOS library export + direct PS2 launch;
+          # MeloNX provides Switch library export + direct game launch.
           /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
@@ -104,15 +132,20 @@ jobs:
 
       - name: Patch device_info_plus for older Xcode SDK compatibility
         run: |
-          # Some runner SDKs do not expose NSProcessInfo.isiOSAppOnVision.
-          # NeoStation does not consume that value, so remove the unsupported
-          # assignment when it is present in the resolved plugin source.
+          # device_info_plus's iOS source unconditionally calls
+          # NSProcessInfo.isiOSAppOnVision, an API that requires the iOS 26.1
+          # SDK (Xcode 26+). We're intentionally pinned to an older macOS
+          # runner (see the runs-on note above) where that selector doesn't
+          # exist in the SDK headers at all, so this fails to compile
+          # regardless of which device_info_plus version pub resolves to
+          # (confirmed on both 12.4.0 and 13.2.0). We don't use this
+          # property from Dart, so removing the line entirely is safe.
           DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" -path "*device_info_plus*/FPPDeviceInfoPlusPlugin.m" 2>/dev/null | head -1)
           if [ -n "$DEVICE_INFO_FILE" ]; then
             echo "Patching $DEVICE_INFO_FILE"
             sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"
           else
-            echo "device_info_plus source not found at the expected path — skipping patch."
+            echo "device_info_plus source not found at the expected path — skipping patch (nothing to do, or plugin structure changed upstream)."
           fi
 
       - name: Generate app icons
@@ -182,8 +215,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Configure Flutter first, then build Runner directly without signing
-          # so the workflow retains useful Xcode diagnostics on failure.
+          # Flutter can emit a misleading "selected Development Team" error
+          # after an otherwise useful --no-codesign device build. Configure the
+          # generated iOS project with Flutter, then let xcodebuild compile the
+          # unsigned Runner directly. This also preserves the real Xcode error
+          # output in the Actions log if compilation genuinely fails.
           flutter build ios \
             --release \
             --no-codesign \

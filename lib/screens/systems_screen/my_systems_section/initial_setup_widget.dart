@@ -39,7 +39,7 @@ class InitialSetupWidget extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'RetroArch is linked. Relaunch NeoStation to see your '
-              'synced games here.',
+                  'synced games here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,

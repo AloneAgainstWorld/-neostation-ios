@@ -9,10 +9,10 @@ import 'package:neostation/models/game_model.dart';
 import 'package:neostation/models/retro_achievements_game_info.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/app_themes.dart';
-import 'package:neostation/themes/corner_radii.dart';
 import 'package:neostation/utils/game_utils.dart';
 import 'package:neostation/widgets/marquee_text.dart';
 import 'package:neostation/themes/chrome_surface.dart';
+import '../../themes/corner_radii.dart';
 
 /// A reusable footer used by the game grid and carousel views.
 ///

@@ -4,7 +4,7 @@
 
 <h4>Modern, multi-platform emulation frontend built with Flutter</h4>
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Discord](https://img.shields.io/discord/1088818368129273946?label=Discord&logo=discord&color=5865f2)](https://discord.gg/xE2kgKsRVq) [![Downloads](assets/readme/badges/downloads.svg)](https://github.com/TarbleFR/neostation-ios/releases) [![Build](assets/readme/badges/build.svg)](https://github.com/TarbleFR/neostation-ios/actions/workflows/ios-build.yml) [![Stars](assets/readme/badges/stars.svg)](https://github.com/TarbleFR/neostation-ios/stargazers) [![Issues](assets/readme/badges/issues.svg)](https://github.com/TarbleFR/neostation-ios/issues) ![iOS Port](https://img.shields.io/badge/iOS%20Port-iPhone%20%7C%20iPad-blue?logo=apple) [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20(x64%2Farm64)%20%7C%20macOS%20%7C%20Android%20%7C%20iOS-blue)](https://github.com/TarbleFR/neostation-ios)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) [![Discord](https://img.shields.io/discord/1088818368129273946?label=Discord&logo=discord&color=5865f2)](https://discord.gg/xE2kgKsRVq) ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/miguelsotobaez/neostation-frontend/total) ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/miguelsotobaez/neostation-frontend/build-and-deploy.yml) [![Stars](https://img.shields.io/github/stars/misobadev/neostation-frontend?logo=github)](https://github.com/misobadev/neostation-frontend) [![Issues](https://img.shields.io/github/issues/misobadev/neostation-frontend)](https://github.com/misobadev/neostation-frontend/issues)  [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20(x64%2Farm64)%20%7C%20macOS%20%7C%20Android%20%7C%20iOS-blue)](https://github.com/misobadev/neostation-frontend)
 
 ![NeoStation Hero](https://repository-images.githubusercontent.com/1223168847/4e7a727d-9855-4597-a999-c07167d8552f)
 
@@ -18,7 +18,7 @@
 
 <div align="left">
 
-NeoStation provides a fast, lightweight, and customizable experience for managing and launching retro games across desktop and mobile devices, with support for launching games through RetroArch and other external emulators. The iOS port extends NeoStation to iPhone and iPad with IPA builds, sideloading support, and dedicated launch and library-synchronization support for external apps such as RetroArch, MeloNX, and ARMSX2.
+NeoStation provides a fast, lightweight, and customizable experience for managing and launching retro games across desktop and mobile devices, with seamless integration for RetroArch and standalone emulators. An iOS port extends NeoStation to iPhone and iPad with IPA builds, sideloading support, and dedicated integrations for RetroArch, MeloNX, and ARMSX2.
 
 > **Modified version / iOS port notice**  
 > This repository is a modified version of the upstream **NeoStation** project.  
@@ -34,8 +34,8 @@ NeoStation provides a fast, lightweight, and customizable experience for managin
 - **Modern & customizable UI**: Designed for both large screens and handheld devices, with themes and animations.
 - **Collection management**: Intuitively organize your ROMs and platforms.
 - **Multi-disc ROM organization**: Automatically create `.m3u` playlists for your multi-disc games and organize them into game folders.
-- **RetroArch & external emulator support**: Easy configuration, auto-detection, and launching through supported emulator apps.
-- **iOS port**: IPA builds through GitHub Actions, SideStore/direct sideloading support, library synchronization and game launching through external RetroArch, MeloNX (Nintendo Switch), and ARMSX2 (PlayStation 2) apps, plus iOS JIT workflows.
+- **RetroArch & standalone emulator integration**: Easy configuration and auto-detection.
+- **iOS port**: IPA builds through GitHub Actions, SideStore/direct sideloading support, RetroArch library integration, MeloNX (Nintendo Switch) and ARMSX2 (PlayStation 2) library sync, direct game launching, and iOS JIT workflows.
 - **Multi-platform support**: Windows, Linux, macOS, Android, and iOS.
 - **Lightweight & fast**: Built with web and native technologies for maximum performance.
 - **Advanced configuration**: Deep customization options for power users.
@@ -64,7 +64,7 @@ Folders that already contain `.m3u` playlists are skipped during the scan.
 | Linux | ✅ Supported | x64, ARM64 (AppImage, Flatpak) |
 | macOS | ✅ Supported | Apple Silicon & Intel |
 | Android | ✅ Supported | ARM64, Android TV compatible |
-| iOS | ✅ Port available | ARM64, IPA sideloading / SideStore, launch support for RetroArch, MeloNX & ARMSX2 |
+| iOS | ✅ Port available | ARM64, IPA sideloading / SideStore, RetroArch, MeloNX & ARMSX2 integrations |
 
 ## Prerequisites
 
@@ -85,15 +85,13 @@ Supported installation methods include:
 - **Direct IPA sideloading**
 - **Apple Developer signing** for users who want to avoid the free-account three-app sideloading limit
 
-Current iOS support for external emulator apps includes:
+Current iOS integrations include:
 
 - **RetroArch** — library synchronization and direct game launching through deeplinks.
 - **MeloNX / Nintendo Switch** — library export/synchronization, Title ID-based media association, direct game launching, and JIT workflows using StikDebug/Shortcuts.
 - **ARMSX2 / PlayStation 2** — library synchronization, direct game launching, and JIT workflows using StikDebug/Shortcuts.
 - **iOS emulator detection** — installed/not-installed status in System Settings.
 - **Native iOS media and file handling** — adapted storage, document access, scraping media, and localized settings.
-
-> **External emulator notice:** RetroArch, MeloNX, and ARMSX2 are separate applications. They are not bundled with NeoStation; NeoStation can detect supported emulator apps, synchronize compatible libraries, and launch games through them when they are installed.
 
 > **Note:** iOS uses Apple's signing and entitlement model. Available emulator/JIT capabilities can depend on the chosen signing method and installed companion apps.
 
@@ -128,8 +126,8 @@ screen, the app isn't at fault — it's being run outside Steam.
 
 ```bash
 # Clone the repository
-git clone https://github.com/TarbleFR/neostation-ios.git
-cd neostation-ios
+git clone https://github.com/misobadev/neostation-frontend.git
+cd neostation-frontend
 
 # Install dependencies
 flutter pub get
@@ -300,7 +298,7 @@ See the upstream repository history and contributor list for the complete author
 
 - **iOS port developer / maintainer: [@TarbleFR](https://github.com/TarbleFR)**
 
-The iOS port includes iOS-specific platform work such as IPA/CI build support, sideloading adaptations, native iOS integration, external emulator detection and launch flows, library synchronization support, JIT-related workflows, and iOS-specific UI/file-handling adaptations.
+The iOS port includes iOS-specific platform work such as IPA/CI build support, sideloading adaptations, native iOS integration, emulator detection and launch flows, library synchronization integrations, JIT-related workflows, and iOS-specific UI/file-handling adaptations.
 
 Where applicable, individual commits and the Git history provide the authoritative record of authorship for each modification.
 

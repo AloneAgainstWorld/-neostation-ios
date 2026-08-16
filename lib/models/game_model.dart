@@ -375,7 +375,12 @@ class GameModel {
     }
 
     final fallbackBase = _stripRomExtension(lookupNames.first);
-    return path.join('media', systemFolderName, imageType, '$fallbackBase.png');
+    return path.join(
+      'media',
+      systemFolderName,
+      imageType,
+      '$fallbackBase.png',
+    );
   }
 
   /// Resolves the local PDF manual for this game.
@@ -384,7 +389,10 @@ class GameModel {
   /// prefer their stable Title ID, while regular ROMs use the ROM filename
   /// without its system-specific extension. The canonical location is
   /// `media/<system>/manuals/<key>.pdf`.
-  String getManualPath(String systemFolderName, [FileProvider? fileProvider]) {
+  String getManualPath(
+    String systemFolderName, [
+    FileProvider? fileProvider,
+  ]) {
     final lookupNames = _mediaLookupNames();
 
     if (fileProvider != null && fileProvider.isInitialized) {
@@ -495,7 +503,10 @@ class GameModel {
 
       // Return the canonical NeoStation path even if the file does not exist
       // yet, so media caching and later downloads use the same Title-ID key.
-      return fileProvider.getVideoPath(systemFolderName, lookupNames.first);
+      return fileProvider.getVideoPath(
+        systemFolderName,
+        lookupNames.first,
+      );
     }
 
     // Manual filesystem lookup logic mirrors getImagePath().
@@ -519,7 +530,12 @@ class GameModel {
     }
 
     final fallbackBase = _stripRomExtension(lookupNames.first);
-    return path.join('media', systemFolderName, 'videos', '$fallbackBase.mp4');
+    return path.join(
+      'media',
+      systemFolderName,
+      'videos',
+      '$fallbackBase.mp4',
+    );
   }
 
   /// Verifies if a preview video exists for this game.
