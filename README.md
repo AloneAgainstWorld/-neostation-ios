@@ -138,6 +138,8 @@ All upstream authors and contributors retain attribution for their contributions
 ### iOS port
 
 - iOS port developer / maintainer: **[@TarbleFR](https://github.com/TarbleFR)**
+- Patreon: **[TarbleFR](https://www.patreon.com/cw/TarbleFR)**
+- Reddit: **[u/Mysterious_Air2053](https://www.reddit.com/user/Mysterious_Air2053/)**
 - Modified iOS version maintained since **August 2026**.
 
 The iOS port includes IPA/CI build support, sideloading adaptations, emulator detection and launch flows, library synchronization, JIT-related workflows, iOS UI/file-handling adaptations and other iOS-specific integration work.
