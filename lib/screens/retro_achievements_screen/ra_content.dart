@@ -29,6 +29,7 @@ class _RAContentState extends State<RAContent>
   final TextEditingController _apiKeyController = TextEditingController();
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _apiKeyFocus = FocusNode();
+  final ScrollController _loginScrollController = ScrollController();
   final ScrollController _dashboardScrollController = ScrollController();
 
   /// Connected dashboard: whether the cursor is parked on the header's logout
@@ -190,6 +191,7 @@ class _RAContentState extends State<RAContent>
     _apiKeyController.dispose();
     _usernameFocus.dispose();
     _apiKeyFocus.dispose();
+    _loginScrollController.dispose();
     _dashboardScrollController.dispose();
     super.dispose();
   }
@@ -276,6 +278,8 @@ class _RAContentState extends State<RAContent>
     BuildContext context,
     RetroAchievementsProvider raProvider,
   ) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.r),
       child: Column(
@@ -284,32 +288,36 @@ class _RAContentState extends State<RAContent>
           SizedBox(height: 64.r), // Space for header (32.r + margin)
           // Contenido principal
           if (!raProvider.isConnected) ...[
-            SingleChildScrollView(
-              // Vertical scroll wraps the existing horizontal one so the
-              // API key field can scroll up above the on-screen keyboard
-              // instead of being clipped off-screen with no way to see
-              // what's being typed — this landscape layout previously
-              // only scrolled horizontally.
-              child: Center(
+            Expanded(
+              child: Scrollbar(
+                controller: _loginScrollController,
+                thumbVisibility: true,
                 child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.r),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          constraints: BoxConstraints(maxWidth: 260.r),
-                          child: _buildLandscapeConnectionForm(
-                            context,
-                            raProvider,
-                          ),
+                  controller: _loginScrollController,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(bottom: keyboardInset + 16.r),
+                  child: Center(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.r),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              constraints: BoxConstraints(maxWidth: 260.r),
+                              child: _buildLandscapeConnectionForm(
+                                context,
+                                raProvider,
+                              ),
+                            ),
+                            SizedBox(width: 16.r),
+                            SizedBox(width: 300.r, child: _buildInfoBox(context)),
+                          ],
                         ),
-                        SizedBox(width: 16.r),
-                        SizedBox(width: 300.r, child: _buildInfoBox(context)),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -357,6 +365,8 @@ class _RAContentState extends State<RAContent>
     RetroAchievementsProvider raProvider,
   ) {
     final theme = Theme.of(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return Container(
       padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
@@ -370,7 +380,7 @@ class _RAContentState extends State<RAContent>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Header principal con logo y título
+          // Header principal con logo y titre
           Row(
             children: [
               Expanded(
@@ -399,6 +409,7 @@ class _RAContentState extends State<RAContent>
                 child: TextFormField(
                   controller: _usernameController,
                   focusNode: _usernameFocus,
+                  scrollPadding: EdgeInsets.only(bottom: keyboardInset + 72.r),
                   decoration: InputDecoration(
                     labelText: AppLocale.username.getString(context),
                     labelStyle: TextStyle(
@@ -464,6 +475,7 @@ class _RAContentState extends State<RAContent>
                   obscureText: _obscureApiKey,
                   enableSuggestions: false,
                   autocorrect: false,
+                  scrollPadding: EdgeInsets.only(bottom: keyboardInset + 96.r),
                   decoration: InputDecoration(
                     labelText: AppLocale.raApiKey.getString(context),
                     suffixStyle: TextStyle(
