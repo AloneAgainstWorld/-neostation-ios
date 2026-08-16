@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload signed IPA
         if: steps.signing.outputs.signed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: NeoStation-ios-signed
           path: build/ios/ipa/*.ipa
@@ -227,7 +227,7 @@ jobs:
 
       - name: Upload unsigned IPA
         if: steps.signing.outputs.signed != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: NeoStation-ios-unsigned
           path: NeoStation-unsigned.ipa
