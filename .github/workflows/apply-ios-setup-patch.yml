@@ -1,0 +1,102 @@
+name: Apply iOS setup wizard patch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-ios-setup-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch iOS setup wizard
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('lib/widgets/setup_wizard.dart')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '  int _currentStep = 0;\n',
+                  '  // iOS skips the user-data location screen: app-private storage is the default.\n'
+                  '  int _currentStep = Platform.isIOS ? 1 : 0;\n',
+                  1,
+              ),
+              (
+                  '  //   iOS:     0=UserData, 1=Folder, 2=Scanning, 3=ArtPack (no ES-DE)\n',
+                  '  //   iOS:     UserData is skipped; 1=Folder, 2=Scanning, 3=ArtPack (no ES-DE)\n',
+                  1,
+              ),
+              (
+                  '  int get _stepArtPack => Platform.isAndroid\n'
+                  '      ? 5\n'
+                  '      : (Platform.isIOS ? 3 : 4);\n',
+                  '  int get _stepArtPack => Platform.isAndroid\n'
+                  '      ? 5\n'
+                  '      : (Platform.isIOS ? 3 : 4);\n\n'
+                  '  // iOS keeps the existing internal step indices to avoid touching the\n'
+                  '  // established navigation logic, but its visible progress starts at Folder.\n'
+                  '  int get _progressStep => Platform.isIOS ? _currentStep - 1 : _currentStep;\n',
+                  1,
+              ),
+              (
+                  '  // iOS:     0=UserData, 1=FolderSelect, 2=Scanning, 3=ArtPack (4 steps)\n'
+                  '  int get _totalSteps => Platform.isAndroid\n'
+                  '      ? 6\n'
+                  '      : (Platform.isIOS ? 4 : 5);\n',
+                  '  // iOS:     FolderSelect, Scanning, ArtPack (3 visible steps)\n'
+                  '  int get _totalSteps => Platform.isAndroid\n'
+                  '      ? 6\n'
+                  '      : (Platform.isIOS ? 3 : 5);\n',
+                  1,
+              ),
+          ]
+
+          for old, new, expected in replacements:
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f'Expected {expected} occurrence(s), found {actual}: {old!r}')
+              text = text.replace(old, new, expected)
+
+          old_progress = (
+              '        final isCompleted = index < _currentStep;\n'
+              '        final isCurrent = index == _currentStep;\n'
+          )
+          new_progress = (
+              '        final isCompleted = index < _progressStep;\n'
+              '        final isCurrent = index == _progressStep;\n'
+          )
+          if text.count(old_progress) != 2:
+              raise SystemExit(
+                  f'Expected 2 progress comparisons, found {text.count(old_progress)}'
+              )
+          text = text.replace(old_progress, new_progress)
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Verify patch
+        run: |
+          git diff --check
+          grep -F 'int _currentStep = Platform.isIOS ? 1 : 0;' lib/widgets/setup_wizard.dart
+          grep -F 'int get _progressStep => Platform.isIOS ? _currentStep - 1 : _currentStep;' lib/widgets/setup_wizard.dart
+          grep -F ': (Platform.isIOS ? 3 : 5);' lib/widgets/setup_wizard.dart
+
+      - name: Commit patch
+        run: |
+          git config user.name 'TarbleFR'
+          git config user.email '249503225+TarbleFR@users.noreply.github.com'
+          git add lib/widgets/setup_wizard.dart
+          git commit -m 'Simplify iOS setup wizard storage step'
+          git push origin HEAD:main
