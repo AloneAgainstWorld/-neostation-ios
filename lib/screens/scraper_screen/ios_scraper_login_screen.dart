@@ -333,8 +333,7 @@ class _LoginProbeResult {
 
   const _LoginProbeResult._(this.payload, this.userInfo, this.message);
 
-  const _LoginProbeResult.failure(String message)
-      : this._(null, null, message);
+  const _LoginProbeResult.failure(String message) : this._(null, null, message);
 
   const _LoginProbeResult.success(
     Map<String, dynamic> payload,
