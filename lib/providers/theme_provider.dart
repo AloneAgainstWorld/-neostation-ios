@@ -6,29 +6,30 @@ import 'package:neostation/themes/app_themes.dart';
 import 'package:neostation/services/custom_theme_service.dart';
 import 'package:neostation/services/startup_theme_cache.dart';
 import 'package:neostation/repositories/config_repository.dart';
+import 'package:neostation/services/config_service.dart';
+import 'package:neostation/utils/image_utils.dart';
+import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Provider responsible for managing the application's visual theme.
 ///
-/// Supports static theme selection (Dark, Light, OLED, etc.) and a dynamic
-/// 'System' mode that automatically synchronizes with the OS platform brightness.
-/// Persists the selection to the local database.
+/// The color theme and the optional main-menu custom background are persisted
+/// independently. The background is rendered only by the Systems main menu;
+/// playlists and other top-level screens keep their normal theme background.
 class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
   static final _log = LoggerService.instance;
+  static const String _customBackgroundPreferenceKey =
+      'neostation_custom_background_path';
 
-  /// The current [ThemeData] being applied to the application.
   ThemeData _currentTheme =
       (WidgetsBinding.instance.platformDispatcher.platformBrightness ==
           Brightness.dark)
       ? AppThemes.darkTheme
       : AppThemes.lightTheme;
 
-  /// Internal identifier for the current theme. Set to 'system' for dynamic mode.
   String _currentThemeName = 'system';
+  String? _customBackgroundPath;
 
-  /// Returns the appropriate [ThemeData] for the current selection.
-  ///
-  /// If in 'system' mode, it dynamically resolves the theme based on the
-  /// current platform brightness.
   ThemeData get currentTheme {
     if (_currentThemeName == 'system') {
       final brightness =
@@ -37,16 +38,21 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
           ? availableThemes['dark']!
           : availableThemes['light']!;
     }
-
     return _currentTheme;
   }
 
   String get currentThemeName => _currentThemeName;
 
-  /// Whether the current theme is specifically optimized for OLED displays (pure black).
+  String? get customBackgroundPath {
+    final value = _customBackgroundPath;
+    if (value == null || value.isEmpty) return null;
+    return File(value).existsSync() ? value : null;
+  }
+
+  bool get hasCustomBackground => customBackgroundPath != null;
+
   bool get isOled => _currentThemeName == 'oled';
 
-  /// Registry of all available concrete themes.
   static final Map<String, ThemeData> availableThemes = {
     'dark': AppThemes.darkTheme,
     'light': AppThemes.lightTheme,
@@ -64,7 +70,6 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     'horizon': AppThemes.horizonTheme,
   };
 
-  /// Human-readable mapping for theme identifiers.
   static const Map<String, String> themeDisplayNames = {
     'system': 'System',
     'dark': 'Dark',
@@ -87,14 +92,6 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
-  /// Builds a provider whose saved theme is already resolved.
-  ///
-  /// Deliberately the only way to construct one: resolving the theme after
-  /// construction leaves the first frames on the platform-brightness fallback,
-  /// and on a device whose OS reports a light brightness (the Steam Deck does)
-  /// that fallback is the light theme — a white flash for anyone on a dark
-  /// theme. Awaiting this before `runApp` means the very first painted frame
-  /// already uses the user's theme.
   static Future<ThemeProvider> create() async {
     final provider = ThemeProvider._();
     await provider._loadSavedTheme();
@@ -107,7 +104,6 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// Reacts to OS-level brightness changes when in 'system' theme mode.
   @override
   void didChangePlatformBrightness() {
     if (_currentThemeName == 'system') {
@@ -117,15 +113,11 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Notifies listeners and mirrors the resolved palette for the startup
-  /// screens. Every theme change goes through here, so those screens are never
-  /// a launch behind the user's choice.
   void _notifyThemeChanged() {
     StartupThemeCache.save(currentTheme);
     notifyListeners();
   }
 
-  /// Internal logic to resolve the appropriate theme based on system brightness.
   void _updateSystemTheme() {
     final brightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
@@ -134,8 +126,6 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
         : availableThemes['light']!;
   }
 
-  /// Loads user-imported themes from disk into [AppThemes.customThemes] so they
-  /// resolve like built-ins. Safe to call more than once.
   Future<void> _loadCustomThemes() async {
     try {
       final themes = await CustomThemeService.loadAll();
@@ -147,12 +137,27 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Loads the persisted theme name from the database and applies it.
+  Future<void> _loadCustomBackground() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedPath = prefs.getString(_customBackgroundPreferenceKey);
+      if (savedPath == null || savedPath.isEmpty) return;
+
+      final file = File(savedPath);
+      if (await file.exists() && ImageUtils.isSupportedBackground(savedPath)) {
+        _customBackgroundPath = savedPath;
+      } else {
+        await prefs.remove(_customBackgroundPreferenceKey);
+      }
+    } catch (e) {
+      _log.e('Error loading custom background: $e');
+    }
+  }
+
   Future<void> _loadSavedTheme() async {
     try {
-      // Imported themes must be registered before we resolve the saved id, so a
-      // persisted custom theme survives restarts.
       await _loadCustomThemes();
+      await _loadCustomBackground();
 
       final savedThemeName = await ConfigRepository.getThemeName();
       if (savedThemeName == 'system') {
@@ -168,8 +173,6 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
         _currentThemeName = savedThemeName;
         _notifyThemeChanged();
       } else {
-        // The previously selected theme is no longer available (e.g. removed
-        // in an update). Fall back to the system theme and persist it.
         _log.w(
           'Saved theme "$savedThemeName" is no longer available, falling back to system.',
         );
@@ -183,20 +186,15 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Updates the application theme and persists the choice to the database.
-  ///
-  /// Special handling for the 'system' value to enable dynamic mode.
   Future<void> setTheme(String themeName) async {
     if (themeName == 'system') {
       _currentThemeName = 'system';
       _updateSystemTheme();
-
       try {
         await ConfigRepository.updateThemeName('system');
       } catch (e) {
         _log.e('Error saving theme: $e');
       }
-
       _notifyThemeChanged();
       return;
     }
@@ -207,21 +205,75 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (resolved != null) {
       _currentTheme = resolved;
       _currentThemeName = themeName;
-
       try {
         await ConfigRepository.updateThemeName(themeName);
       } catch (e) {
         _log.e('Error saving theme: $e');
       }
-
       _notifyThemeChanged();
     }
   }
 
-  /// Returns a metadata list for all available themes, excluding the 'system' option.
-  ///
-  /// Used for populating theme selection UIs with display names and preview icons.
-  /// Built-in themes come first, followed by any user-imported themes.
+  /// Copies a selected image/GIF/video into NeoStation's user-data directory.
+  /// It is intentionally not part of ThemeData: only the main Systems menu
+  /// renders it, so game playlists and the rest of the app remain unchanged.
+  Future<String> setCustomBackground(File sourceFile) async {
+    if (!await sourceFile.exists()) {
+      throw FileSystemException(
+        'Custom background file was not found',
+        sourceFile.path,
+      );
+    }
+    if (!ImageUtils.isSupportedBackground(sourceFile.path)) {
+      throw const FormatException('Unsupported custom background format');
+    }
+
+    final userDataPath = await ConfigService.getUserDataPath();
+    final targetDir = Directory(path.join(userDataPath, 'custom_background'));
+    await targetDir.create(recursive: true);
+
+    final extension = path.extension(sourceFile.path).toLowerCase();
+    final targetPath = path.join(targetDir.path, 'background$extension');
+    final normalizedSource = path.normalize(sourceFile.absolute.path);
+    final normalizedTarget = path.normalize(File(targetPath).absolute.path);
+
+    await for (final entity in targetDir.list(followLinks: false)) {
+      if (entity is File &&
+          path.normalize(entity.absolute.path) != normalizedSource) {
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    }
+
+    if (normalizedSource != normalizedTarget) {
+      await sourceFile.copy(targetPath);
+    }
+
+    _customBackgroundPath = targetPath;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_customBackgroundPreferenceKey, targetPath);
+    notifyListeners();
+    return targetPath;
+  }
+
+  Future<void> clearCustomBackground() async {
+    final oldPath = _customBackgroundPath;
+    _customBackgroundPath = null;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_customBackgroundPreferenceKey);
+
+    if (oldPath != null && oldPath.isNotEmpty) {
+      try {
+        final file = File(oldPath);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+
+    notifyListeners();
+  }
+
   List<Map<String, String>> getThemeList() {
     final list = availableThemes.keys.map((key) {
       return {'name': key, 'displayName': themeDisplayNames[key] ?? key};
@@ -234,13 +286,9 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     return list;
   }
 
-  /// Whether [themeName] is a user-imported (deletable) theme.
   bool isCustomTheme(String themeName) =>
       AppThemes.customThemes.containsKey(themeName);
 
-  /// Imports a daisyUI theme JSON [file], registers it, and applies it. Throws
-  /// [FormatException] on malformed input. Reserved ids (built-ins + 'system')
-  /// come from [availableThemes] so the guard stays in sync automatically.
   Future<ThemeImportResult> importTheme(File file) async {
     final reserved = {...availableThemes.keys, 'system'};
     final result = await CustomThemeService.importFromFile(
@@ -254,8 +302,6 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     return result;
   }
 
-  /// Deletes an imported theme. If it is currently applied, falls back to
-  /// 'system'. No-op for built-in themes.
   Future<void> deleteTheme(String themeName) async {
     if (!AppThemes.customThemes.containsKey(themeName)) return;
 
