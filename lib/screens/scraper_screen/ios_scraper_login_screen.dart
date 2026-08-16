@@ -304,7 +304,9 @@ class _IosScraperLoginScreenState extends State<IosScraperLoginScreen> {
                       Container(
                         padding: EdgeInsets.all(10.r),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surface.withValues(alpha: 0.45),
+                          color: theme.colorScheme.surface.withValues(
+                            alpha: 0.45,
+                          ),
                           borderRadius: BorderRadius.circular(8.r),
                         ),
                         child: Text(
