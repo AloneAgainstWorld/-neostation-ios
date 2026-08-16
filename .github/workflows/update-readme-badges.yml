@@ -223,5 +223,6 @@ jobs:
         run: |
           gh pr merge "$PR_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
+            --auto \
             --squash \
             --delete-branch
