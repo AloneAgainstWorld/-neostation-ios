@@ -6,13 +6,9 @@ import 'package:provider/provider.dart';
 
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/providers/file_provider.dart';
-import 'package:neostation/providers/sqlite_config_provider.dart';
-import 'package:neostation/repositories/config_repository.dart';
-import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:neostation/services/global_notification_service.dart';
 import 'package:neostation/services/metadata_cleanup_service.dart';
-import 'package:neostation/services/rom_folder_organizer_service.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/widgets/custom_notification.dart';
 import 'package:neostation/widgets/info_dialog.dart';
@@ -36,169 +32,15 @@ class ToolsSettingsContent extends StatefulWidget {
 
 class ToolsSettingsContentState extends State<ToolsSettingsContent> {
   static final _log = LoggerService.instance;
-  bool _isOrganizingMultiDisc = false;
   bool _isCleaningMetadata = false;
-  List<String> _currentRomFolders = [];
 
-  @override
-  void initState() {
-    super.initState();
-    _loadRomFolders();
-  }
-
-  Future<void> _loadRomFolders() async {
-    try {
-      _currentRomFolders = await ConfigRepository.getUserRomFolders();
-      if (mounted) setState(() {});
-    } catch (e) {
-      _log.e('Failed to load ROM folders for tools: $e');
-    }
-  }
-
-  int getItemCount() => 2;
+  int getItemCount() => 1;
 
   void scrollToIndex(int index) {}
 
   void selectItem(int index) {
-    switch (index) {
-      case 0:
-        _organizeMultiDiscGames();
-      case 1:
-        _cleanOrphanedMetadata();
-    }
-  }
-
-  Future<void> _organizeMultiDiscGames() async {
-    if (_isOrganizingMultiDisc) return;
-
-    final localeTitle = AppLocale.organizeMultiDiscGames.getString(context);
-    final localeWarning = AppLocale.organizeMultiDiscWarning.getString(context);
-    final localeNoFolders = AppLocale.organizeMultiDiscNoRomFoldersConfigured
-        .getString(context);
-    final localeScanning = AppLocale.organizeMultiDiscScanning.getString(
-      context,
-    );
-    final localeDone = AppLocale.organizeMultiDiscDone.getString(context);
-    final localeNoSetsFound = AppLocale.organizeMultiDiscNoSetsFound.getString(
-      context,
-    );
-    final localeSkippedSuffix = AppLocale.organizeMultiDiscSkippedSuffix
-        .getString(context);
-    final localeFailed = AppLocale.organizeMultiDiscFailed.getString(context);
-    final localeConfirm = AppLocale.confirm.getString(context);
-
-    if (_currentRomFolders.isEmpty) {
-      if (mounted) {
-        AppNotification.showNotification(
-          context,
-          localeNoFolders,
-          type: NotificationType.info,
-        );
-      }
-      return;
-    }
-
-    final confirmed = await ConfirmActionDialog.show(
-      context,
-      title: localeTitle,
-      body: localeWarning,
-      confirmLabel: localeConfirm,
-      icon: Symbols.folder_managed_rounded,
-      accentColor: Theme.of(context).colorScheme.primary,
-    );
-    if (confirmed != true || !mounted) return;
-
-    final multiDiscSystems = (await SystemRepository.getAllSystems())
-        .where((system) => system.multiDisc)
-        .toList();
-    final supportedFolders = multiDiscSystems
-        .expand((system) => [system.folderName, ...system.folders])
-        .where((folder) => folder.isNotEmpty)
-        .toSet();
-
-    String? completionMessage;
-    NotificationType? completionType;
-    const notificationId = 'organize_multidisc';
-
-    try {
-      if (mounted) setState(() => _isOrganizingMultiDisc = true);
-
-      GlobalNotificationService().show(
-        id: notificationId,
-        message: localeScanning,
-        type: GlobalNotificationType.info,
-        progress: 0,
-      );
-
-      final result = await RomFolderOrganizerService.organizeRomFolders(
-        _currentRomFolders,
-        supportedSystemFolders: supportedFolders,
-        onProgress: (completed, total) {
-          if (total == 0) return;
-          GlobalNotificationService().update(
-            id: notificationId,
-            message: localeScanning,
-            type: GlobalNotificationType.info,
-            progress: completed / total,
-          );
-        },
-      );
-
-      if (result.hasChanges && mounted) {
-        final configProvider = Provider.of<SqliteConfigProvider>(
-          context,
-          listen: false,
-        );
-        for (final system in multiDiscSystems) {
-          await configProvider.rescanSystemSilent(system);
-        }
-      }
-
-      if (mounted) {
-        final skippedNote = result.rootsSkipped > 0
-            ? localeSkippedSuffix.replaceFirst(
-                '{count}',
-                result.rootsSkipped.toString(),
-              )
-            : '';
-        completionMessage = result.hasChanges
-            ? localeDone
-                  .replaceFirst('{groups}', result.groupsOrganized.toString())
-                  .replaceFirst('{files}', result.filesMoved.toString())
-                  .replaceFirst(
-                    '{playlists}',
-                    result.playlistsCreated.toString(),
-                  )
-                  .replaceFirst('{skipped}', skippedNote)
-            : localeNoSetsFound.replaceFirst('{skipped}', skippedNote);
-        completionType = result.hasChanges
-            ? NotificationType.success
-            : NotificationType.info;
-      }
-    } catch (e, stackTrace) {
-      _log.e('Failed to organize multi-disc games: $e', stackTrace: stackTrace);
-      if (mounted) {
-        completionMessage = localeFailed.replaceFirst('{error}', e.toString());
-        completionType = NotificationType.error;
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isOrganizingMultiDisc = false);
-        await _loadRomFolders();
-        if (completionMessage != null && completionType != null) {
-          final globalType = completionType == NotificationType.success
-              ? GlobalNotificationType.success
-              : GlobalNotificationType.error;
-          GlobalNotificationService().update(
-            id: notificationId,
-            message: completionMessage,
-            type: globalType,
-            progress: null,
-          );
-        }
-      } else {
-        GlobalNotificationService().dismiss(notificationId);
-      }
+    if (index == 0) {
+      _cleanOrphanedMetadata();
     }
   }
 
@@ -383,10 +225,6 @@ class ToolsSettingsContentState extends State<ToolsSettingsContent> {
           child: ValueListenableBuilder<List<GlobalNotificationData>>(
             valueListenable: GlobalNotificationService().notifier,
             builder: (context, notifications, _) {
-              final multiDiscProgress = _progressFor(
-                notifications,
-                'organize_multidisc',
-              );
               final metadataProgress = _progressFor(
                 notifications,
                 'clean_orphaned_metadata',
@@ -396,38 +234,17 @@ class ToolsSettingsContentState extends State<ToolsSettingsContent> {
                 physics: const ClampingScrollPhysics(),
                 children: [
                   SettingsCardRow(
-                    icon: Symbols.folder_managed_rounded,
-                    title: AppLocale.organizeMultiDiscGames.getString(context),
-                    subtitle: AppLocale.organizeMultiDiscGamesSubtitle
-                        .getString(context),
-                    subtitleMaxLines: 2,
-                    selected: isSelected,
-                    onTap: () => _organizeMultiDiscGames(),
-                    trailing: SettingsActionButton(
-                      icon: Symbols.folder_managed_rounded,
-                      selected: isSelected,
-                    ),
-                    belowContent: _buildInlineProgress(
-                      context,
-                      multiDiscProgress,
-                    ),
-                  ),
-                  SettingsCardRow(
                     icon: Symbols.cleaning_services_rounded,
                     title: AppLocale.cleanOrphanedMetadata.getString(context),
                     subtitle: AppLocale.cleanOrphanedMetadataSubtitle.getString(
                       context,
                     ),
                     subtitleMaxLines: 2,
-                    selected:
-                        widget.isContentFocused &&
-                        widget.selectedContentIndex == 1,
+                    selected: isSelected,
                     onTap: () => _cleanOrphanedMetadata(),
                     trailing: SettingsActionButton(
                       icon: Symbols.cleaning_services_rounded,
-                      selected:
-                          widget.isContentFocused &&
-                          widget.selectedContentIndex == 1,
+                      selected: isSelected,
                     ),
                     belowContent: _buildInlineProgress(
                       context,
