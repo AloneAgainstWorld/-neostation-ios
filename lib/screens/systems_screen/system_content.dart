@@ -9,18 +9,17 @@ import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/widgets/shimmering_logo.dart';
 import 'my_systems_section/my_systems_grid.dart';
 import 'my_systems_section/initial_setup_widget.dart';
+import 'custom_main_menu_background.dart';
 
 /// Orchestrator for the 'Systems' tab content.
 ///
-/// Manages the visual state transition between the initial scanning/loading phase,
-/// the setup wizard for first-time users, and the primary system library grid.
+/// The optional user-selected custom background is deliberately rendered only
+/// behind the primary systems grid/carousel. Game playlists are pushed as new
+/// routes and therefore keep their existing backgrounds unchanged.
 class SystemContent extends StatefulWidget {
   const SystemContent({super.key, this.selectedIndex = 0, this.onCardTapped});
 
-  /// Index of the currently selected system card within the grid.
   final int selectedIndex;
-
-  /// Callback invoked when a system card is interactively selected.
   final Function(int index)? onCardTapped;
 
   @override
@@ -28,14 +27,9 @@ class SystemContent extends StatefulWidget {
 }
 
 class _SystemContentState extends State<SystemContent> {
-  /// Minimum time the splash stays visible once shown. A fast scan (sub-second
-  /// on a warm library) would otherwise blink the logo away before the shine
-  /// animation is even perceptible.
   static const _minSplashDuration = Duration(milliseconds: 2500);
 
-  /// When the splash first appeared; null once it has been released.
   DateTime? _splashShownAt;
-
   Timer? _releaseTimer;
 
   @override
@@ -44,8 +38,6 @@ class _SystemContentState extends State<SystemContent> {
     super.dispose();
   }
 
-  /// Returns whether the splash must stay up even though loading has finished,
-  /// arming a one-shot timer that rebuilds when the minimum time is served.
   bool _holdSplash(bool isLoading) {
     if (isLoading) {
       _splashShownAt ??= DateTime.now();
@@ -71,24 +63,17 @@ class _SystemContentState extends State<SystemContent> {
   Widget build(BuildContext context) {
     return Consumer2<SqliteConfigProvider, ThemeProvider>(
       builder: (context, configProvider, themeProvider, child) {
-        // Determine the current operational state of the library.
         final isLoading = configProvider.isLoading || configProvider.isScanning;
         final showSplash = isLoading || _holdSplash(isLoading);
 
-        // Show setup wizard if scan is finished but no systems were resolved.
         final showInitialSetup =
             !showSplash &&
             !configProvider.hasDetectedSystems &&
             configProvider.scanCompleted;
 
-        // Show primary library content only when initialization and scanning are complete.
         final showContent =
             !showSplash && configProvider.scanCompleted && !showInitialSetup;
 
-        // PHASE 1: Loading and Initialization — a shimmering NeoStation logo
-        // with a thin progress bar and the current scan step as quiet detail.
-        // PHASE 2: First-Run Experience / Initial Setup.
-        // PHASE 3: Primary System Library.
         final Widget phase;
         if (showSplash) {
           phase = KeyedSubtree(
@@ -112,10 +97,24 @@ class _SystemContentState extends State<SystemContent> {
           phase = const SizedBox.shrink(key: ValueKey('empty'));
         }
 
-        // Cross-fade the splash into the library instead of a hard cut.
-        return AnimatedSwitcher(
+        final content = AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
           child: phase,
+        );
+
+        // Only the actual Systems main menu receives the custom background.
+        // Splash/setup screens and pushed playlists remain unchanged.
+        final customBackground = showContent
+            ? themeProvider.customBackgroundPath
+            : null;
+        if (customBackground == null) return content;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomMainMenuBackground(path: customBackground),
+            content,
+          ],
         );
       },
     );
@@ -125,17 +124,10 @@ class _SystemContentState extends State<SystemContent> {
     BuildContext context,
     SqliteConfigProvider configProvider,
   ) {
-    // The logo sits at the exact screen centre — the same spot it occupies on
-    // the native splash and the startup screens — with the progress detail
-    // hung below centre, so nothing shifts across the whole intro sequence.
     return Stack(
       children: [
         Center(
           child: ShimmeringLogo(
-            // Track the scan only once it is actually progressing. During the
-            // waiting-for-storage phase progress sits at 0, which would park
-            // the glint off-screen and leave the logo frozen for up to 30s —
-            // keep the ambient sweep running until there's real movement.
             progress:
                 configProvider.isScanning && configProvider.scanProgress > 0
                 ? configProvider.scanProgress
@@ -144,8 +136,6 @@ class _SystemContentState extends State<SystemContent> {
         ),
         if (configProvider.isScanning)
           Align(
-            // 0.55 clears the 280-wide logo's bottom edge (~0.40 on the Thor's
-            // ~467dp-tall logical screen) with comfortable breathing room.
             alignment: const Alignment(0, 0.55),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 480),
@@ -171,8 +161,6 @@ class _SystemContentState extends State<SystemContent> {
                     configProvider.scanStatus.isNotEmpty
                         ? configProvider.scanStatus
                         : AppLocale.scanningSystemsRoms.getString(context),
-                    // 17 to match the startup screen's status line — the
-                    // theme's bodySmall (12) reads too small at couch distance.
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontSize: 17,
                       color: Theme.of(
