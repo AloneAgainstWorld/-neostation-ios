@@ -4,7 +4,7 @@ This document describes the architecture of the NeoStation Flutter application.
 
 ## Overview
 
-NeoStation is a cross-platform Flutter app (Windows, Linux, macOS, Android) that serves as a frontend for retro game emulation. It is landscape-only and does not target web or iOS.
+NeoStation is a cross-platform Flutter app (Windows, Linux, macOS, Android, and iOS/iPadOS) that serves as a frontend for retro game emulation. It is landscape-only and does not target the web.
 
 ## Layered Architecture
 
@@ -98,13 +98,14 @@ Database migrations are versioned in `lib/data/datasources/sqlite_migrations.dar
 | API | Purpose | Auth |
 |-----|---------|------|
 | RetroAchievements | Achievements, leaderboards, game hashes | Per-user web API key (runtime login) |
-| ScreenScraper | Game metadata, media, descriptions | `SCREENSCRAPER_DEV_ID/PASSWORD` (build-time) |
+| ScreenScraper | Game metadata, media, descriptions | Developer credentials at build time; per-user credentials at runtime |
 | NeoSync Backend | Auth, cloud sync, billing, notifications | JWT (runtime) |
 
 ## Platform-Specific Considerations
 
 - **Desktop (Windows/Linux/macOS)**: Uses `window_manager` and `fullscreen_window` for fullscreen toggling. Supports `Alt+Enter` shortcut.
 - **Android**: Uses immersive sticky mode, landscape lock, and a custom directory picker for Android TV.
+- **iOS/iPadOS**: Distributed as signed or unsigned IPA builds. The dedicated GitHub Actions workflow can generate the `ios/` scaffold when absent, targets iOS 18.0, enforces landscape orientation, exposes document access, registers the `neostation://` callback scheme, and enables availability checks for RetroArch, Shortcuts, ARMSX2, and MeloNX.
 - **Dual-screen handhelds (Android)**: the secondary display runs a second Flutter engine (`subDisplay()` entrypoint in `main.dart`, via the `sub_screen` package) rendering `lib/screens/secondary_screen/`. It is a separate isolate: no shared memory with the main engine — state is shared only through the SQLite database.
 - **Gamepad input**: Handled via the local `gamepads` plugin with custom navigation logic in `lib/utils/gamepad_nav.dart`.
 
