@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import '../screens/scraper_screen/ios_scraper_login_screen.dart';
 import '../screens/scraper_screen/new_scraper_options_screen.dart';
 import '../screens/scraper_screen/scraper_login_screen.dart';
 import '../services/screenscraper_service.dart';
@@ -53,12 +50,8 @@ class _ScraperContentState extends State<ScraperContent> {
 
     if (_hasCredentials) {
       return NewScraperOptionsScreen(onLogout: _onLogout);
+    } else {
+      return ScraperLoginScreen(onLoginSuccess: _onLoginSuccess);
     }
-
-    if (Platform.isIOS) {
-      return IosScraperLoginScreen(onLoginSuccess: _onLoginSuccess);
-    }
-
-    return ScraperLoginScreen(onLoginSuccess: _onLoginSuccess);
   }
 }
