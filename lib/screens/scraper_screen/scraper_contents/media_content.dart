@@ -24,7 +24,14 @@ class MediaContent extends StatefulWidget {
 }
 
 class MediaContentState extends State<MediaContent> {
-  static const _orderedKeys = ['fanart', 'ss', 'wheel', 'box2D', 'video', 'manuel'];
+  static const _orderedKeys = [
+    'fanart',
+    'ss',
+    'wheel',
+    'box2D',
+    'video',
+    'manuel',
+  ];
 
   void selectItem(int index) {
     if (index >= 0 && index < _orderedKeys.length) {
