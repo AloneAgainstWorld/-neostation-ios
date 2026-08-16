@@ -30,17 +30,61 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Create .env from secrets
+      - name: Prepare ScreenScraper build credentials
         env:
           SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
           SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
         run: |
-          : > .env
-          if [ -n "$SCREENSCRAPER_DEV_ID" ]; then
-            echo "SCREENSCRAPER_DEV_ID=$SCREENSCRAPER_DEV_ID" >> .env
-          fi
-          if [ -n "$SCREENSCRAPER_DEV_PASSWORD" ]; then
-            echo "SCREENSCRAPER_DEV_PASSWORD=$SCREENSCRAPER_DEV_PASSWORD" >> .env
+          python3 - <<'PY'
+          import json
+          import os
+
+          dev_id = os.environ.get('SCREENSCRAPER_DEV_ID', '').replace('\r', '').replace('\n', '').strip()
+          dev_password = os.environ.get('SCREENSCRAPER_DEV_PASSWORD', '').replace('\r', '').replace('\n', '').strip()
+
+          if not dev_id:
+              print('::warning::SCREENSCRAPER_DEV_ID is empty after sanitization.')
+          if not dev_password:
+              print('::warning::SCREENSCRAPER_DEV_PASSWORD is empty after sanitization.')
+
+          with open('.dart-defines.json', 'w', encoding='utf-8') as f:
+              json.dump({
+                  'SCREENSCRAPER_DEV_ID': dev_id,
+                  'SCREENSCRAPER_DEV_PASSWORD': dev_password,
+              }, f)
+
+          # Reuse the exact sanitized values for the API preflight below.
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write(f'SCREENSCRAPER_DEV_ID_CLEAN={dev_id}\n')
+              f.write(f'SCREENSCRAPER_DEV_PASSWORD_CLEAN={dev_password}\n')
+          PY
+
+      - name: Validate ScreenScraper developer access
+        run: |
+          set +e
+          STATUS=$(curl -sS -o "$RUNNER_TEMP/screenscraper-preflight.json" -w "%{http_code}" \
+            --get 'https://api.screenscraper.fr/api2/ssinfraInfos.php' \
+            --data-urlencode "devid=${SCREENSCRAPER_DEV_ID_CLEAN}" \
+            --data-urlencode "devpassword=${SCREENSCRAPER_DEV_PASSWORD_CLEAN}" \
+            --data-urlencode 'softname=NeoStation-iOS' \
+            --data-urlencode 'output=json')
+          CURL_EXIT=$?
+          set -e
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "::warning::ScreenScraper preflight could not reach the API (curl exit $CURL_EXIT). Build will continue."
+          elif [ "$STATUS" = "200" ]; then
+            echo "ScreenScraper developer preflight: HTTP 200 (developer credentials accepted)."
+          elif [ "$STATUS" = "403" ]; then
+            echo "::warning::ScreenScraper developer preflight: HTTP 403. ScreenScraper rejected the developer credentials."
+          elif [ "$STATUS" = "401" ]; then
+            echo "::warning::ScreenScraper developer preflight: HTTP 401. API access is temporarily restricted/saturated."
+          elif [ "$STATUS" = "423" ]; then
+            echo "::warning::ScreenScraper developer preflight: HTTP 423. ScreenScraper API is currently closed."
+          elif [ "$STATUS" = "426" ]; then
+            echo "::warning::ScreenScraper developer preflight: HTTP 426. The scraper software identity/version is rejected."
+          else
+            echo "::warning::ScreenScraper developer preflight returned HTTP $STATUS. Build will continue for device testing."
           fi
 
       - name: Setup Flutter
@@ -175,7 +219,7 @@ jobs:
           </plist>
           PLIST
 
-          flutter build ipa --release --export-options-plist=ExportOptions.plist --dart-define-from-file=.env
+          flutter build ipa --release --export-options-plist=ExportOptions.plist --dart-define-from-file=.dart-defines.json
 
       - name: Build unsigned .app (no signing secrets configured)
         if: steps.signing.outputs.signed != 'true'
@@ -188,7 +232,7 @@ jobs:
             --release \
             --no-codesign \
             --config-only \
-            --dart-define-from-file=.env
+            --dart-define-from-file=.dart-defines.json
 
           rm -rf build/ios/DerivedData build/ios/unsigned
           mkdir -p build/ios
