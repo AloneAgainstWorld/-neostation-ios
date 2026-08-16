@@ -5,8 +5,8 @@ import 'package:neostation/l10n/app_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:provider/provider.dart';
 import 'package:neostation/providers/theme_provider.dart';
+import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/widgets/shimmering_logo.dart';
-import '../../../providers/sqlite_config_provider.dart';
 import 'my_systems_section/my_systems_grid.dart';
 import 'my_systems_section/initial_setup_widget.dart';
 
