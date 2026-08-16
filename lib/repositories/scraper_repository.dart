@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import '../data/datasources/sqlite_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/screenscraper/screenscraper_credential_store.dart';
 
 class MetadataTransferResult {
   final String appSystemId;
@@ -16,6 +18,20 @@ class MetadataTransferResult {
 /// Repository for ScreenScraper system configuration data access.
 class ScraperRepository {
   static final _log = LoggerService.instance;
+  static ScreenScraperCredentialStore _credentialStore =
+      const SecureScreenScraperCredentialStore();
+
+  @visibleForTesting
+  static void setCredentialStoreForTesting(
+    ScreenScraperCredentialStore credentialStore,
+  ) {
+    _credentialStore = credentialStore;
+  }
+
+  @visibleForTesting
+  static void resetCredentialStoreForTesting() {
+    _credentialStore = const SecureScreenScraperCredentialStore();
+  }
 
   /// Returns detected systems that have a ScreenScraper ID, ordered by name.
   static Future<List<Map<String, dynamic>>> getScraperSystems() async {
@@ -110,21 +126,26 @@ class ScraperRepository {
 
   // ── Credentials ───────────────────────────────────────────────────────────
 
-  /// Persists encrypted ScreenScraper credentials and user tier information.
+  /// Persists the ScreenScraper username and account metadata in SQLite while
+  /// keeping the password in the platform secure credential store.
   static Future<bool> saveCredentials(
     String username,
     String password, [
     Map<String, dynamic>? userInfo,
     String? preferredLanguage,
   ]) async {
+    String? previousPassword;
     try {
       final db = await SqliteService.getDatabase();
-      final encryptedPassword = base64Encode(utf8.encode(password));
+      previousPassword = await _credentialStore.readPassword();
+      await _credentialStore.writePassword(password);
 
       final dataToSave = <String, dynamic>{
         'id': 1,
         'username': username,
-        'password': encryptedPassword,
+        // Keep the legacy column empty. It remains in the schema for backward
+        // compatibility, but passwords are no longer persisted in SQLite.
+        'password': '',
       };
 
       if (userInfo != null) {
@@ -154,11 +175,20 @@ class ScraperRepository {
         dataToSave['preferred_language'] = preferredLanguage;
       }
 
-      await db.insert(
-        'user_screenscraper_credentials',
-        dataToSave,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      try {
+        await db.insert(
+          'user_screenscraper_credentials',
+          dataToSave,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (_) {
+        if (previousPassword == null || previousPassword.isEmpty) {
+          await _credentialStore.deletePassword();
+        } else {
+          await _credentialStore.writePassword(previousPassword);
+        }
+        rethrow;
+      }
 
       return true;
     } catch (e) {
@@ -167,61 +197,89 @@ class ScraperRepository {
     }
   }
 
-  /// Retrieves the saved ScreenScraper credentials from the database.
+  /// Retrieves saved ScreenScraper credentials.
+  ///
+  /// Existing installations are migrated lazily: a legacy Base64 password is
+  /// moved to secure storage on first read and immediately removed from SQLite.
   static Future<Map<String, String>?> getSavedCredentials() async {
     try {
       final db = await SqliteService.getDatabase();
       final result = await db.query('user_screenscraper_credentials');
 
-      if (result.isNotEmpty) {
-        final row = result.first;
-        final encryptedPassword = row['password'].toString();
-        final password = utf8.decode(base64Decode(encryptedPassword));
+      if (result.isEmpty) return null;
 
-        return {
-          'username': row['username'].toString(),
-          'password': password,
-          'id': row['user_id']?.toString() ?? '',
-          'level': row['level']?.toString() ?? '',
-          'contribution': row['contribution']?.toString() ?? '',
-          'maxthreads': row['maxthreads']?.toString() ?? '',
-          'requests_today':
-              (int.tryParse(row['requests_today']?.toString() ?? '0') ?? 0)
-                  .toString(),
-          'max_requests_per_day':
-              (int.tryParse(row['max_requests_per_day']?.toString() ?? '0') ??
-                      0)
-                  .toString(),
-          'requests_ko_today':
-              (int.tryParse(row['requests_ko_today']?.toString() ?? '0') ?? 0)
-                  .toString(),
-          'max_requests_ko_per_day':
-              (int.tryParse(
-                        row['max_requests_ko_per_day']?.toString() ?? '0',
-                      ) ??
-                      0)
-                  .toString(),
-          'max_download_speed':
-              (int.tryParse(row['max_download_speed']?.toString() ?? '0') ?? 0)
-                  .toString(),
-          'visites': (int.tryParse(row['visites']?.toString() ?? '0') ?? 0)
-              .toString(),
-          'last_visit': row['last_visit']?.toString() ?? '',
-          'fav_region': row['fav_region']?.toString() ?? '',
-          'preferred_language': row['preferred_language']?.toString() ?? 'en',
-        };
+      final row = result.first;
+      var password = await _credentialStore.readPassword();
+      final legacyPassword = row['password']?.toString() ?? '';
+
+      if ((password == null || password.isEmpty) && legacyPassword.isNotEmpty) {
+        try {
+          final migratedPassword = utf8.decode(base64Decode(legacyPassword));
+          await _credentialStore.writePassword(migratedPassword);
+          await db.update(
+            'user_screenscraper_credentials',
+            {'password': ''},
+            where: 'id = ?',
+            whereArgs: [1],
+          );
+          password = migratedPassword;
+        } on FormatException {
+          _log.e('Unable to migrate legacy ScreenScraper credentials.');
+          return null;
+        }
+      } else if (password != null &&
+          password.isNotEmpty &&
+          legacyPassword.isNotEmpty) {
+        await db.update(
+          'user_screenscraper_credentials',
+          {'password': ''},
+          where: 'id = ?',
+          whereArgs: [1],
+        );
       }
 
-      return null;
+      if (password == null || password.isEmpty) return null;
+
+      return {
+        'username': row['username'].toString(),
+        'password': password,
+        'id': row['user_id']?.toString() ?? '',
+        'level': row['level']?.toString() ?? '',
+        'contribution': row['contribution']?.toString() ?? '',
+        'maxthreads': row['maxthreads']?.toString() ?? '',
+        'requests_today':
+            (int.tryParse(row['requests_today']?.toString() ?? '0') ?? 0)
+                .toString(),
+        'max_requests_per_day':
+            (int.tryParse(row['max_requests_per_day']?.toString() ?? '0') ?? 0)
+                .toString(),
+        'requests_ko_today':
+            (int.tryParse(row['requests_ko_today']?.toString() ?? '0') ?? 0)
+                .toString(),
+        'max_requests_ko_per_day':
+            (int.tryParse(row['max_requests_ko_per_day']?.toString() ?? '0') ??
+                    0)
+                .toString(),
+        'max_download_speed':
+            (int.tryParse(row['max_download_speed']?.toString() ?? '0') ?? 0)
+                .toString(),
+        'visites': (int.tryParse(row['visites']?.toString() ?? '0') ?? 0)
+            .toString(),
+        'last_visit': row['last_visit']?.toString() ?? '',
+        'fav_region': row['fav_region']?.toString() ?? '',
+        'preferred_language': row['preferred_language']?.toString() ?? 'en',
+      };
     } catch (e) {
       _log.e('Error getting scraper credentials: $e');
       return null;
     }
   }
 
-  /// Deletes saved credentials from the local database.
+  /// Deletes the ScreenScraper password from secure storage and removes the
+  /// associated non-secret account metadata from SQLite.
   static Future<bool> clearCredentials() async {
     try {
+      await _credentialStore.deletePassword();
       final db = await SqliteService.getDatabase();
       await db.delete('user_screenscraper_credentials');
       return true;
