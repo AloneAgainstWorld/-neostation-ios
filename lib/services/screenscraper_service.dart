@@ -45,23 +45,64 @@ class ScreenScraperService {
 
   static Map<String, dynamic>? _cachedCredentials;
   static bool _isMetadataScrapingRunning = false;
+  static String _lastLoginDiagnostic = 'NOT_STARTED';
+
+  /// Safe, credential-free code describing the last login phase.
+  static String get lastLoginDiagnostic => _lastLoginDiagnostic;
+
+  /// Whether both build-time developer credentials reached this runtime.
+  static bool get hasDeveloperCredentials =>
+      _devId.trim().isNotEmpty && _devPassword.trim().isNotEmpty;
+
+  static void _recordLoginDiagnostic(String code) {
+    _lastLoginDiagnostic = code;
+    _log.i('ScreenScraper login diagnostic: $code');
+  }
 
   /// Authenticates user credentials against the ScreenScraper API.
   static Future<Map<String, dynamic>?> verifyCredentials(
     String username,
     String password,
   ) async {
+    final normalizedUsername = username.trim();
+    final devId = _devId.trim();
+    final devPassword = _devPassword.trim();
+
+    _recordLoginDiagnostic('PHASE_1_DEVELOPER_CREDENTIALS');
+    _log.i(
+      'ScreenScraper login phase 1: developer credentials embedded: '
+      'id=${devId.isNotEmpty} (length=${devId.length}), '
+      'password=${devPassword.isNotEmpty} '
+      '(length=${devPassword.length})',
+    );
+
+    if (devId.isEmpty || devPassword.isEmpty) {
+      _recordLoginDiagnostic('DEV_CREDENTIALS_MISSING');
+      return null;
+    }
+
+    if (normalizedUsername.isEmpty || password.isEmpty) {
+      _recordLoginDiagnostic('USER_CREDENTIALS_EMPTY');
+      return null;
+    }
+
     try {
       final softname = await ScreenscraperClient.getSoftname();
       final url = Uri.parse('$_baseUrl/ssuserInfos.php').replace(
         queryParameters: {
-          'devid': _devId,
-          'devpassword': _devPassword,
+          'devid': devId,
+          'devpassword': devPassword,
           'softname': softname,
           'output': 'json',
-          'ssid': username,
+          'ssid': normalizedUsername,
           'sspassword': password,
         },
+      );
+
+      _recordLoginDiagnostic('PHASE_2_REQUEST_SENT');
+      _log.i(
+        'ScreenScraper login phase 2: request sent '
+        '(endpoint=ssuserInfos.php)',
       );
 
       final response = await ScreenscraperClient.httpGetWithRetry(
@@ -69,23 +110,95 @@ class ScreenScraperService {
         headers: {'User-Agent': 'NeoStation/1.0', 'Accept': 'application/json'},
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['header']['success'] == 'true') {
-          return data;
-        } else {
-          _log.e('Invalid credentials: ${data['header']['error']}');
-          return null;
-        }
-      } else if (response.statusCode == 403) {
-        _log.e('Error 403: Invalid credentials');
-        return null;
-      } else {
-        _log.e('HTTP Error ${response.statusCode}: ${response.body}');
+      _recordLoginDiagnostic('PHASE_3_HTTP_${response.statusCode}');
+      _log.i(
+        'ScreenScraper login phase 3: HTTP ${response.statusCode}, '
+        'responseBytes=${response.bodyBytes.length}',
+      );
+
+      if (response.statusCode != 200) {
+        _log.w(
+          'ScreenScraper login rejected before parsing '
+          '(HTTP ${response.statusCode})',
+        );
         return null;
       }
-    } catch (e) {
-      _log.e('Error verifying credentials: $e');
+
+      dynamic decoded;
+      try {
+        decoded = json.decode(response.body);
+      } on FormatException catch (e, stackTrace) {
+        _recordLoginDiagnostic('INVALID_JSON');
+        _log.e(
+          'ScreenScraper login returned invalid JSON',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        return null;
+      }
+
+      if (decoded is! Map<String, dynamic>) {
+        _recordLoginDiagnostic('INVALID_RESPONSE_SHAPE');
+        _log.e('ScreenScraper login response is not a JSON object');
+        return null;
+      }
+
+      final header = decoded['header'];
+      if (header is! Map<String, dynamic>) {
+        _recordLoginDiagnostic('INVALID_HEADER');
+        _log.e('ScreenScraper login response has no valid header');
+        return null;
+      }
+
+      _recordLoginDiagnostic('PHASE_4_RESPONSE_PARSED');
+
+      final rawSuccess = header['success'];
+      final authenticated =
+          rawSuccess == true ||
+          rawSuccess == 1 ||
+          rawSuccess?.toString().toLowerCase() == 'true' ||
+          rawSuccess?.toString() == '1';
+
+      if (!authenticated) {
+        _recordLoginDiagnostic('PHASE_5_USER_REJECTED');
+        _log.w(
+          'ScreenScraper user authentication rejected: '
+          '${header['error']?.toString() ?? 'unspecified API error'}',
+        );
+        return null;
+      }
+
+      final responseData = decoded['response'];
+      final userInfo = responseData is Map<String, dynamic>
+          ? responseData['ssuser']
+          : null;
+      if (userInfo is! Map<String, dynamic>) {
+        _recordLoginDiagnostic('INVALID_USER_RESPONSE');
+        _log.e('ScreenScraper login response has no valid ssuser object');
+        return null;
+      }
+
+      _recordLoginDiagnostic('PHASE_5_USER_AUTHENTICATED');
+      return decoded;
+    } on TimeoutException catch (e, stackTrace) {
+      _recordLoginDiagnostic('NETWORK_TIMEOUT');
+      _log.e('ScreenScraper login timed out', error: e, stackTrace: stackTrace);
+      return null;
+    } on SocketException catch (e, stackTrace) {
+      _recordLoginDiagnostic('NETWORK_SOCKET_ERROR');
+      _log.e(
+        'ScreenScraper login network error',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return null;
+    } catch (e, stackTrace) {
+      _recordLoginDiagnostic('UNEXPECTED_${e.runtimeType}');
+      _log.e(
+        'Unexpected ScreenScraper login error',
+        error: e,
+        stackTrace: stackTrace,
+      );
       return null;
     }
   }
@@ -156,10 +269,12 @@ class ScreenScraperService {
     }
   }
 
-  /// Checks if credentials have been saved locally.
+  /// Checks if complete credentials have been saved locally.
   static Future<bool> hasSavedCredentials() async {
     final credentials = await getSavedCredentials();
-    return credentials != null;
+    return credentials != null &&
+        (credentials['username']?.trim().isNotEmpty ?? false) &&
+        (credentials['password']?.isNotEmpty ?? false);
   }
 
   /// Retrieves the current scraper configuration (modes and media types to fetch).

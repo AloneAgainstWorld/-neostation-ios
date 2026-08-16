@@ -175,11 +175,38 @@ class ScraperRepository {
 
       if (result.isNotEmpty) {
         final row = result.first;
-        final encryptedPassword = row['password'].toString();
-        final password = utf8.decode(base64Decode(encryptedPassword));
+        final username = row['username']?.toString().trim() ?? '';
+        final encryptedPassword = row['password']?.toString() ?? '';
+
+        // A previous secure-storage migration intentionally blanked this
+        // SQLite column. Treat that legacy row as logged out instead of
+        // accepting an unusable credential record.
+        if (username.isEmpty || encryptedPassword.isEmpty) {
+          _log.w(
+            'Ignoring incomplete ScreenScraper credentials stored in SQLite',
+          );
+          return null;
+        }
+
+        String password;
+        try {
+          password = utf8.decode(base64Decode(encryptedPassword));
+        } on FormatException catch (e, stackTrace) {
+          _log.e(
+            'Stored ScreenScraper password is not valid Base64',
+            error: e,
+            stackTrace: stackTrace,
+          );
+          return null;
+        }
+
+        if (password.isEmpty) {
+          _log.w('Ignoring empty ScreenScraper password stored in SQLite');
+          return null;
+        }
 
         return {
-          'username': row['username'].toString(),
+          'username': username,
           'password': password,
           'id': row['user_id']?.toString() ?? '',
           'level': row['level']?.toString() ?? '',

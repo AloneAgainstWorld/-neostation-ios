@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:neostation/utils/gamepad_nav.dart';
@@ -86,7 +88,10 @@ class _ScraperLoginScreenState extends State<ScraperLoginScreen>
   }
 
   Future<void> _performLogin() async {
-    if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty || password.isEmpty) {
       AppNotification.showNotification(
         context,
         AppLocale.pleaseCompleteAllFields.getString(context),
@@ -100,90 +105,128 @@ class _ScraperLoginScreenState extends State<ScraperLoginScreen>
     });
 
     try {
-      // Verify credentials with ScreenScraper
       final result = await ScreenScraperService.verifyCredentials(
-        _usernameController.text.trim(),
-        _passwordController.text,
+        username,
+        password,
       );
 
-      if (result != null) {
-        // Valid credentials - save to DB with user information
-        final userInfo = result['response']['ssuser'] as Map<String, dynamic>;
-
-        final saved = await ScreenScraperService.saveCredentials(
-          _usernameController.text.trim(),
-          _passwordController.text,
-          userInfo,
-        );
-
+      if (result == null) {
         if (!mounted) return;
-
-        if (saved) {
-          AppNotification.showNotification(
-            context,
-            AppLocale.loginSuccessful.getString(context),
-            type: NotificationType.success,
-          );
-
-          // Synchronize system IDs after successful login
-          try {
-            final syncSuccess = await ScreenScraperService.syncSystemIds();
-            if (!mounted) return;
-            if (syncSuccess) {
-              AppNotification.showNotification(
-                context,
-                AppLocale.systemIdsSyncSuccess.getString(context),
-                type: NotificationType.info,
-              );
-            } else {
-              AppNotification.showNotification(
-                context,
-                AppLocale.systemIdsSyncWarning.getString(context),
-                type: NotificationType.info,
-              );
-            }
-          } catch (e) {
-            AppNotification.showNotification(
-              context,
-              AppLocale.systemIdsSyncError
-                  .getString(context)
-                  .replaceFirst('{error}', e.toString()),
-              type: NotificationType.info,
-            );
-          }
-
-          // Notify parent to change view
-          widget.onLoginSuccess?.call();
-        } else {
-          if (!mounted) return;
-          AppNotification.showNotification(
-            context,
-            AppLocale.errorSavingCredentials.getString(context),
-            type: NotificationType.error,
-          );
-        }
-      } else {
-        if (!mounted) return;
-        // Invalid credentials
+        final diagnostic = ScreenScraperService.lastLoginDiagnostic;
         AppNotification.showNotification(
           context,
-          AppLocale.invalidCredentials.getString(context),
+          '${AppLocale.invalidCredentials.getString(context)} '
+          '[$diagnostic]',
           type: NotificationType.error,
         );
+        return;
       }
+
+      final response = result['response'];
+      final userInfo = response is Map<String, dynamic>
+          ? response['ssuser']
+          : null;
+      if (userInfo is! Map<String, dynamic>) {
+        if (!mounted) return;
+        AppNotification.showNotification(
+          context,
+          AppLocale.loginError
+              .getString(context)
+              .replaceFirst('{error}', 'INVALID_USER_RESPONSE'),
+          type: NotificationType.error,
+        );
+        return;
+      }
+
+      final saved = await ScreenScraperService.saveCredentials(
+        username,
+        password,
+        userInfo,
+      );
+
+      if (!mounted) return;
+
+      if (!saved) {
+        AppNotification.showNotification(
+          context,
+          '${AppLocale.errorSavingCredentials.getString(context)} '
+          '[CREDENTIALS_SAVE_FAILED]',
+          type: NotificationType.error,
+        );
+        return;
+      }
+
+      final savedCredentials = await ScreenScraperService.getSavedCredentials();
+      final readBackSucceeded =
+          savedCredentials != null &&
+          savedCredentials['username'] == username &&
+          savedCredentials['password'] == password;
+
+      if (!mounted) return;
+
+      if (!readBackSucceeded) {
+        AppNotification.showNotification(
+          context,
+          AppLocale.loginError
+              .getString(context)
+              .replaceFirst('{error}', 'CREDENTIALS_READBACK_FAILED'),
+          type: NotificationType.error,
+        );
+        return;
+      }
+
+      AppNotification.showNotification(
+        context,
+        AppLocale.loginSuccessful.getString(context),
+        type: NotificationType.success,
+      );
+
+      // Authentication and persistence are complete. Do not keep the login
+      // screen blocked while the independent system-ID refresh runs.
+      final syncFuture = ScreenScraperService.syncSystemIds();
+      widget.onLoginSuccess?.call();
+
+      unawaited(
+        syncFuture
+            .then<void>((syncSuccess) {
+              if (!mounted) return;
+              AppNotification.showNotification(
+                context,
+                syncSuccess
+                    ? AppLocale.systemIdsSyncSuccess.getString(context)
+                    : AppLocale.systemIdsSyncWarning.getString(context),
+                type: NotificationType.info,
+              );
+            })
+            .catchError((Object error) {
+              if (!mounted) return;
+              AppNotification.showNotification(
+                context,
+                AppLocale.systemIdsSyncError
+                    .getString(context)
+                    .replaceFirst('{error}', error.toString()),
+                type: NotificationType.info,
+              );
+            }),
+      );
     } catch (e) {
       if (!mounted) return;
       AppNotification.showNotification(
         context,
         AppLocale.loginError
             .getString(context)
-            .replaceFirst('{error}', e.toString()),
+            .replaceFirst(
+              '{error}',
+              '$e [${ScreenScraperService.lastLoginDiagnostic}]',
+            ),
         type: NotificationType.error,
       );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
