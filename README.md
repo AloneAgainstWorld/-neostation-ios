@@ -5,7 +5,6 @@
 <h4>iOS 18+ port of the NeoStation Flutter emulation frontend</h4>
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
-[![Build iOS](https://github.com/TarbleFR/neostation-ios/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TarbleFR/neostation-ios/actions/workflows/ios-build.yml)
 [![Stars](https://img.shields.io/github/stars/TarbleFR/neostation-ios?logo=github)](https://github.com/TarbleFR/neostation-ios/stargazers)
 [![Issues](https://img.shields.io/github/issues/TarbleFR/neostation-ios)](https://github.com/TarbleFR/neostation-ios/issues)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B-blue)](https://github.com/TarbleFR/neostation-ios)
@@ -14,14 +13,14 @@
 
 </div>
 
-NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://github.com/misobadev/neostation-frontend) project. It keeps the original Flutter frontend while adding iOS-specific build, file-handling, emulator integration, library synchronization, sideloading and JIT workflows.
+NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://github.com/misobadev/neostation-frontend) project. It keeps the original Flutter frontend while adding iOS-specific file handling, emulator integration, library synchronization, sideloading and JIT workflows.
 
 > **Modified version notice — August 2026**  
 > This repository contains a modified version of NeoStation. The upstream project and its contributors retain credit for the original work. The iOS-specific port and adaptations in this repository are developed and maintained by [@TarbleFR](https://github.com/TarbleFR). This does not imply endorsement by the upstream NeoStation maintainers. The covered modified work is distributed under the GNU General Public License v3.0.
 
 ## iOS features
 
-- **iOS 18+** target with IPA builds through GitHub Actions.
+- **iOS 18+** target.
 - **RetroArch** library synchronization and direct game launching through deeplinks.
 - **MeloNX** library synchronization, media association, direct launching and JIT workflows.
 - **ARMSX2** library synchronization, direct launching and JIT workflows.
@@ -40,33 +39,6 @@ The upstream NeoStation project also supports other platforms. This repository i
 - An IPA signing/sideloading method such as SideStore or another compatible installer, or Apple Developer signing.
 - RetroArch, MeloNX or ARMSX2 where the related integration is used.
 - Flutter SDK ≥ 3.9.2 and macOS/Xcode only when building iOS locally.
-
-## Build the IPA with GitHub Actions
-
-The repository intentionally keeps a single active workflow:
-
-```text
-.github/workflows/ios-build.yml
-```
-
-`Build iOS (NeoStation)` runs on pushes to `main` and can also be started manually from the GitHub Actions tab. It produces an unsigned IPA when Apple signing secrets are not configured.
-
-The workflow uses the GitHub `Production` environment and requires these ScreenScraper developer secrets:
-
-| Secret | Purpose |
-|---|---|
-| `SCREENSCRAPER_DEV_ID` | ScreenScraper developer identifier |
-| `SCREENSCRAPER_DEV_PASSWORD` | ScreenScraper developer password |
-
-Before Xcode builds the IPA, the workflow:
-
-1. refuses empty or malformed ScreenScraper secrets;
-2. verifies developer access against ScreenScraper;
-3. injects the values into the Flutter build through Dart defines;
-4. verifies the generated Xcode configuration contains the expected defines;
-5. removes the temporary build-time `.env` file after the build.
-
-The actual secret values are never committed to Git.
 
 ## Build from source
 
@@ -101,7 +73,7 @@ SCREENSCRAPER_DEV_ID=your_developer_id
 SCREENSCRAPER_DEV_PASSWORD=your_developer_password
 ```
 
-`.env` is intentionally excluded from Git and **must never be committed**. The local Windows helper scripts reject missing or empty ScreenScraper configuration instead of silently producing a broken build.
+`.env` is intentionally excluded from Git and **must never be committed**.
 
 The current ScreenScraper user-credential path uses the project's established SQLite/Base64 persistence. The previous ScreenScraper-specific secure-storage/Keychain experiment is not part of the current implementation.
 
@@ -142,13 +114,13 @@ All upstream authors and contributors retain attribution for their contributions
 - Reddit: **[u/Mysterious_Air2053](https://www.reddit.com/user/Mysterious_Air2053/)**
 - Modified iOS version maintained since **August 2026**.
 
-The iOS port includes IPA/CI build support, sideloading adaptations, emulator detection and launch flows, library synchronization, JIT-related workflows, iOS UI/file-handling adaptations and other iOS-specific integration work.
+The iOS port includes sideloading adaptations, emulator detection and launch flows, library synchronization, JIT-related workflows, iOS UI/file-handling adaptations and other iOS-specific integration work.
 
 ## GPL-3.0 and corresponding source
 
 NeoStation and this modified iOS port are distributed under the **GNU General Public License v3.0 (GPL-3.0)**. See [`LICENSE.md`](LICENSE.md) for the complete license text and [`NOTICE.md`](NOTICE.md) for copyright, modification and third-party notices.
 
-For every IPA built by this repository, the GitHub Actions run records the exact `head_sha`. The **corresponding source** for that IPA is the source tree at that exact commit in this public repository.
+The **corresponding source** for an IPA built from this repository is the exact source commit or tag used to produce that binary.
 
 When redistributing an IPA elsewhere, keep the GPL and applicable notices available to recipients and provide a clear reference or link to the corresponding source commit. Do not distribute only an older upstream source or only a patch against another version.
 
