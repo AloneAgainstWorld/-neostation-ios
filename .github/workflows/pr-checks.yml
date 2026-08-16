@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Validate GitHub automation scripts
+        run: python3 -m py_compile .github/scripts/upstream_monthly_review.py
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
