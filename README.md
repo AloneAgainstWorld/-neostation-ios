@@ -101,9 +101,9 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for additional implementation details.
 NeoStation iOS is based on the upstream **NeoStation** project:
 
 - Upstream repository: https://github.com/misobadev/neostation-frontend
-- Lead: **@misobadev**
-- Official co-maintainer: **@androosio**
-- Official collaborator: **@ItsRetroPup**
+- Lead: **[@misobadev](https://github.com/misobadev)**
+- Official co-maintainer: **[@androosio](https://github.com/androosio)**
+- Official collaborator: **[@ItsRetroPup](https://github.com/ItsRetroPup)**
 
 All upstream authors and contributors retain attribution for their contributions. The upstream repository history and contributor list remain the authoritative record for the original project.
 
