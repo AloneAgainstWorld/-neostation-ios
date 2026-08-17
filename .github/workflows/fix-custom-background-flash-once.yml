@@ -1,0 +1,157 @@
+name: Fix custom background return flash
+
+on:
+  push:
+    branches:
+      - fix/persistent-custom-background
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  fix:
+    name: Apply and validate persistent background fix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Apply persistent custom background fix
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app_path = Path('lib/screens/app_screen.dart')
+          app = app_path.read_text(encoding='utf-8')
+
+          import_marker = "import 'systems_screen/system_content.dart';\n"
+          import_line = "import 'systems_screen/custom_main_menu_background.dart';\n"
+          if import_line not in app:
+              if import_marker not in app:
+                  raise SystemExit('Missing SystemContent import marker')
+              app = app.replace(import_marker, import_marker + import_line, 1)
+
+          build_marker = "        _ensureSelectedTabVisible(configProvider.config);\n\n        return PopScope("
+          build_replacement = "        _ensureSelectedTabVisible(configProvider.config);\n        final customBackgroundPath = themeProvider.customBackgroundPath;\n\n        return PopScope("
+          if 'final customBackgroundPath = themeProvider.customBackgroundPath;' not in app:
+              if build_marker not in app:
+                  raise SystemExit('Missing AppScreen build insertion point')
+              app = app.replace(build_marker, build_replacement, 1)
+
+          layer_marker = """                // Main Content Layer.\n                Positioned.fill(child: _buildCurrentTabContent()),\n"""
+          persistent_layer = """                // Keep the Systems custom background mounted while switching\n                // top-level tabs. Offstage stops it painting on other tabs, while\n                // retaining the decoded image so returning to Systems cannot\n                // expose the theme background for a frame.\n                if (customBackgroundPath != null)\n                  Positioned.fill(\n                    child: TickerMode(\n                      enabled: _selectedTabIndex == AppTabs.systems,\n                      child: Offstage(\n                        offstage: _selectedTabIndex != AppTabs.systems,\n                        child: CustomMainMenuBackground(\n                          path: customBackgroundPath,\n                        ),\n                      ),\n                    ),\n                  ),\n\n                // Main Content Layer.\n                Positioned.fill(child: _buildCurrentTabContent()),\n"""
+          if 'retaining the decoded image so returning to Systems cannot' not in app:
+              if layer_marker not in app:
+                  raise SystemExit('Missing AppScreen content-layer marker')
+              app = app.replace(layer_marker, persistent_layer, 1)
+
+          app_path.write_text(app, encoding='utf-8')
+
+          system_path = Path('lib/screens/systems_screen/system_content.dart')
+          system = system_path.read_text(encoding='utf-8')
+          system = system.replace("import 'package:neostation/providers/theme_provider.dart';\n", '')
+          system = system.replace("import 'custom_main_menu_background.dart';\n", '')
+
+          old_consumer = """    return Consumer2<SqliteConfigProvider, ThemeProvider>(\n      builder: (context, configProvider, themeProvider, child) {\n"""
+          new_consumer = """    return Consumer<SqliteConfigProvider>(\n      builder: (context, configProvider, child) {\n"""
+          if old_consumer in system:
+              system = system.replace(old_consumer, new_consumer, 1)
+          elif new_consumer not in system:
+              raise SystemExit('Missing SystemContent consumer block')
+
+          old_background = """        // Only the actual Systems main menu receives the custom background.\n        // Splash/setup screens and pushed playlists remain unchanged.\n        final customBackground = showContent\n            ? themeProvider.customBackgroundPath\n            : null;\n        if (customBackground == null) return content;\n\n        return Stack(\n          fit: StackFit.expand,\n          children: [\n            CustomMainMenuBackground(path: customBackground),\n            content,\n          ],\n        );\n"""
+          new_background = """        // AppScreen owns the custom background so it stays mounted across\n        // top-level tab changes. During splash/setup phases, cover that\n        // persistent layer with the normal theme background. The actual\n        // Systems content remains transparent so the custom image shows through.\n        if (showContent) return content;\n        return ColoredBox(\n          color: Theme.of(context).scaffoldBackgroundColor,\n          child: content,\n        );\n"""
+          if old_background in system:
+              system = system.replace(old_background, new_background, 1)
+          elif 'AppScreen owns the custom background so it stays mounted' not in system:
+              raise SystemExit('Missing SystemContent custom background block')
+
+          system_path.write_text(system, encoding='utf-8')
+
+          bg_path = Path('lib/screens/systems_screen/custom_main_menu_background.dart')
+          bg = bg_path.read_text(encoding='utf-8')
+          if 'gaplessPlayback: true,' not in bg:
+              marker = "      fit: BoxFit.cover,\n      filterQuality: FilterQuality.medium,\n"
+              replacement = "      fit: BoxFit.cover,\n      gaplessPlayback: true,\n      filterQuality: FilterQuality.medium,\n"
+              if marker not in bg:
+                  raise SystemExit('Missing Image.file options marker')
+              bg = bg.replace(marker, replacement, 1)
+          bg_path.write_text(bg, encoding='utf-8')
+
+          pubspec_path = Path('pubspec.yaml')
+          pubspec = pubspec_path.read_text(encoding='utf-8')
+          if 'version: 0.9.9+129' not in pubspec:
+              if 'version: 0.9.9+128' not in pubspec:
+                  raise SystemExit('Unexpected current build number')
+              pubspec = pubspec.replace('version: 0.9.9+128', 'version: 0.9.9+129', 1)
+          pubspec_path.write_text(pubspec, encoding='utf-8')
+          PY
+
+          dart format \
+            lib/screens/app_screen.dart \
+            lib/screens/systems_screen/system_content.dart \
+            lib/screens/systems_screen/custom_main_menu_background.dart
+
+      - name: Verify flash regression fix
+        run: |
+          set -euo pipefail
+          grep -Fq "version: 0.9.9+129" pubspec.yaml
+          grep -Fq "custom_main_menu_background.dart" lib/screens/app_screen.dart
+          grep -Fq "final customBackgroundPath = themeProvider.customBackgroundPath;" lib/screens/app_screen.dart
+          grep -Fq "TickerMode(" lib/screens/app_screen.dart
+          grep -Fq "Offstage(" lib/screens/app_screen.dart
+          grep -Fq "CustomMainMenuBackground(" lib/screens/app_screen.dart
+          grep -Fq "AppScreen owns the custom background so it stays mounted" lib/screens/systems_screen/system_content.dart
+          ! grep -Fq "CustomMainMenuBackground(" lib/screens/systems_screen/system_content.dart
+          ! grep -Fq "ThemeProvider" lib/screens/systems_screen/system_content.dart
+          grep -Fq "gaplessPlayback: true" lib/screens/systems_screen/custom_main_menu_background.dart
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path('lib/screens/app_screen.dart').read_text(encoding='utf-8')
+          bg = app.index('CustomMainMenuBackground(')
+          content = app.index('Positioned.fill(child: _buildCurrentTabContent())')
+          assert bg < content, 'Persistent background must stay below main tab content'
+          system = Path('lib/screens/systems_screen/system_content.dart').read_text(encoding='utf-8')
+          assert 'if (showContent) return content;' in system
+          assert 'ColoredBox(' in system
+          print('Verified persistent custom background ownership and z-order.')
+          PY
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run Flutter tests
+        run: flutter test
+
+      - name: Commit validated fix
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix-custom-background-flash-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/screens/app_screen.dart \
+            lib/screens/systems_screen/system_content.dart \
+            lib/screens/systems_screen/custom_main_menu_background.dart \
+            pubspec.yaml \
+            .github/workflows/fix-custom-background-flash-once.yml
+          git diff --cached --check
+          git commit -m "fix: keep custom menu background alive across tabs"
+          git push origin HEAD:fix/persistent-custom-background
