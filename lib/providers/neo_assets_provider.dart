@@ -84,9 +84,12 @@ class NeoAssetsProvider extends ChangeNotifier {
 
   /// Downloads all required assets for the specified theme and applies it.
   ///
-  /// Existing WebP/GIF packs keep the normal bulk path. If a system has no
-  /// image/GIF background, NeoStation then probes the supported video containers
-  /// so a theme pack may provide `<system>.mp4`, `.m4v` or `.mov` instead.
+  /// Existing WebP/GIF packs keep the normal bulk path. Video backgrounds stay
+  /// supported as an on-demand fallback through [getBackgroundForSystem], but
+  /// are deliberately not probed here after the bulk download reaches 100%.
+  /// Eagerly probing mp4/m4v/mov for every system made the first-run art-pack
+  /// screen appear frozen at 100% while sequential 404/network requests were
+  /// still running in the background.
   Future<void> downloadAndApplyTheme(
     String themeFolder,
     List<String> systemFolderNames,
@@ -123,23 +126,6 @@ class NeoAssetsProvider extends ChangeNotifier {
             },
           );
         }
-      }
-
-      // The upstream asset service historically probes only WebP/GIF. Keep that
-      // fast path untouched and add video as a fallback so existing theme packs
-      // do not change behaviour or precedence.
-      for (final system in plan.systemsToDownload) {
-        final imagePath = NeoAssetsService.resolveBackgroundPathSync(
-          themeFolder,
-          system,
-        );
-        if (imagePath != null && File(imagePath).existsSync()) continue;
-
-        if (!_downloading) {
-          _downloading = true;
-          notifyListeners();
-        }
-        await _getCachedVideoBackground(themeFolder, system);
       }
 
       if (plan.remoteMetadata != null) {
