@@ -1,0 +1,30 @@
+name: Apply theme menu music patch
+
+on:
+  push:
+    branches:
+      - feature/theme-menu-music
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/theme-menu-music
+      - name: Apply patch
+        run: python3 .github/scripts/patch_theme_music.py
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/screens/settings_screen/new_settings_options/general_settings_content.dart lib/screens/settings_screen/new_settings_options/themes_settings_content.dart
+          git commit -m "Move menu music controls into Theme settings"
+          git push origin HEAD:feature/theme-menu-music
