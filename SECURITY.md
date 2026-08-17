@@ -1,21 +1,35 @@
 # Security Policy
 
-We take security seriously at NeoStation and appreciate the efforts of security researchers and contributors who help keep our users safe.
+Security reports for this repository should be handled privately and responsibly.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you believe you've found a security vulnerability, please follow responsible disclosure practices and **do not** open a public GitHub issue, as this could expose the vulnerability before a fix is available.
+If you believe you found a security vulnerability in NeoStation iOS, **do not open a public issue with exploit details**.
 
-Instead, please report it through one of the following channels:
+Use the repository's private GitHub Security Advisory flow:
 
-- **Email:** [miguelsotobaez@gmail.com](mailto:miguelsotobaez@gmail.com)
-- **GitHub Security Advisory:** [Open a private advisory](https://github.com/misobadev/neostation-frontend/security/advisories/new)
+- [Report a vulnerability privately](https://github.com/TarbleFR/neostation-ios/security/advisories/new)
 
-We will acknowledge your report promptly and work with you to understand and resolve the issue as quickly as possible.
+If GitHub's private advisory flow is unavailable, contact the iOS-port maintainer, [@TarbleFR](https://github.com/TarbleFR), through a private channel before publishing technical details.
 
-## Best Practices for Contributors
+Reports that affect only the original upstream NeoStation project should be disclosed to the upstream maintainers instead.
 
-- Never commit secrets, API keys, or passwords in code.
-- Use `String.fromEnvironment` for sensitive build-time values.
-- Ensure third-party assets comply with their respective licenses.
-- If you work with native code (C/C++), follow memory safety best practices.
+## Sensitive data
+
+Contributors must never commit:
+
+- a real `.env` file;
+- `SCREENSCRAPER_DEV_ID` or `SCREENSCRAPER_DEV_PASSWORD` values;
+- user passwords, API keys or session tokens;
+- Apple signing certificates, provisioning profiles or private keys;
+- private user data, ROMs or cloud-save contents.
+
+ScreenScraper developer credentials are build-time inputs and should enter Dart through compile-time defines. User account credentials are runtime data and must follow the application's existing storage path.
+
+## Contributor checklist
+
+- Validate file paths and external inputs before use.
+- Preserve platform permission boundaries and security-scoped/document access behavior.
+- Treat deeplink parameters and external-emulator handoff data as untrusted input.
+- Keep third-party dependencies and native code within their documented security constraints.
+- Avoid logging secrets or private user data.
