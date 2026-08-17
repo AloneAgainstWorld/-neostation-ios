@@ -1,0 +1,1067 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:external_folder_access/external_folder_access.dart';
+import 'package:flutter/foundation.dart';
+import 'package:neostation/data/datasources/sqlite_service.dart';
+import 'package:neostation/main.dart' show rootNavigatorKey;
+import 'package:neostation/providers/file_provider.dart';
+import 'package:neostation/providers/sqlite_config_provider.dart';
+import 'package:neostation/providers/sqlite_database_provider.dart';
+import 'package:neostation/repositories/system_repository.dart';
+import 'package:neostation/services/config_service.dart';
+import 'package:neostation/services/logger_service.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// One PS3 title discovered inside RPCS3's Files-visible `Data` directory.
+class Rpcs3LibraryGame {
+  const Rpcs3LibraryGame({
+    required this.titleId,
+    required this.title,
+    required this.version,
+    required this.category,
+    required this.sourcePath,
+    required this.sourceKind,
+    this.iconPath,
+  });
+
+  final String titleId;
+  final String title;
+  final String version;
+  final String category;
+  final String sourcePath;
+  final String sourceKind;
+  final String? iconPath;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'titleId': titleId,
+    'title': title,
+    'version': version,
+    'category': category,
+    'sourcePath': sourcePath,
+    'sourceKind': sourceKind,
+  };
+
+  factory Rpcs3LibraryGame.fromJson(Map<String, dynamic> json) {
+    return Rpcs3LibraryGame(
+      titleId: json['titleId']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      version: json['version']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      sourcePath: json['sourcePath']?.toString() ?? '',
+      sourceKind: json['sourceKind']?.toString() ?? '',
+    );
+  }
+}
+
+class Rpcs3SyncResult {
+  const Rpcs3SyncResult({
+    required this.discoveredGames,
+    required this.virtualRows,
+    required this.physicalRows,
+    required this.artworkFiles,
+    required this.removedRows,
+    required this.totalPs3Rows,
+  });
+
+  final int discoveredGames;
+  final int virtualRows;
+  final int physicalRows;
+  final int artworkFiles;
+  final int removedRows;
+  final int totalPs3Rows;
+}
+
+/// Imports the game list exposed by the unofficial RPCS3 iOS port.
+///
+/// RPCS3 exposes its persistent directory through Files at:
+/// `On My iPhone/iPad > RPCS3 > Data`.
+///
+/// The iOS build does not currently expose a library-export URL scheme, so
+/// NeoStation bookmarks that Data directory and mirrors RPCS3's own discovery
+/// rules. Metadata comes from `PARAM.SFO` under:
+///
+/// - `Data/dev_hdd0/game/`
+/// - `Data/games/ExtractedGames/`
+/// - `Data/games/DiscImages/`
+///
+/// RPCS3's `games.yml` map is also read so registered ISO/disc-image entries can
+/// still appear when their PARAM.SFO is not directly visible to Dart.
+///
+/// Imported rows intentionally use an internal `rpcs3-library://` URI. They are
+/// display-only until RPCS3 publishes a supported direct-game deeplink.
+class Rpcs3LibraryService {
+  Rpcs3LibraryService._();
+
+  static final _log = LoggerService.instance;
+
+  static const String bookmarkKey = 'rpcs3';
+  static const String _prefsKey = 'rpcs3_library_cache_v1';
+  static const String _syncCompletedKey = 'rpcs3_library_sync_completed_v1';
+  static const String _virtualScheme = 'rpcs3-library';
+
+  static String? _linkedDataPath;
+  static Map<String, Rpcs3LibraryGame>? _cache;
+  static bool _syncCompleted = false;
+
+  static String? get linkedDataPath {
+    final value = _linkedDataPath;
+    if (value == null || value.isEmpty) return null;
+    return Directory(value).existsSync() ? value : null;
+  }
+
+  static bool get isLinked => linkedDataPath != null;
+  static bool get hasSyncedLibrary => _syncCompleted;
+  static int get syncedGameCount => _cache?.length ?? 0;
+
+  static bool isVirtualLibraryPath(String romPath) {
+    final uri = Uri.tryParse(romPath);
+    return uri != null &&
+        uri.scheme.toLowerCase() == _virtualScheme &&
+        uri.host.toLowerCase() == 'game';
+  }
+
+  /// Restores the security-scoped bookmark and the last lightweight cache.
+  static Future<void> initialize() async {
+    await loadCachedLibrary();
+    if (!Platform.isIOS) return;
+
+    try {
+      final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      if (selected != null) {
+        _linkedDataPath = await _normalizeDataRoot(selected);
+      }
+    } catch (e) {
+      _log.w('Rpcs3LibraryService: could not restore linked Data folder: $e');
+    }
+  }
+
+  /// Lets the user select RPCS3's folder, bookmarks it, then performs a sync.
+  /// Returns null when the picker is cancelled.
+  static Future<Rpcs3SyncResult?> linkAndSync() async {
+    if (!Platform.isIOS) return null;
+
+    final selected = await ExternalFolderAccess.pickAndBookmarkFolder(
+      key: bookmarkKey,
+    );
+    if (selected == null) return null;
+
+    final normalized = await _normalizeDataRoot(selected);
+    if (normalized == null) {
+      throw const FormatException(
+        'Select the RPCS3 Data folder shown in Files under RPCS3 > Data.',
+      );
+    }
+
+    _linkedDataPath = normalized;
+    return syncLinkedLibrary();
+  }
+
+  /// Reads the currently linked RPCS3 Data directory and imports its PS3 rows.
+  static Future<Rpcs3SyncResult> syncLinkedLibrary() async {
+    var dataRoot = linkedDataPath;
+    if (dataRoot == null && Platform.isIOS) {
+      final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      if (selected != null) {
+        dataRoot = await _normalizeDataRoot(selected);
+        _linkedDataPath = dataRoot;
+      }
+    }
+
+    if (dataRoot == null) {
+      throw StateError('RPCS3 Data folder is not linked.');
+    }
+
+    final games = await discoverLibrary(dataRoot);
+    final importResult = await _importIntoNeoStation(games);
+
+    final cache = <String, Rpcs3LibraryGame>{};
+    for (final game in games) {
+      cache[game.titleId.toLowerCase()] = game;
+    }
+    _cache = cache;
+    _syncCompleted = true;
+    await _persistCache();
+
+    await _writeDebugFile(
+      dataRoot: dataRoot,
+      games: games,
+      result: importResult,
+    );
+    await _refreshNeoStationUi();
+
+    _log.i(
+      'Rpcs3LibraryService: discovered ${games.length} games; '
+      '${importResult.virtualRows} virtual rows, '
+      '${importResult.physicalRows} physical rows, '
+      '${importResult.artworkFiles} artwork files',
+    );
+
+    return importResult;
+  }
+
+  /// Pure filesystem discovery entry point, also used by unit tests.
+  @visibleForTesting
+  static Future<List<Rpcs3LibraryGame>> discoverLibrary(String dataRoot) async {
+    final root = Directory(path.normalize(dataRoot));
+    if (!await root.exists()) return const <Rpcs3LibraryGame>[];
+
+    final byTitleId = <String, Rpcs3LibraryGame>{};
+
+    Future<void> scan(
+      String relativePath, {
+      required String sourceKind,
+      required int maxDepth,
+      required bool hddRules,
+    }) async {
+      final directory = Directory(path.join(root.path, relativePath));
+      if (!await directory.exists()) return;
+
+      final sfoFiles = await _findNamedFiles(
+        directory,
+        targetName: 'param.sfo',
+        maxDepth: maxDepth,
+      );
+      for (final sfo in sfoFiles) {
+        final game = await _gameFromSfo(
+          sfo,
+          dataRoot: root.path,
+          sourceKind: sourceKind,
+          hddRules: hddRules,
+        );
+        if (game != null) _putPreferred(byTitleId, game);
+      }
+    }
+
+    await scan(
+      path.join('dev_hdd0', 'game'),
+      sourceKind: 'dev_hdd0',
+      maxDepth: 3,
+      hddRules: true,
+    );
+    await scan(
+      path.join('games', 'ExtractedGames'),
+      sourceKind: 'extracted',
+      maxDepth: 5,
+      hddRules: false,
+    );
+    await scan(
+      path.join('games', 'DiscImages'),
+      sourceKind: 'disc-image',
+      maxDepth: 5,
+      hddRules: false,
+    );
+
+    // RPCS3 records registered disc-image/external games as TITLE_ID -> path.
+    // This is especially useful for ISO files whose PARAM.SFO cannot be read
+    // directly without implementing a PS3 ISO filesystem parser in Flutter.
+    final gamesYmlCandidates = <File>[
+      File(path.join(root.path, 'games.yml')),
+      File(path.join(root.path, 'config', 'games.yml')),
+    ];
+    for (final gamesYml in gamesYmlCandidates) {
+      if (!await gamesYml.exists()) continue;
+      final registered = await _parseGamesYml(gamesYml);
+      for (final entry in registered.entries) {
+        final titleId = _cleanTitleId(entry.key);
+        if (titleId.isEmpty) continue;
+
+        final resolvedPath = await _resolveRegisteredPath(
+          root.path,
+          entry.value,
+        );
+        final existing = byTitleId[titleId.toLowerCase()];
+        if (existing != null) continue;
+
+        Rpcs3LibraryGame? fromSfo;
+        if (resolvedPath != null &&
+            await FileSystemEntity.isDirectory(resolvedPath)) {
+          final sfoFiles = await _findNamedFiles(
+            Directory(resolvedPath),
+            targetName: 'param.sfo',
+            maxDepth: 4,
+          );
+          for (final sfo in sfoFiles) {
+            fromSfo = await _gameFromSfo(
+              sfo,
+              dataRoot: root.path,
+              sourceKind: 'games.yml',
+              hddRules: false,
+              expectedTitleId: titleId,
+            );
+            if (fromSfo != null) break;
+          }
+        }
+
+        if (fromSfo != null) {
+          _putPreferred(byTitleId, fromSfo);
+          continue;
+        }
+
+        final rawSource = resolvedPath ?? entry.value;
+        final fileName = path.basename(rawSource);
+        final fallbackTitle = path.basenameWithoutExtension(fileName).trim();
+        final iconPath = await _findCachedIcon(root.path, titleId);
+        _putPreferred(
+          byTitleId,
+          Rpcs3LibraryGame(
+            titleId: titleId,
+            title: fallbackTitle.isEmpty ? titleId : fallbackTitle,
+            version: '',
+            category: '',
+            sourcePath: rawSource,
+            sourceKind: 'games.yml',
+            iconPath: iconPath,
+          ),
+        );
+      }
+    }
+
+    final games = byTitleId.values.toList()
+      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    return games;
+  }
+
+  static Future<String?> _normalizeDataRoot(String selectedPath) async {
+    final normalized = path.normalize(selectedPath);
+    final selected = Directory(normalized);
+    if (!await selected.exists()) return null;
+
+    if (path.basename(normalized).toLowerCase() == 'data') {
+      return normalized;
+    }
+
+    final dataChild = Directory(path.join(normalized, 'Data'));
+    if (await dataChild.exists()) return path.normalize(dataChild.path);
+
+    if (await _looksLikeDataRoot(selected)) return normalized;
+    return null;
+  }
+
+  @visibleForTesting
+  static Future<String?> normalizeDataRootForTesting(String selectedPath) {
+    return _normalizeDataRoot(selectedPath);
+  }
+
+  static Future<bool> _looksLikeDataRoot(Directory directory) async {
+    for (final relative in const <String>[
+      'dev_hdd0',
+      'games',
+      'games.yml',
+      'Icons',
+    ]) {
+      final candidate = path.join(directory.path, relative);
+      if (await FileSystemEntity.type(candidate) !=
+          FileSystemEntityType.notFound) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static Future<Rpcs3LibraryGame?> _gameFromSfo(
+    File sfo, {
+    required String dataRoot,
+    required String sourceKind,
+    required bool hddRules,
+    String? expectedTitleId,
+  }) async {
+    try {
+      final values = parseParamSfoBytes(await sfo.readAsBytes());
+      var titleId = _cleanTitleId(values['TITLE_ID']?.toString() ?? '');
+      if (titleId.isEmpty) titleId = _cleanTitleId(expectedTitleId ?? '');
+      if (titleId.isEmpty) return null;
+
+      final category =
+          values['CATEGORY']?.toString().trim().toUpperCase() ?? '';
+      if (hddRules) {
+        if (!_isHddCategory(category)) return null;
+      } else if (category.isNotEmpty &&
+          category != 'DG' &&
+          !_isHddCategory(category)) {
+        return null;
+      }
+
+      var title = values['TITLE']?.toString().trim() ?? '';
+      if (title.isEmpty) title = titleId;
+      final version = values['APP_VER']?.toString().trim().isNotEmpty == true
+          ? values['APP_VER']!.toString().trim()
+          : values['VERSION']?.toString().trim() ?? '';
+
+      final metadataDir = sfo.parent;
+      final gameRoot =
+          path.basename(metadataDir.path).toUpperCase() == 'PS3_GAME'
+          ? metadataDir.parent.path
+          : metadataDir.path;
+      final iconPath =
+          await _findFileCaseInsensitive(metadataDir, 'ICON0.PNG') ??
+          await _findCachedIcon(dataRoot, titleId);
+
+      return Rpcs3LibraryGame(
+        titleId: titleId,
+        title: title,
+        version: version,
+        category: category,
+        sourcePath: gameRoot,
+        sourceKind: sourceKind,
+        iconPath: iconPath,
+      );
+    } catch (e) {
+      _log.w('Rpcs3LibraryService: ignored invalid ${sfo.path}: $e');
+      return null;
+    }
+  }
+
+  /// Parses Sony's binary PSF/SFO format used by PARAM.SFO.
+  @visibleForTesting
+  static Map<String, Object> parseParamSfoBytes(Uint8List bytes) {
+    if (bytes.length < 20 ||
+        bytes[0] != 0x00 ||
+        bytes[1] != 0x50 ||
+        bytes[2] != 0x53 ||
+        bytes[3] != 0x46) {
+      throw const FormatException('Not a PSF/PARAM.SFO file.');
+    }
+
+    final data = ByteData.sublistView(bytes);
+    final version = data.getUint32(4, Endian.little);
+    if (version != 0x00000101) {
+      throw FormatException(
+        'Unsupported PSF version 0x${version.toRadixString(16)}.',
+      );
+    }
+
+    final keyTableOffset = data.getUint32(8, Endian.little);
+    final dataTableOffset = data.getUint32(12, Endian.little);
+    final entryCount = data.getUint32(16, Endian.little);
+    if (keyTableOffset < 20 ||
+        keyTableOffset > dataTableOffset ||
+        dataTableOffset > bytes.length ||
+        entryCount > 4096 ||
+        20 + entryCount * 16 > bytes.length) {
+      throw const FormatException('Corrupt PARAM.SFO header.');
+    }
+
+    final result = <String, Object>{};
+    for (var index = 0; index < entryCount; index++) {
+      final entryOffset = 20 + index * 16;
+      final keyOffset = data.getUint16(entryOffset, Endian.little);
+      final format = data.getUint16(entryOffset + 2, Endian.little);
+      final valueLength = data.getUint32(entryOffset + 4, Endian.little);
+      final valueOffset = data.getUint32(entryOffset + 12, Endian.little);
+
+      final absoluteKeyOffset = keyTableOffset + keyOffset;
+      final absoluteValueOffset = dataTableOffset + valueOffset;
+      if (absoluteKeyOffset >= bytes.length ||
+          absoluteValueOffset > bytes.length ||
+          absoluteValueOffset + valueLength > bytes.length) {
+        throw const FormatException('Corrupt PARAM.SFO entry.');
+      }
+
+      final keyEnd = _findZeroByte(bytes, absoluteKeyOffset, dataTableOffset);
+      if (keyEnd <= absoluteKeyOffset) continue;
+      final key = utf8
+          .decode(
+            bytes.sublist(absoluteKeyOffset, keyEnd),
+            allowMalformed: true,
+          )
+          .trim();
+      if (key.isEmpty) continue;
+
+      switch (format) {
+        case 0x0004:
+        case 0x0204:
+          final raw = bytes.sublist(
+            absoluteValueOffset,
+            absoluteValueOffset + valueLength,
+          );
+          final zero = raw.indexOf(0);
+          final textBytes = zero >= 0 ? raw.sublist(0, zero) : raw;
+          result[key] = utf8.decode(textBytes, allowMalformed: true).trim();
+          break;
+        case 0x0404:
+          if (valueLength >= 4 && absoluteValueOffset + 4 <= bytes.length) {
+            result[key] = data.getUint32(absoluteValueOffset, Endian.little);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+    return result;
+  }
+
+  static int _findZeroByte(Uint8List bytes, int start, int limit) {
+    final safeLimit = limit.clamp(start, bytes.length) as int;
+    for (var i = start; i < safeLimit; i++) {
+      if (bytes[i] == 0) return i;
+    }
+    return safeLimit;
+  }
+
+  static bool _isHddCategory(String category) {
+    return category.length == 2 &&
+        category[1] != 'D' &&
+        category != 'DG' &&
+        category != 'MS';
+  }
+
+  static String _cleanTitleId(String value) {
+    final cleaned = value.trim().toUpperCase();
+    return RegExp(r'^[A-Z0-9._-]{3,32}$').hasMatch(cleaned) ? cleaned : '';
+  }
+
+  static Future<List<File>> _findNamedFiles(
+    Directory root, {
+    required String targetName,
+    required int maxDepth,
+  }) async {
+    final result = <File>[];
+    final wanted = targetName.toLowerCase();
+    const skippedDirectories = <String>{
+      'usrdir',
+      'tropdir',
+      'licdir',
+      'ps3_extra',
+      'cache',
+      'caches',
+      'shaderlog',
+    };
+
+    Future<void> walk(Directory directory, int depth) async {
+      if (depth > maxDepth) return;
+      List<FileSystemEntity> entries;
+      try {
+        entries = await directory.list(followLinks: false).toList();
+      } catch (_) {
+        return;
+      }
+
+      for (final entry in entries) {
+        final name = path.basename(entry.path).toLowerCase();
+        if (entry is File) {
+          if (name == wanted) result.add(entry);
+        } else if (entry is Directory &&
+            depth < maxDepth &&
+            !skippedDirectories.contains(name) &&
+            !name.startsWith('.')) {
+          await walk(entry, depth + 1);
+        }
+      }
+    }
+
+    await walk(root, 0);
+    return result;
+  }
+
+  static Future<String?> _findFileCaseInsensitive(
+    Directory directory,
+    String fileName,
+  ) async {
+    if (!await directory.exists()) return null;
+    final wanted = fileName.toLowerCase();
+    try {
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is File &&
+            path.basename(entity.path).toLowerCase() == wanted) {
+          return entity.path;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<String?> _findCachedIcon(
+    String dataRoot,
+    String titleId,
+  ) async {
+    final iconRoot = Directory(path.join(dataRoot, 'Icons', 'game_icons'));
+    final titleDir = Directory(path.join(iconRoot.path, titleId));
+    for (final directory in <Directory>[titleDir, iconRoot]) {
+      if (!await directory.exists()) continue;
+      try {
+        await for (final entity in directory.list(followLinks: false)) {
+          if (entity is! File) continue;
+          final lower = path.basename(entity.path).toLowerCase();
+          if (lower == 'icon0.png' ||
+              lower == '${titleId.toLowerCase()}.png' ||
+              lower == '${titleId.toLowerCase()}.jpg' ||
+              lower == '${titleId.toLowerCase()}.jpeg') {
+            return entity.path;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  static Future<Map<String, String>> _parseGamesYml(File file) async {
+    final result = <String, String>{};
+    try {
+      final lines = await file.readAsLines();
+      for (final rawLine in lines) {
+        final line = rawLine.trim();
+        if (line.isEmpty ||
+            line.startsWith('#') ||
+            line == '---' ||
+            line == '...') {
+          continue;
+        }
+
+        final colon = line.indexOf(':');
+        if (colon <= 0) continue;
+        final key = _decodeYamlScalar(line.substring(0, colon));
+        final value = _decodeYamlScalar(line.substring(colon + 1));
+        if (key.isNotEmpty && value.isNotEmpty) result[key] = value;
+      }
+    } catch (e) {
+      _log.w('Rpcs3LibraryService: could not parse ${file.path}: $e');
+    }
+    return result;
+  }
+
+  @visibleForTesting
+  static Map<String, String> parseGamesYmlTextForTesting(String text) {
+    final result = <String, String>{};
+    for (final rawLine in const LineSplitter().convert(text)) {
+      final line = rawLine.trim();
+      if (line.isEmpty ||
+          line.startsWith('#') ||
+          line == '---' ||
+          line == '...') {
+        continue;
+      }
+      final colon = line.indexOf(':');
+      if (colon <= 0) continue;
+      final key = _decodeYamlScalar(line.substring(0, colon));
+      final value = _decodeYamlScalar(line.substring(colon + 1));
+      if (key.isNotEmpty && value.isNotEmpty) result[key] = value;
+    }
+    return result;
+  }
+
+  static String _decodeYamlScalar(String value) {
+    var text = value.trim();
+    if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+      try {
+        return jsonDecode(text).toString();
+      } catch (_) {
+        text = text.substring(1, text.length - 1);
+      }
+    } else if (text.length >= 2 && text.startsWith("'") && text.endsWith("'")) {
+      text = text.substring(1, text.length - 1).replaceAll("''", "'");
+    }
+    return text.trim();
+  }
+
+  static Future<String?> _resolveRegisteredPath(
+    String dataRoot,
+    String registeredPath,
+  ) async {
+    var value = registeredPath.trim();
+    if (value.isEmpty) return null;
+    value = value.replaceAll(
+      r'$(EmulatorDir)',
+      '${path.normalize(dataRoot)}${path.separator}',
+    );
+
+    if (value.startsWith('/dev_hdd0/')) {
+      value = path.join(
+        dataRoot,
+        'dev_hdd0',
+        value.substring('/dev_hdd0/'.length),
+      );
+    } else if (value.startsWith('/games/')) {
+      value = path.join(dataRoot, 'games', value.substring('/games/'.length));
+    }
+
+    if (await FileSystemEntity.type(value) != FileSystemEntityType.notFound) {
+      return path.normalize(value);
+    }
+
+    // Absolute iOS container paths can contain a previous app-container UUID.
+    // Remap the stable suffix following /Data/ onto the currently bookmarked
+    // Data root.
+    final slashNormalized = value.replaceAll('\\', '/');
+    final lower = slashNormalized.toLowerCase();
+    final marker = lower.lastIndexOf('/data/');
+    if (marker >= 0) {
+      final relative = slashNormalized.substring(marker + '/data/'.length);
+      final remapped = path.joinAll(<String>[dataRoot, ...relative.split('/')]);
+      if (await FileSystemEntity.type(remapped) !=
+          FileSystemEntityType.notFound) {
+        return path.normalize(remapped);
+      }
+    }
+
+    final basename = path.basename(value);
+    if (basename.isEmpty) return null;
+    for (final relativeRoot in <String>[
+      path.join('games', 'DiscImages'),
+      path.join('games', 'ExtractedGames'),
+    ]) {
+      final found = await _findEntityByBasename(
+        Directory(path.join(dataRoot, relativeRoot)),
+        basename,
+        maxDepth: 4,
+      );
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  static Future<String?> _findEntityByBasename(
+    Directory root,
+    String basename, {
+    required int maxDepth,
+  }) async {
+    if (!await root.exists()) return null;
+    final wanted = basename.toLowerCase();
+
+    Future<String?> walk(Directory directory, int depth) async {
+      if (depth > maxDepth) return null;
+      try {
+        await for (final entity in directory.list(followLinks: false)) {
+          if (path.basename(entity.path).toLowerCase() == wanted) {
+            return entity.path;
+          }
+          if (entity is Directory && depth < maxDepth) {
+            final found = await walk(entity, depth + 1);
+            if (found != null) return found;
+          }
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    return walk(root, 0);
+  }
+
+  static void _putPreferred(
+    Map<String, Rpcs3LibraryGame> target,
+    Rpcs3LibraryGame candidate,
+  ) {
+    final key = candidate.titleId.toLowerCase();
+    final current = target[key];
+    if (current == null ||
+        _metadataScore(candidate) > _metadataScore(current)) {
+      target[key] = candidate;
+    }
+  }
+
+  static int _metadataScore(Rpcs3LibraryGame game) {
+    var score = 0;
+    if (game.title.isNotEmpty && game.title != game.titleId) score += 4;
+    if (game.version.isNotEmpty) score += 1;
+    if (game.category.isNotEmpty) score += 1;
+    if (game.iconPath != null) score += 4;
+    if (game.sourceKind != 'games.yml') score += 2;
+    return score;
+  }
+
+  static Future<Rpcs3SyncResult> _importIntoNeoStation(
+    List<Rpcs3LibraryGame> games,
+  ) async {
+    final ps3 = await SystemRepository.getSystemByFolderName('ps3');
+    if (ps3?.id == null) {
+      throw StateError('NeoStation PS3 system definition was not found.');
+    }
+
+    final systemId = ps3!.id!;
+    final db = await SqliteService.getDatabase();
+    final existingRows = await db.rawQuery(
+      'SELECT filename, rom_path, title_id, title_name '
+      'FROM user_roms WHERE app_system_id = ?',
+      <Object?>[systemId],
+    );
+
+    final physicalByTitleId = <String, Map<String, Object?>>{};
+    final physicalByTitleName = <String, Map<String, Object?>>{};
+    for (final row in existingRows) {
+      final romPath = row['rom_path']?.toString() ?? '';
+      if (isVirtualLibraryPath(romPath)) continue;
+      final titleId = row['title_id']?.toString().trim() ?? '';
+      final titleName = row['title_name']?.toString().trim() ?? '';
+      if (titleId.isNotEmpty) physicalByTitleId[titleId.toLowerCase()] = row;
+      if (titleName.isNotEmpty) {
+        physicalByTitleName[titleName.toLowerCase()] = row;
+      }
+    }
+
+    final desiredVirtualPaths = <String>{};
+    final artwork = <({String filename, String iconPath})>[];
+    var virtualRows = 0;
+    var physicalRows = 0;
+
+    await db.transaction((txn) async {
+      for (final game in games) {
+        Map<String, Object?>? physical =
+            physicalByTitleId[game.titleId.toLowerCase()] ??
+            physicalByTitleName[game.title.toLowerCase()];
+
+        if (physical != null) {
+          final physicalPath = physical['rom_path']?.toString() ?? '';
+          if (physicalPath.isNotEmpty) {
+            await txn.rawUpdate(
+              '''
+              UPDATE user_roms SET
+                title_id = CASE
+                  WHEN title_id IS NULL OR title_id = '' THEN ? ELSE title_id END,
+                title_name = CASE
+                  WHEN title_name IS NULL OR title_name = '' THEN ? ELSE title_name END,
+                updated_at = datetime('now')
+              WHERE rom_path = ?
+              ''',
+              <Object?>[game.titleId, game.title, physicalPath],
+            );
+          }
+          final filename = physical['filename']?.toString() ?? '';
+          if (filename.isNotEmpty && game.iconPath != null) {
+            artwork.add((filename: filename, iconPath: game.iconPath!));
+          }
+          physicalRows++;
+          continue;
+        }
+
+        final virtualUri = Uri(
+          scheme: _virtualScheme,
+          host: 'game',
+          queryParameters: <String, String>{'title-id': game.titleId},
+        );
+        final virtualPath = virtualUri.toString();
+        desiredVirtualPaths.add(virtualPath);
+        final syntheticFilename = '${game.titleId}.rpcs3';
+
+        await txn.rawInsert(
+          '''
+          INSERT INTO user_roms
+            (app_system_id, app_emulator_unique_id, app_emulator_os_id,
+             filename, rom_path, title_id, title_name,
+             created_at, updated_at)
+          VALUES (?, NULL, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          ON CONFLICT(rom_path) DO UPDATE SET
+            app_system_id = excluded.app_system_id,
+            filename = excluded.filename,
+            title_id = excluded.title_id,
+            title_name = excluded.title_name,
+            updated_at = datetime('now')
+          ''',
+          <Object?>[
+            systemId,
+            syntheticFilename,
+            virtualPath,
+            game.titleId,
+            game.title,
+          ],
+        );
+
+        if (game.iconPath != null) {
+          artwork.add((filename: syntheticFilename, iconPath: game.iconPath!));
+        }
+        virtualRows++;
+      }
+    });
+
+    final virtualRowsInDb = await db.rawQuery(
+      "SELECT rom_path FROM user_roms WHERE app_system_id = ? "
+      "AND rom_path LIKE 'rpcs3-library://%'",
+      <Object?>[systemId],
+    );
+    final stalePaths = virtualRowsInDb
+        .map((row) => row['rom_path']?.toString() ?? '')
+        .where(
+          (romPath) =>
+              romPath.isNotEmpty && !desiredVirtualPaths.contains(romPath),
+        )
+        .toList();
+
+    var removedRows = 0;
+    if (stalePaths.isNotEmpty) {
+      await db.transaction((txn) async {
+        const batchSize = 100;
+        for (var i = 0; i < stalePaths.length; i += batchSize) {
+          final end = (i + batchSize < stalePaths.length)
+              ? i + batchSize
+              : stalePaths.length;
+          final batch = stalePaths.sublist(i, end);
+          final placeholders = List.filled(batch.length, '?').join(',');
+          removedRows += await txn.rawDelete(
+            'DELETE FROM user_roms WHERE app_system_id = ? '
+            'AND rom_path IN ($placeholders)',
+            <Object?>[systemId, ...batch],
+          );
+        }
+      });
+    }
+
+    final artworkFiles = await _writeArtwork(artwork);
+    final countRows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM user_roms WHERE app_system_id = ?',
+      <Object?>[systemId],
+    );
+    final totalPs3Rows = int.tryParse('${countRows.first['count'] ?? 0}') ?? 0;
+
+    if (totalPs3Rows > 0) {
+      await SystemRepository.addDetectedSystem(systemId, 'ps3');
+    } else {
+      await SystemRepository.removeDetectedSystem(systemId);
+    }
+
+    return Rpcs3SyncResult(
+      discoveredGames: games.length,
+      virtualRows: virtualRows,
+      physicalRows: physicalRows,
+      artworkFiles: artworkFiles,
+      removedRows: removedRows,
+      totalPs3Rows: totalPs3Rows,
+    );
+  }
+
+  static Future<int> _writeArtwork(
+    List<({String filename, String iconPath})> items,
+  ) async {
+    if (items.isEmpty) return 0;
+
+    final mediaRoot = await ConfigService.getMediaPath();
+    final directories = <Directory>[
+      Directory(path.join(mediaRoot, 'ps3', 'box2d')),
+      Directory(path.join(mediaRoot, 'ps3', 'screenshots')),
+    ];
+    for (final directory in directories) {
+      await directory.create(recursive: true);
+    }
+
+    var written = 0;
+    for (final item in items) {
+      final source = File(item.iconPath);
+      if (!await source.exists()) continue;
+      final bytes = await source.readAsBytes();
+      if (bytes.isEmpty) continue;
+
+      final mediaKey = FileProvider.stripRomExtension(item.filename);
+      var extension = path
+          .extension(source.path)
+          .toLowerCase()
+          .replaceFirst('.', '');
+      if (!const <String>{'png', 'jpg', 'jpeg', 'webp'}.contains(extension)) {
+        extension = 'png';
+      }
+
+      for (final directory in directories) {
+        var hasExisting = false;
+        for (final candidateExtension in const <String>[
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+        ]) {
+          if (await File(
+            path.join(directory.path, '$mediaKey.$candidateExtension'),
+          ).exists()) {
+            hasExisting = true;
+            break;
+          }
+        }
+        if (hasExisting) continue;
+
+        await File(
+          path.join(directory.path, '$mediaKey.$extension'),
+        ).writeAsBytes(bytes, flush: true);
+        written++;
+      }
+    }
+    return written;
+  }
+
+  static Future<void> _refreshNeoStationUi() async {
+    try {
+      final context = rootNavigatorKey.currentContext;
+      if (context == null) return;
+      await Provider.of<SqliteDatabaseProvider>(
+        context,
+        listen: false,
+      ).loadGamesForSystem('ps3');
+      await Provider.of<SqliteConfigProvider>(
+        context,
+        listen: false,
+      ).refreshDetectedSystems();
+    } catch (e) {
+      _log.e('Rpcs3LibraryService: UI refresh failed: $e');
+    }
+  }
+
+  static Future<void> loadCachedLibrary() async {
+    if (_cache != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _syncCompleted = prefs.getBool(_syncCompletedKey) ?? false;
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null || raw.isEmpty) {
+        _cache = <String, Rpcs3LibraryGame>{};
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        _cache = <String, Rpcs3LibraryGame>{};
+        return;
+      }
+      _cache = decoded.map(
+        (key, value) => MapEntry(
+          key.toString(),
+          Rpcs3LibraryGame.fromJson(Map<String, dynamic>.from(value as Map)),
+        ),
+      );
+    } catch (e) {
+      _log.w('Rpcs3LibraryService: could not load cache: $e');
+      _cache = <String, Rpcs3LibraryGame>{};
+    }
+  }
+
+  static Future<void> _persistCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cache = _cache ?? <String, Rpcs3LibraryGame>{};
+      await prefs.setString(
+        _prefsKey,
+        jsonEncode(cache.map((key, value) => MapEntry(key, value.toJson()))),
+      );
+      await prefs.setBool(_syncCompletedKey, _syncCompleted);
+    } catch (e) {
+      _log.w('Rpcs3LibraryService: could not save cache: $e');
+    }
+  }
+
+  static Future<void> _writeDebugFile({
+    required String dataRoot,
+    required List<Rpcs3LibraryGame> games,
+    required Rpcs3SyncResult result,
+  }) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final file = File(path.join(docs.path, 'rpcs3_sync_debug.txt'));
+      final payload = games.map((game) => game.toJson()).toList();
+      await file.writeAsString(
+        'STATE: IMPORTED\n'
+        'RPCS3 Data root: $dataRoot\n'
+        'Discovered games: ${result.discoveredGames}\n'
+        'Virtual PS3 rows: ${result.virtualRows}\n'
+        'Existing physical PS3 rows reused: ${result.physicalRows}\n'
+        'Artwork files written: ${result.artworkFiles}\n'
+        'Stale RPCS3 rows removed: ${result.removedRows}\n'
+        'PS3 rows now in NeoStation: ${result.totalPs3Rows}\n\n'
+        '${const JsonEncoder.withIndent('  ').convert(payload)}',
+        flush: true,
+      );
+    } catch (e) {
+      _log.w('Rpcs3LibraryService: could not write debug file: $e');
+    }
+  }
+}
