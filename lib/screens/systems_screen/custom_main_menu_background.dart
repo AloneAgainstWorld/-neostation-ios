@@ -31,6 +31,7 @@ class CustomMainMenuBackground extends StatelessWidget {
       file,
       key: ValueKey('main_menu_custom_background_$path'),
       fit: BoxFit.cover,
+      gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
     );

@@ -4,13 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:provider/provider.dart';
-import 'package:neostation/providers/theme_provider.dart';
 import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/services/home_music_service.dart';
 import 'package:neostation/widgets/shimmering_logo.dart';
 import 'my_systems_section/my_systems_grid.dart';
 import 'my_systems_section/initial_setup_widget.dart';
-import 'custom_main_menu_background.dart';
 
 /// Orchestrator for the 'Systems' tab content.
 ///
@@ -78,8 +76,8 @@ class _SystemContentState extends State<SystemContent> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<SqliteConfigProvider, ThemeProvider>(
-      builder: (context, configProvider, themeProvider, child) {
+    return Consumer<SqliteConfigProvider>(
+      builder: (context, configProvider, child) {
         final isLoading = configProvider.isLoading || configProvider.isScanning;
         final showSplash = isLoading || _holdSplash(isLoading);
 
@@ -89,9 +87,7 @@ class _SystemContentState extends State<SystemContent> {
             configProvider.scanCompleted;
 
         final showContent =
-            !showSplash &&
-            configProvider.scanCompleted &&
-            !showInitialSetup;
+            !showSplash && configProvider.scanCompleted && !showInitialSetup;
 
         final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
         _syncHomeMusic(showContent && routeIsCurrent);
@@ -124,19 +120,14 @@ class _SystemContentState extends State<SystemContent> {
           child: phase,
         );
 
-        // Only the actual Systems main menu receives the custom background.
-        // Splash/setup screens and pushed playlists remain unchanged.
-        final customBackground = showContent
-            ? themeProvider.customBackgroundPath
-            : null;
-        if (customBackground == null) return content;
-
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            CustomMainMenuBackground(path: customBackground),
-            content,
-          ],
+        // AppScreen owns the custom background so it stays mounted across
+        // top-level tab changes. During splash/setup phases, cover that
+        // persistent layer with the normal theme background. The actual
+        // Systems content remains transparent so the custom image shows through.
+        if (showContent) return content;
+        return ColoredBox(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: content,
         );
       },
     );

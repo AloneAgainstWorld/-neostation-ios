@@ -11,6 +11,7 @@ import 'package:neostation/widgets/systems_update_dialog.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../widgets/fixed_header.dart';
 import 'systems_screen/system_content.dart';
+import 'systems_screen/custom_main_menu_background.dart';
 import 'search_screen/search_screen.dart';
 import 'retro_achievements_screen/ra_content.dart';
 import 'settings_screen/new_settings_screen.dart';
@@ -587,6 +588,7 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
     return Consumer2<SqliteConfigProvider, ThemeProvider>(
       builder: (context, configProvider, themeProvider, child) {
         _ensureSelectedTabVisible(configProvider.config);
+        final customBackgroundPath = themeProvider.customBackgroundPath;
 
         return PopScope(
           canPop: false, // Intercept hardware back button to maintain app flow.
@@ -599,6 +601,23 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
                     color: Theme.of(context).scaffoldBackgroundColor,
                   ),
                 ),
+
+                // Keep the Systems custom background mounted while switching
+                // top-level tabs. Offstage stops it painting on other tabs, while
+                // retaining the decoded image so returning to Systems cannot
+                // expose the theme background for a frame.
+                if (customBackgroundPath != null)
+                  Positioned.fill(
+                    child: TickerMode(
+                      enabled: _selectedTabIndex == AppTabs.systems,
+                      child: Offstage(
+                        offstage: _selectedTabIndex != AppTabs.systems,
+                        child: CustomMainMenuBackground(
+                          path: customBackgroundPath,
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // Main Content Layer.
                 Positioned.fill(child: _buildCurrentTabContent()),
