@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:neostation/main.dart' show rootNavigatorKey;
 import 'package:neostation/providers/sqlite_config_provider.dart';
