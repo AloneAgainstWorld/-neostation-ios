@@ -23,6 +23,7 @@ import '../providers/sqlite_config_provider.dart';
 import '../utils/gamepad_nav.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
+import 'package:neostation/l10n/ios_setup_locale.dart';
 import '../widgets/tv_directory_picker.dart';
 import '../widgets/folder_not_empty_dialog.dart';
 import '../models/secondary_display_state.dart';
@@ -977,11 +978,10 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
     final IconData icon;
     if (Platform.isIOS) {
       icon = Symbols.sports_esports_rounded;
-      title = 'Link RetroArch';
+      title = IosSetupLocale.linkTitle(context);
       description = _selectedFolder != null
-          ? 'Linked and synced.\n\n$_selectedFolder'
-          : 'Link RetroArch\'s own folder so NeoStation can see your '
-                'games and launch them directly with one tap.';
+          ? '${IosSetupLocale.linked(context)}\n\n$_selectedFolder'
+          : IosSetupLocale.linkDescription(context);
     } else {
       icon = Symbols.folder_open_rounded;
       title = AppLocale.selectRomFolder.getString(context);
@@ -1732,48 +1732,60 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
             neoAssets.themes.isEmpty &&
             neoAssets.loading;
         return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (showSkip)
-              TextButton(
-                onPressed: () => _handleSkip(),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 16.r,
-                    vertical: 8.r,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/images/gamepad/Xbox_B_button.png',
-                      width: 20.r,
-                      height: 20.r,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                    SizedBox(width: 8.r),
-                    Text(
-                      AppLocale.skipForNow.getString(context),
-                      style: TextStyle(
-                        fontSize: 12.r,
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.6,
+            // Reserve a stable half of the navigation row for the optional
+            // secondary action. This keeps long translations from stealing
+            // width from the primary button.
+            Expanded(
+              child: showSkip
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => _handleSkip(),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16.r,
+                            vertical: 8.r,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset(
+                              'assets/images/gamepad/Xbox_B_button.png',
+                              width: 20.r,
+                              height: 20.r,
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
+                            SizedBox(width: 8.r),
+                            Flexible(
+                              child: Text(
+                                AppLocale.skipForNow.getString(context),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.r,
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              SizedBox(width: 64.r),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            SizedBox(width: 16.r),
 
-            SizedBox(width: 12.r),
-
-            // Main action button. Keep the original visual treatment but let
-            // localized labels shrink inside the available width instead of
-            // pushing the button beyond the right edge on iPhone/iPad.
-            Flexible(
+            // Keep the original large-button treatment. The primary action
+            // owns the other half of the row, so translated labels stay at a
+            // normal readable size instead of being scaled down to fit.
+            Expanded(
               child: ElevatedButton(
                 onPressed:
                     (_isSelectingFolder ||
@@ -1789,6 +1801,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
                     horizontal: 20.r,
                     vertical: 12.r,
                   ),
+                  minimumSize: Size(0, 52.r),
                   elevation: 4,
                   shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
                   shape: RoundedRectangleBorder(
@@ -1809,28 +1822,30 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
                           ),
                         ),
                       )
-                    : FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Image.asset(
-                              'assets/images/gamepad/Xbox_A_button.png',
-                              width: 20.r,
-                              height: 20.r,
-                              color: theme.colorScheme.onPrimary,
-                            ),
-                            SizedBox(width: 8.r),
-                            Text(
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'assets/images/gamepad/Xbox_A_button.png',
+                            width: 20.r,
+                            height: 20.r,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                          SizedBox(width: 8.r),
+                          Flexible(
+                            child: Text(
                               _getButtonText(),
-                              maxLines: 1,
+                              maxLines: 2,
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 14.r,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
               ),
             ),
@@ -1851,7 +1866,9 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
     }
     if (_currentStep == _stepFolder) {
       return Platform.isIOS
-          ? (_selectedFolder != null ? 'Continue' : 'Link RetroArch')
+          ? (_selectedFolder != null
+                ? IosSetupLocale.continueLabel(context)
+                : IosSetupLocale.linkTitle(context))
           : AppLocale.selectFolder.getString(context);
     }
     if (_currentStep == _stepEsde) {
