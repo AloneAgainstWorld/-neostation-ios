@@ -5,20 +5,20 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'config_service.dart';
 import 'logger_service.dart';
 import 'music_player_service.dart';
 import 'sfx_service.dart';
 
 /// Plays user-selected ambience only while the primary Systems menu is visible.
 ///
-/// The user chooses the audio file from General settings. NeoStation copies it
-/// into its own application-support directory so the selection survives file
-/// provider/security-scoped access changes. Playback shares NeoStation's
-/// existing SoLoud engine, yields to the Music player, and stops outside the
-/// main menu or while the app is backgrounded.
+/// The user manages the audio file from Theme settings. NeoStation copies it
+/// into `<user-data>/menu_music` so it lives alongside the user's other visual
+/// customizations and survives file-provider/security-scoped access changes.
+/// Playback shares NeoStation's existing SoLoud engine, yields to the Music
+/// player, and stops outside the main menu or while the app is backgrounded.
 class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
   HomeMusicService._internal();
 
@@ -28,6 +28,7 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
   static const String _preferenceKey = 'neostation_home_music_enabled';
   static const String _pathPreferenceKey = 'neostation_home_music_path';
   static const String _namePreferenceKey = 'neostation_home_music_name';
+  static const String _directoryName = 'menu_music';
   static const double _volume = 0.28;
   static const List<String> _allowedExtensions = [
     'mp3',
@@ -51,7 +52,9 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get enabled => _enabled;
   bool get hasMusic =>
-      _musicPath != null && _musicPath!.isNotEmpty && File(_musicPath!).existsSync();
+      _musicPath != null &&
+      _musicPath!.isNotEmpty &&
+      File(_musicPath!).existsSync();
   String? get selectedFileName => _musicName;
 
   Future<void> init() async {
@@ -63,6 +66,8 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
       _musicName = prefs.getString(_namePreferenceKey);
       _enabled = prefs.getBool(_preferenceKey) ?? false;
 
+      await _migrateOrDiscoverMusic();
+
       if (!hasMusic) {
         _musicPath = null;
         _musicName = null;
@@ -70,6 +75,8 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
         await prefs.remove(_pathPreferenceKey);
         await prefs.remove(_namePreferenceKey);
         await prefs.setBool(_preferenceKey, false);
+      } else {
+        await _persistPreference();
       }
     } catch (e) {
       _enabled = false;
@@ -86,26 +93,34 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
     await _syncPlayback();
   }
 
-  /// Enables/disables the main-menu music preference.
+  /// Opens the platform file picker, imports one supported audio file into
+  /// NeoStation's user-data directory, and enables it immediately.
+  Future<bool> chooseMusic() async {
+    if (!_initialized) await init();
+
+    final imported = await _pickAndStoreMusic();
+    if (!imported) return false;
+
+    _enabled = true;
+    await _persistPreference();
+    notifyListeners();
+    await _syncPlayback();
+    return true;
+  }
+
+  /// Enables/disables the selected main-menu music.
   ///
-  /// Turning it on opens the system file picker. If the user chooses a file it
-  /// replaces the previous selection. If the picker is cancelled and a prior
-  /// selection exists, that prior file is simply re-enabled.
+  /// Enabling with no stored track opens the picker once. Re-enabling an
+  /// existing track never forces the user to select it again.
   Future<void> setEnabled(bool value) async {
     if (!_initialized) await init();
 
-    if (value) {
-      final imported = await _pickAndStoreMusic();
-      if (!imported && !hasMusic) {
-        _enabled = false;
-        notifyListeners();
-        return;
-      }
-      _enabled = true;
-    } else {
-      _enabled = false;
+    if (value && !hasMusic) {
+      await chooseMusic();
+      return;
     }
 
+    _enabled = value && hasMusic;
     await _persistPreference();
     notifyListeners();
     await _syncPlayback();
@@ -150,6 +165,78 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  Future<Directory> _musicDirectory() async {
+    final userDataPath = await ConfigService.getUserDataPath();
+    final directory = Directory(p.join(userDataPath, _directoryName));
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  bool _isSupportedPath(String value) {
+    final extension = p.extension(value).toLowerCase().replaceFirst('.', '');
+    return _allowedExtensions.contains(extension);
+  }
+
+  String _safeExtension(String value) {
+    final extension = p.extension(value).toLowerCase();
+    return _allowedExtensions.contains(extension.replaceFirst('.', ''))
+        ? extension
+        : '.mp3';
+  }
+
+  /// Migrates tracks selected by older builds from Application Support into
+  /// the new user-data directory. If no preference exists, a supported file
+  /// manually placed in `menu_music` is discovered automatically.
+  Future<void> _migrateOrDiscoverMusic() async {
+    final directory = await _musicDirectory();
+    final existingPath = _musicPath;
+
+    if (existingPath != null) {
+      final source = File(existingPath);
+      if (await source.exists() && _isSupportedPath(source.path)) {
+        final normalizedDirectory = p.normalize(directory.absolute.path);
+        final normalizedSource = p.normalize(source.absolute.path);
+        final alreadyInDirectory =
+            p.equals(normalizedDirectory, p.dirname(normalizedSource));
+
+        if (!alreadyInDirectory) {
+          final oldPath = source.path;
+          final oldParentName = p.basename(p.dirname(oldPath));
+          await _storeFile(source, _musicName ?? p.basename(oldPath));
+
+          // Older fork builds owned files inside an Application Support
+          // `home_music` directory. Remove only that known legacy copy after a
+          // successful migration; never delete arbitrary external source files.
+          if (oldParentName == 'home_music') {
+            try {
+              final legacy = File(oldPath);
+              if (await legacy.exists()) await legacy.delete();
+            } catch (e) {
+              _log.w('[HomeMusic] Could not remove legacy music copy: $e');
+            }
+          }
+        }
+        return;
+      }
+    }
+
+    File? discovered;
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is! File || !_isSupportedPath(entity.path)) continue;
+      if (discovered == null ||
+          p.basename(entity.path).startsWith('main_menu_music.')) {
+        discovered = entity;
+      }
+      if (p.basename(entity.path).startsWith('main_menu_music.')) break;
+    }
+
+    if (discovered != null) {
+      _musicPath = discovered.path;
+      _musicName = p.basename(discovered.path);
+      _log.i('[HomeMusic] Discovered menu music in user-data directory.');
+    }
+  }
+
   Future<bool> _pickAndStoreMusic() async {
     try {
       final result = await FilePicker.pickFiles(
@@ -164,48 +251,53 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       final source = File(sourcePath);
-      if (!await source.exists()) return false;
-
-      final supportDir = await getApplicationSupportDirectory();
-      final musicDir = Directory(p.join(supportDir.path, 'home_music'));
-      await musicDir.create(recursive: true);
-
-      await _stopPlayback();
-
-      // Keep one app-owned file only, so replacing the selection cannot leave
-      // stale copies behind.
-      await for (final entity in musicDir.list()) {
-        if (entity is File) {
-          try {
-            await entity.delete();
-          } catch (_) {}
-        }
+      if (!await source.exists() || !_isSupportedPath(picked.name)) {
+        return false;
       }
 
-      final extension = p.extension(picked.name).toLowerCase();
-      final safeExtension = _allowedExtensions.contains(
-        extension.replaceFirst('.', ''),
-      )
-          ? extension
-          : '.mp3';
-      final destination = File(
-        p.join(musicDir.path, 'main_menu_music$safeExtension'),
-      );
-      await source.copy(destination.path);
-
-      _musicPath = destination.path;
-      _musicName = picked.name;
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_pathPreferenceKey, destination.path);
-      await prefs.setString(_namePreferenceKey, picked.name);
-
+      await _storeFile(source, picked.name);
       _log.i('[HomeMusic] Selected main-menu music: ${picked.name}');
       return true;
     } catch (e) {
       _log.w('[HomeMusic] Could not import selected music: $e');
       return false;
     }
+  }
+
+  /// Copies [source] transactionally so a failed replacement never destroys
+  /// the currently selected track.
+  Future<void> _storeFile(File source, String displayName) async {
+    final directory = await _musicDirectory();
+    final extension = _safeExtension(displayName.isEmpty ? source.path : displayName);
+    final temporary = File(
+      p.join(directory.path, 'main_menu_music.importing$extension'),
+    );
+    final destination = File(
+      p.join(directory.path, 'main_menu_music$extension'),
+    );
+
+    if (await temporary.exists()) await temporary.delete();
+    await source.copy(temporary.path);
+
+    await _stopPlayback();
+
+    // Keep one app-owned track only. The completed temporary copy is excluded
+    // until it is atomically renamed to the canonical destination.
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is! File) continue;
+      if (p.equals(entity.absolute.path, temporary.absolute.path)) continue;
+      try {
+        await entity.delete();
+      } catch (_) {}
+    }
+
+    await temporary.rename(destination.path);
+    _musicPath = destination.path;
+    _musicName = displayName.isEmpty ? p.basename(source.path) : displayName;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pathPreferenceKey, destination.path);
+    await prefs.setString(_namePreferenceKey, _musicName!);
   }
 
   Future<void> _persistPreference() async {
