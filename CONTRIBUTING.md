@@ -1,89 +1,128 @@
-# Contributing to NeoStation
+# Contributing to NeoStation iOS
 
-Thank you for your interest in contributing to NeoStation! This document will help you get started.
+Thank you for your interest in contributing to the NeoStation iOS port.
 
-## How to contribute
+This repository is maintained primarily for **iOS / iPadOS 18+**. The upstream NeoStation project remains the canonical home for general non-iOS platform development.
 
-### Reporting bugs
+## Reporting bugs
 
-1. Use the issue search to verify the bug has not been reported before.
-2. If it is new, open an issue using the **Bug Report** template.
-3. Include:
-   - NeoStation version
-   - Platform (Windows, Linux, macOS, Android)
-   - Steps to reproduce
-   - Expected vs. actual behavior
-   - Logs or screenshots if applicable
+Before opening a report, search the existing issues to avoid duplicates.
 
-### Proposing new features
+For an iOS-port bug, include:
 
-1. Open an issue using the **Feature Request** template.
-2. Clearly describe the problem the feature solves.
-3. If possible, include mockups or usage examples.
+- NeoStation version/build number;
+- iPhone or iPad model;
+- iOS/iPadOS version;
+- emulator involved, if relevant (RetroArch, MeloNX or ARMSX2);
+- clear reproduction steps;
+- expected and actual behavior;
+- screenshots, screen recordings or logs when useful.
 
-### Pull Requests
+If the issue reproduces only in the original non-iOS NeoStation project, report it upstream instead of opening it here.
 
-1. **Fork** the repository.
-2. Create a branch from `main`. Use the following naming convention:
+## Proposing features
+
+Use the **Feature Request** issue template and describe the user problem first, then the proposed behavior. UI mockups and concrete workflow examples are welcome.
+
+## Pull requests
+
+1. Fork the repository.
+2. Create a short-lived branch from `main`, for example:
    - `feature/your-feature-name`
    - `fix/bug-description`
    - `docs/topic-name`
    - `refactor/what-changed`
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. Make your changes following the [code conventions](#code-conventions) and [commit format](#commit-format).
-4. Ensure `flutter analyze` reports no errors.
-5. If possible, add tests for your change.
-6. Update documentation if necessary.
-7. Open a Pull Request using the provided template.
+3. Keep the change focused and update documentation when behavior changes.
+4. Run formatting, analysis and tests locally.
+5. Open a pull request using the repository template.
+
+Example:
+
+```bash
+git checkout -b fix/background-return-flash
+flutter pub get
+dart format .
+flutter analyze --no-fatal-infos --no-fatal-warnings
+flutter test
+```
+
+## iOS-specific validation
+
+For changes that affect the iOS release path, test on iOS/iPadOS 18+ whenever practical. Pay particular attention to:
+
+- external-folder/document access;
+- deeplinks and installed-emulator detection;
+- first-run linking flows;
+- lifecycle transitions and audio/video playback;
+- custom background and menu-music persistence;
+- landscape/gamepad navigation;
+- unsigned release builds and generated Xcode configuration.
+
+The `ios/` scaffold is generated locally rather than stored in this repository. See `README.md` for the bootstrap/build sequence.
 
 ## Code conventions
 
-- **Files and folders**: `snake_case`
-- **Variables and functions**: `camelCase`
-- **Classes and widgets**: `PascalCase`
-- **Constants**: `camelCase` or `SCREAMING_SNAKE_CASE` depending on context
-- Use `Color.withValues(alpha: …)` instead of `withOpacity()` (deprecated).
-- Always check `mounted` before using `BuildContext` after an `await`.
-- Use `flutter_screenutil` for sizing and spacing.
-- Write comments in **English** and UI text must use the localization system (`AppLocale`).
-
-## Commit format
-
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
-
-- `feat`: A new feature.
-- `fix`: A bug fix.
-- `docs`: Documentation only changes.
-- `style`: Changes that do not affect the meaning of the code (white-space, formatting, etc).
-- `refactor`: A code change that neither fixes a bug nor adds a feature.
-- `perf`: A code change that improves performance.
-- `test`: Adding missing tests or correcting existing tests.
-- `chore`: Changes to the build process or auxiliary tools and libraries.
-
-Example: `feat(ui): add support for custom wallpapers`
+- **Files and folders:** `snake_case`.
+- **Variables and functions:** `camelCase`.
+- **Classes and widgets:** `PascalCase`.
+- Prefer `Color.withValues(alpha: …)` over deprecated `withOpacity()`.
+- Check `mounted` before using `BuildContext` after an `await`.
+- Follow the surrounding `flutter_screenutil` sizing convention.
+- Keep source comments/documentation in **English**.
+- Route user-visible text through the localization system rather than hardcoding one language.
+- Never commit `.env`, developer credentials, signing data or other secrets.
 
 ## Architecture
 
-- **`lib/screens/`**: UI pages.
-- **`lib/widgets/`**: Reusable UI blocks and shared widgets.
-- **`lib/providers/`**: State with `ChangeNotifier` (consumed by screens via Provider).
-- **`lib/services/`**: Business logic and external APIs. **Never access SQLite directly** — use repositories.
-- **`lib/repositories/`**: Data access abstraction. The only layer that may call data sources.
-- **`lib/data/datasources/`**: Direct SQLite access, migrations, and raw queries.
-- **`lib/models/`**: Immutable data models.
-- **`lib/utils/`**: Helpers and utilities.
+The main layers are:
+
+- **`lib/screens/`** — application screens and top-level UI composition.
+- **`lib/widgets/`** — reusable UI.
+- **`lib/providers/`** — application state with `ChangeNotifier`/Provider.
+- **`lib/services/`** — business logic, APIs and platform integrations.
+- **`lib/sync/`** — synchronization orchestration.
+- **`lib/repositories/`** — persisted data access abstraction.
+- **`lib/data/datasources/`** — direct SQLite/raw persistence.
+- **`lib/models/`** — data models.
+- **`lib/utils/`** — shared helpers.
+- **`packages/`** — vendored/local Flutter workspace packages.
+
+Read [`ARCHITECTURE.md`](ARCHITECTURE.md) before making cross-layer changes.
+
+## Commit format
+
+Use concise [Conventional Commits](https://www.conventionalcommits.org/) style where practical:
+
+- `feat`: new behavior;
+- `fix`: bug fix;
+- `docs`: documentation only;
+- `refactor`: behavior-preserving code restructuring;
+- `perf`: performance improvement;
+- `test`: test changes;
+- `chore`: build/tooling/repository maintenance.
+
+Examples:
+
+```text
+fix(ios): keep custom background mounted across tabs
+feat(theme): add main-menu music selection
+docs: refresh iOS build instructions
+```
 
 ## Tests
 
-- Add unit tests for business logic in `test/`.
+- Add unit tests for business logic in `test/` when feasible.
 - Use `flutter_test` for widget tests.
-- Run all tests before submitting a PR:
-  ```bash
-  flutter test
-  ```
+- Run the complete suite before submitting:
+
+```bash
+flutter test
+```
+
+## Assets and licensing
+
+New artwork, fonts, audio, video or bundled third-party material must have redistribution terms compatible with the project. Preserve required notices and do not commit proprietary or unlicensed material.
 
 ## License
 
-By contributing to NeoStation, you agree that your contributions will be licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+By contributing to this repository, you agree that your contributions are distributed under the **GNU General Public License v3.0 (GPL-3.0)** as applicable to this project.

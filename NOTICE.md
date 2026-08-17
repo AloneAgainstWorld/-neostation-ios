@@ -27,15 +27,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 CORRESPONDING SOURCE
 
-The corresponding source for IPA builds produced by this repository is the
-source tree at the exact Git commit identified by the GitHub Actions run that
-produced the IPA. The repository is public at:
+The corresponding source for an IPA is the exact Git commit or tag whose source
+tree was used to produce that binary. The public repository is:
 
 https://github.com/TarbleFR/neostation-ios
 
 When redistributing an IPA from another location, distributors should preserve
-this license and the applicable notices and provide recipients with clear
-access to the corresponding source for the distributed build.
+this license and the applicable notices and give recipients clear access to the
+matching source revision. A release/build artifact should never be represented
+as corresponding to a different or older source tree.
 
 ---
 
@@ -54,25 +54,27 @@ THIRD-PARTY COMPONENTS
 
 This project includes or depends on third-party software, including:
 
-- flutter_soloud (based on SoLoud audio engine)
-  See: packages/flutter_soloud/src/soloud/LICENSE
-  See: packages/flutter_soloud/LICENSE
+- flutter_soloud / SoLoud audio engine (hosted Flutter dependency)
+  Preserve the license/notice distributed by that package and SoLoud.
 
-- gamepads plugin (derived from Flame Engine gamepads)
-  See: packages/gamepads/LICENSE
+- gamepads plugin family (vendored under packages/gamepads*)
+  Preserve the license files shipped with those packages.
 
-- 7-Zip / LZMA SDK (via flutter_7zip FFI bindings)
-  See: packages/flutter_7zip/LICENSE
+- 7-Zip / LZMA SDK through packages/flutter_7zip
+  Preserve packages/flutter_7zip/LICENSE and applicable upstream notices.
 
-Additional Flutter/Dart dependencies and emulator-related integrations can be
-governed by their own licenses or terms. Preserve the relevant notices and
-license files when redistribution requires it.
+- external_folder_access (vendored under packages/external_folder_access)
+  Preserve its package license and notices.
+
+Additional Flutter/Dart dependencies and emulator-related integrations may be
+governed by their own licenses or terms. Preserve all required third-party
+notices when redistribution requires it.
 
 ---
 
 TRADEMARK NOTICE
 
-All trademarks, service marks, trade names, product names, and logos appearing
+All trademarks, service marks, trade names, product names and logos appearing
 in this project (including but not limited to Nintendo, Sony PlayStation,
 Microsoft Xbox, SEGA, RetroArch, MeloNX, ARMSX2 and other referenced projects)
 are the property of their respective owners where applicable.

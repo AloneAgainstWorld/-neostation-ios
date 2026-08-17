@@ -16,15 +16,3 @@ updates:
       pub-dependencies:
         patterns:
           - "*"
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "dependencies"
-      - "ci"
-    groups:
-      github-actions:
-        patterns:
-          - "*"

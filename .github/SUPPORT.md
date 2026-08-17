@@ -1,21 +1,25 @@
-# Support for NeoStation
+# Support for NeoStation iOS
 
-Thank you for using NeoStation! If you need help or have questions, please follow these guidelines.
+This repository is the independently maintained iOS/iPadOS port of NeoStation.
 
-## Where to get help
+## Bugs
 
-### GitHub Discussions
-For general questions, "How-to" guides, or architecture discussions, please use our [Discussions](https://github.com/misobadev/neostation-frontend/discussions) page.
+For technical problems with the iOS port, use the repository's [Bug Report](https://github.com/TarbleFR/neostation-ios/issues/new/choose) flow. Include the NeoStation build number, iPhone/iPad model, iOS version and the emulator involved when relevant.
 
-### Bug Reports
-If you found a technical issue or an error, please open a [Bug Report](https://github.com/misobadev/neostation-frontend/issues/new/choose).
+## Feature requests
 
-### Feature Requests
-Have an idea to make NeoStation better? Submit a [Feature Request](https://github.com/misobadev/neostation-frontend/issues/new/choose).
+Use [GitHub Issues](https://github.com/TarbleFR/neostation-ios/issues/new/choose) for feature requests that apply to the iOS port.
 
-## Security Vulnerabilities
-If you discover a security vulnerability, please do NOT open a public issue. Follow the instructions in our [Security Policy](https://github.com/misobadev/neostation-frontend/blob/main/SECURITY.md).
+## Alpha / experimental-build feedback
 
-## Community
-Join our community channels to chat with other users and developers:
-- **Discord**: [Join our server](https://discord.gg/xE2kgKsRVq)
+The iOS-port maintainer also uses [Patreon](https://www.patreon.com/cw/TarbleFR) for release announcements, alpha feedback and discussion around experimental builds.
+
+## Upstream NeoStation
+
+If a problem is unrelated to the iOS-specific port and reproduces in the original project, use the upstream repository instead:
+
+- https://github.com/misobadev/neostation-frontend
+
+## Security
+
+Do not publish vulnerability details in a normal issue. Follow [`SECURITY.md`](../SECURITY.md) and use the private security-advisory flow.
