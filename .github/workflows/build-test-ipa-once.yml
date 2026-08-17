@@ -24,7 +24,7 @@ jobs:
       - name: Reconstruct fork home ambience asset
         run: |
           set -euo pipefail
-          cat assets/sounds/home_music_*.b64 | tr -d '\n\r ' | base64 --decode > assets/sounds/neostation_home_ambience_loop.mp3
+          cat assets/sounds/home_music_*.b64 | tr -d '\n\r ' | base64 -D > assets/sounds/neostation_home_ambience_loop.mp3
           test "$(stat -f%z assets/sounds/neostation_home_ambience_loop.mp3)" = "80474"
           echo "7444f9d1503a9772b5804e336ba8e39d56a2ebaee322c9d0e3dc8f15a5f687a4  assets/sounds/neostation_home_ambience_loop.mp3" | shasum -a 256 -c -
           file assets/sounds/neostation_home_ambience_loop.mp3
