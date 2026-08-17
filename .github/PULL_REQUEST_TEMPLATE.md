@@ -1,27 +1,36 @@
 # Description
 
-Briefly describe the changes you are introducing.
+Briefly describe the change and the user-visible effect.
 
 Fixes # (issue)
 
-## Type of Change
+## Type of change
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds capability)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
 - [ ] Documentation improvement
-- [ ] Code refactoring
+- [ ] Refactor / maintenance
 
-## Checklist
+## Validation
 
-- [ ] I have run `flutter analyze` and there are no errors.
-- [ ] I have added tests demonstrating that my fix or feature works.
-- [ ] I have updated the corresponding documentation.
-- [ ] My changes do not introduce secrets, credentials, or sensitive data.
-- [ ] I have verified that any new assets have compatible licenses.
-- [ ] **Tested on:** [ ] Windows | [ ] Linux | [ ] macOS | [ ] Android
-- [ ] **Gamepad support verified** (if applicable).
+- [ ] `dart format` has been run on changed Dart files.
+- [ ] `flutter analyze --no-fatal-infos --no-fatal-warnings` passes.
+- [ ] `flutter test` passes.
+- [ ] iOS/iPadOS 18+ behavior was tested when the change affects the release target.
+- [ ] Device/emulator-specific behavior was tested where applicable.
+- [ ] User-visible text is localized rather than hardcoded to one language.
+- [ ] Documentation was updated when behavior or setup changed.
+- [ ] No secrets, `.env`, signing material, ROMs or private user data are included.
+- [ ] New assets have compatible redistribution terms and required notices.
+- [ ] Gamepad navigation was checked when the UI flow changed.
 
-## Screenshots (if applicable)
+## iOS details (if applicable)
 
-Add screenshots or GIFs showing the visual change.
+- Device / simulator:
+- iOS/iPadOS version:
+- Related emulator (RetroArch / MeloNX / ARMSX2 / none):
+
+## Screenshots or screen recording
+
+Attach visual evidence when it helps reviewers understand the change.
