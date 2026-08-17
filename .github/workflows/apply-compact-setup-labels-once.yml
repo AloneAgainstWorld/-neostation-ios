@@ -98,16 +98,10 @@ jobs:
           elif new_link not in wizard:
               raise SystemExit('Could not find iOS link button label')
 
-          old_install = """      return canDownload
-              ? AppLocale.wizardDownloadArtPack.getString(context)
-              : AppLocale.finish.getString(context);
-          """
-          new_install = """      return canDownload
-              ? (Platform.isIOS
+          old_install = '? AppLocale.wizardDownloadArtPack.getString(context)'
+          new_install = """? (Platform.isIOS
                     ? IosSetupLocale.installAction(context)
-                    : AppLocale.wizardDownloadArtPack.getString(context))
-              : AppLocale.finish.getString(context);
-          """
+                    : AppLocale.wizardDownloadArtPack.getString(context))"""
           if old_install in wizard:
               wizard = wizard.replace(old_install, new_install, 1)
           elif 'IosSetupLocale.installAction(context)' not in wizard:
