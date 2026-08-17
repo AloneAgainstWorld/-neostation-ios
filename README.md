@@ -9,7 +9,7 @@
 [![Issues](https://img.shields.io/github/issues/TarbleFR/neostation-ios)](https://github.com/TarbleFR/neostation-ios/issues)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B-blue)](https://github.com/TarbleFR/neostation-ios)
 
-![NeoStation iOS Preview](assets/readme/neostation-ios-preview.jpg)
+![NeoStation iOS Preview](assets/readme/neostation-ios-preview.png)
 
 </div>
 
