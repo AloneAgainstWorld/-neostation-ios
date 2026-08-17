@@ -47,6 +47,36 @@ abstract final class IosSetupLocale {
     'zh_Hant': '已連結並同步。',
   };
 
+  static const Map<String, String> _restartTitles = {
+    'de': 'Fast geschafft',
+    'en': 'Almost there',
+    'es': 'Ya casi está',
+    'fr': 'Presque terminé',
+    'id': 'Hampir selesai',
+    'it': 'Ci siamo quasi',
+    'ja': 'あと少しです',
+    'ko': '거의 다 됐어요',
+    'pt': 'Quase lá',
+    'ru': 'Почти готово',
+    'zh': '快完成了',
+    'zh_Hant': '快完成了',
+  };
+
+  static const Map<String, String> _restartDescriptions = {
+    'de': 'RetroArch ist verknüpft. Starte NeoStation neu, um deine synchronisierten Spiele hier zu sehen.',
+    'en': 'RetroArch is linked. Relaunch NeoStation to see your synced games here.',
+    'es': 'RetroArch está vinculado. Reinicia NeoStation para ver aquí tus juegos sincronizados.',
+    'fr': 'RetroArch est lié. Relancez NeoStation pour voir ici vos jeux synchronisés.',
+    'id': 'RetroArch sudah tertaut. Jalankan ulang NeoStation untuk melihat game yang telah disinkronkan di sini.',
+    'it': 'RetroArch è collegato. Riavvia NeoStation per vedere qui i giochi sincronizzati.',
+    'ja': 'RetroArch はリンクされています。NeoStation を再起動すると、同期済みのゲームがここに表示されます。',
+    'ko': 'RetroArch가 연결되었습니다. NeoStation을 다시 실행하면 동기화된 게임이 여기에 표시됩니다.',
+    'pt': 'O RetroArch está vinculado. Reinicie o NeoStation para ver aqui seus jogos sincronizados.',
+    'ru': 'RetroArch подключён. Перезапустите NeoStation, чтобы увидеть здесь синхронизированные игры.',
+    'zh': 'RetroArch 已连接。重新启动 NeoStation 即可在这里看到已同步的游戏。',
+    'zh_Hant': 'RetroArch 已連結。重新啟動 NeoStation 即可在這裡看到已同步的遊戲。',
+  };
+
   static const Map<String, String> _continueLabels = {
     'de': 'Weiter',
     'en': 'Continue',
@@ -66,6 +96,10 @@ abstract final class IosSetupLocale {
   static String linkDescription(BuildContext context) =>
       _lookup(_linkDescriptions, context);
   static String linked(BuildContext context) => _lookup(_linked, context);
+  static String restartTitle(BuildContext context) =>
+      _lookup(_restartTitles, context);
+  static String restartDescription(BuildContext context) =>
+      _lookup(_restartDescriptions, context);
   static String continueLabel(BuildContext context) =>
       _lookup(_continueLabels, context);
 
