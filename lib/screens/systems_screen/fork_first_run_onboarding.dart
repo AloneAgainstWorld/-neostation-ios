@@ -5,15 +5,16 @@ import 'package:neostation/l10n/fork_onboarding_locale.dart';
 import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:provider/provider.dart';
 
-/// Shared preference used to record that the fork's first-run language gate
-/// has already been completed.
+/// Shared preference used to record that the fork's first-run welcome gate has
+/// already been completed.
 const forkOnboardingCompletedKey = 'neostation_fork_onboarding_v1';
 
-/// One-time language gate shown before NeoStation's existing setup wizard.
+/// One-time welcome screen shown before NeoStation's existing setup wizard.
 ///
-/// The device language is preselected and applied immediately when supported,
-/// while all application languages remain available. Once the user confirms
-/// the choice, the normal NeoStation setup continues in that language.
+/// NeoStation automatically applies the iPhone/iPad language when it is one of
+/// the supported application languages. The user does not have to make a
+/// redundant language choice here; language can still be changed later in
+/// Settings.
 class ForkFirstRunOnboarding extends StatefulWidget {
   const ForkFirstRunOnboarding({super.key, required this.onFinished});
 
@@ -25,20 +26,20 @@ class ForkFirstRunOnboarding extends StatefulWidget {
 }
 
 class _ForkFirstRunOnboardingState extends State<ForkFirstRunOnboarding> {
-  late String _selectedLanguage;
   bool _finishing = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedLanguage = _deviceLanguage();
 
-    // Start the very first interactive screen in the device language whenever
-    // NeoStation supports it, instead of forcing a new user to read English
-    // before they can choose their language.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Apply the device language once when the welcome screen appears. The old
+    // flow wrote the same language again when Continue was pressed, which made
+    // the transition to SetupWizard unnecessarily slow on iOS.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _applyLanguage(_selectedLanguage);
+      await context
+          .read<SqliteConfigProvider>()
+          .updateAppLanguage(_deviceLanguage());
     });
   }
 
@@ -62,16 +63,9 @@ class _ForkFirstRunOnboardingState extends State<ForkFirstRunOnboarding> {
         : 'en';
   }
 
-  Future<void> _applyLanguage(String code) async {
-    if (!mounted) return;
-    setState(() => _selectedLanguage = code);
-    await context.read<SqliteConfigProvider>().updateAppLanguage(code);
-  }
-
   Future<void> _continue() async {
     if (_finishing) return;
     setState(() => _finishing = true);
-    await _applyLanguage(_selectedLanguage);
     await widget.onFinished();
     if (mounted) setState(() => _finishing = false);
   }
@@ -79,7 +73,6 @@ class _ForkFirstRunOnboardingState extends State<ForkFirstRunOnboarding> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final entries = AppLocale.supportedLanguages.entries.toList();
 
     return SafeArea(
       child: Center(
@@ -92,10 +85,10 @@ class _ForkFirstRunOnboardingState extends State<ForkFirstRunOnboarding> {
               children: [
                 Image.asset(
                   'assets/images/logo_transparent.png',
-                  width: 78.r,
-                  height: 78.r,
+                  width: 96.r,
+                  height: 96.r,
                 ),
-                SizedBox(height: 16.h),
+                SizedBox(height: 28.h),
                 Text(
                   ForkOnboardingLocale.welcomeTitle(context),
                   textAlign: TextAlign.center,
@@ -103,61 +96,7 @@ class _ForkFirstRunOnboardingState extends State<ForkFirstRunOnboarding> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 8.h),
-                Text(
-                  ForkOnboardingLocale.languageTitle(context),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 620.w),
-                  child: Text(
-                    ForkOnboardingLocale.languageSubtitle(context),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 22.h),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 10.w,
-                      runSpacing: 10.h,
-                      children: [
-                        for (final entry in entries)
-                          ChoiceChip(
-                            label: Text(entry.value),
-                            selected: _selectedLanguage == entry.key,
-                            onSelected: _finishing
-                                ? null
-                                : (_) => _applyLanguage(entry.key),
-                            selectedColor: theme.colorScheme.primaryContainer,
-                            side: BorderSide(
-                              color: _selectedLanguage == entry.key
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outlineVariant,
-                            ),
-                            labelStyle: TextStyle(
-                              color: _selectedLanguage == entry.key
-                                  ? theme.colorScheme.onPrimaryContainer
-                                  : theme.colorScheme.onSurface,
-                              fontWeight: _selectedLanguage == entry.key
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(height: 22.h),
+                SizedBox(height: 34.h),
                 FilledButton.icon(
                   onPressed: _finishing ? null : _continue,
                   icon: _finishing
