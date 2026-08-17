@@ -3,7 +3,7 @@ name: Apply compact iOS setup button labels
 on:
   push:
     branches:
-      - main
+      - fix/compact-ios-setup-labels
 
 permissions:
   contents: write
@@ -150,4 +150,4 @@ jobs:
           git add lib/l10n/ios_setup_locale.dart lib/widgets/setup_wizard.dart .github/workflows/apply-compact-setup-labels-once.yml
           git diff --cached --check
           git commit -m "fix: shorten iOS setup action labels"
-          git push origin HEAD:main
+          git push origin HEAD:fix/compact-ios-setup-labels
