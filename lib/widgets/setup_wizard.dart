@@ -1768,58 +1768,71 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
             else
               SizedBox(width: 64.r),
 
-            // Main action button
-            ElevatedButton(
-              onPressed:
-                  (_isSelectingFolder ||
-                      _isImportingEsde ||
-                      _isDownloadingArt ||
-                      artLoading)
-                  ? null
-                  : () => _handleMainAction(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: theme.colorScheme.onPrimary,
-                padding: EdgeInsets.symmetric(horizontal: 20.r, vertical: 12.r),
-                elevation: 4,
-                shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16.r),
+            SizedBox(width: 12.r),
+
+            // Main action button. Keep the original visual treatment but let
+            // localized labels shrink inside the available width instead of
+            // pushing the button beyond the right edge on iPhone/iPad.
+            Flexible(
+              child: ElevatedButton(
+                onPressed:
+                    (_isSelectingFolder ||
+                        _isImportingEsde ||
+                        _isDownloadingArt ||
+                        artLoading)
+                    ? null
+                    : () => _handleMainAction(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.r,
+                    vertical: 12.r,
+                  ),
+                  elevation: 4,
+                  shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                  disabledBackgroundColor: theme.colorScheme.primary.withValues(
+                    alpha: 0.3,
+                  ),
                 ),
-                disabledBackgroundColor: theme.colorScheme.primary.withValues(
-                  alpha: 0.3,
-                ),
-              ),
-              child: (_isSelectingFolder || artLoading)
-                  ? SizedBox(
-                      width: 20.r,
-                      height: 20.r,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.r,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          theme.colorScheme.onPrimary,
-                        ),
-                      ),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset(
-                          'assets/images/gamepad/Xbox_A_button.png',
-                          width: 20.r,
-                          height: 20.r,
-                          color: theme.colorScheme.onPrimary,
-                        ),
-                        SizedBox(width: 8.r),
-                        Text(
-                          _getButtonText(),
-                          style: TextStyle(
-                            fontSize: 14.r,
-                            fontWeight: FontWeight.bold,
+                child: (_isSelectingFolder || artLoading)
+                    ? SizedBox(
+                        width: 20.r,
+                        height: 20.r,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.r,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.colorScheme.onPrimary,
                           ),
                         ),
-                      ],
-                    ),
+                      )
+                    : FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset(
+                              'assets/images/gamepad/Xbox_A_button.png',
+                              width: 20.r,
+                              height: 20.r,
+                              color: theme.colorScheme.onPrimary,
+                            ),
+                            SizedBox(width: 8.r),
+                            Text(
+                              _getButtonText(),
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 14.r,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
             ),
           ],
         );
