@@ -18,22 +18,70 @@ abstract final class HomeMusicLocale {
   };
 
   static const Map<String, String> _subtitles = {
-    'de': 'Aktivieren, um eine MP3-, WAV-, OGG- oder FLAC-Datei auszuwählen; sie wird nur im Hauptmenü abgespielt',
-    'en': 'Enable to choose an MP3, WAV, OGG or FLAC file; it plays only in the main menu',
-    'es': 'Actívalo para elegir un archivo MP3, WAV, OGG o FLAC; solo se reproduce en el menú principal',
-    'fr': 'Activer pour choisir un fichier MP3, WAV, OGG ou FLAC ; il sera lu uniquement dans le menu principal',
-    'id': 'Aktifkan untuk memilih berkas MP3, WAV, OGG, atau FLAC; hanya diputar di menu utama',
-    'it': 'Attiva per scegliere un file MP3, WAV, OGG o FLAC; verrà riprodotto solo nel menu principale',
-    'ja': '有効にして MP3、WAV、OGG、FLAC ファイルを選択します。メインメニューでのみ再生されます',
-    'ko': '활성화하여 MP3, WAV, OGG 또는 FLAC 파일을 선택하세요. 메인 메뉴에서만 재생됩니다',
-    'pt': 'Ative para escolher um arquivo MP3, WAV, OGG ou FLAC; ele será reproduzido apenas no menu principal',
-    'ru': 'Включите, чтобы выбрать файл MP3, WAV, OGG или FLAC; он будет воспроизводиться только в главном меню',
-    'zh': '启用后选择 MP3、WAV、OGG 或 FLAC 文件；音乐仅在主菜单播放',
-    'zh_Hant': '啟用後選擇 MP3、WAV、OGG 或 FLAC 檔案；音樂僅在主選單播放',
+    'de': 'MP3, WAV, OGG oder FLAC auswählen; NeoStation speichert eine Kopie im Ordner menu_music',
+    'en': 'Choose an MP3, WAV, OGG or FLAC file; NeoStation keeps a copy in its menu_music folder',
+    'es': 'Elige un MP3, WAV, OGG o FLAC; NeoStation guarda una copia en la carpeta menu_music',
+    'fr': 'Choisissez un MP3, WAV, OGG ou FLAC ; NeoStation en conserve une copie dans le dossier menu_music',
+    'id': 'Pilih MP3, WAV, OGG, atau FLAC; NeoStation menyimpan salinannya di folder menu_music',
+    'it': 'Scegli un MP3, WAV, OGG o FLAC; NeoStation ne conserva una copia nella cartella menu_music',
+    'ja': 'MP3、WAV、OGG、FLAC を選択すると、NeoStation が menu_music フォルダーにコピーを保存します',
+    'ko': 'MP3, WAV, OGG 또는 FLAC을 선택하면 NeoStation이 menu_music 폴더에 복사본을 저장합니다',
+    'pt': 'Escolha um MP3, WAV, OGG ou FLAC; o NeoStation mantém uma cópia na pasta menu_music',
+    'ru': 'Выберите MP3, WAV, OGG или FLAC; NeoStation сохранит копию в папке menu_music',
+    'zh': '选择 MP3、WAV、OGG 或 FLAC；NeoStation 会在 menu_music 文件夹中保存副本',
+    'zh_Hant': '選擇 MP3、WAV、OGG 或 FLAC；NeoStation 會在 menu_music 資料夾中保存副本',
+  };
+
+  static const Map<String, String> _active = {
+    'de': 'Aktiv',
+    'en': 'Active',
+    'es': 'Activa',
+    'fr': 'Active',
+    'id': 'Aktif',
+    'it': 'Attiva',
+    'ja': '有効',
+    'ko': '활성',
+    'pt': 'Ativa',
+    'ru': 'Включена',
+    'zh': '已启用',
+    'zh_Hant': '已啟用',
+  };
+
+  static const Map<String, String> _disabled = {
+    'de': 'Deaktiviert',
+    'en': 'Disabled',
+    'es': 'Desactivada',
+    'fr': 'Désactivée',
+    'id': 'Nonaktif',
+    'it': 'Disattivata',
+    'ja': '無効',
+    'ko': '비활성',
+    'pt': 'Desativada',
+    'ru': 'Выключена',
+    'zh': '已停用',
+    'zh_Hant': '已停用',
+  };
+
+  static const Map<String, String> _replace = {
+    'de': 'Musik ersetzen',
+    'en': 'Replace music',
+    'es': 'Cambiar música',
+    'fr': 'Remplacer la musique',
+    'id': 'Ganti musik',
+    'it': 'Sostituisci musica',
+    'ja': '音楽を変更',
+    'ko': '음악 바꾸기',
+    'pt': 'Substituir música',
+    'ru': 'Заменить музыку',
+    'zh': '更换音乐',
+    'zh_Hant': '更換音樂',
   };
 
   static String title(BuildContext context) => _lookup(_titles, context);
   static String subtitle(BuildContext context) => _lookup(_subtitles, context);
+  static String active(BuildContext context) => _lookup(_active, context);
+  static String disabled(BuildContext context) => _lookup(_disabled, context);
+  static String replace(BuildContext context) => _lookup(_replace, context);
 
   static String _lookup(Map<String, String> values, BuildContext context) {
     final locale = Localizations.localeOf(context);
