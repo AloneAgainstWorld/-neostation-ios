@@ -26,6 +26,7 @@ NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://githu
 - **ARMSX2** library synchronization, direct launching and JIT workflows.
 - Installed-emulator detection in NeoStation settings.
 - iOS-specific document, media and file handling.
+- Custom main-menu backgrounds using static images, GIFs or videos.
 - SideStore and compatible sideloading workflows.
 - ScreenScraper metadata and media scraping.
 - RetroAchievements support.
@@ -75,7 +76,7 @@ SCREENSCRAPER_DEV_PASSWORD=your_developer_password
 
 `.env` is intentionally excluded from Git and **must never be committed**.
 
-The current ScreenScraper user-credential path uses the project's established SQLite/Base64 persistence. The previous ScreenScraper-specific secure-storage/Keychain experiment is not part of the current implementation.
+The current ScreenScraper user-credential path uses the project's established SQLite/Base64 persistence.
 
 ## Project structure
 
