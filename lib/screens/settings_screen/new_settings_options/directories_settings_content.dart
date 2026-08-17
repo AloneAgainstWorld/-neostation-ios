@@ -9,8 +9,10 @@ import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
+import 'package:neostation/services/rpcs3_library_service.dart';
 import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:neostation/l10n/app_locale.dart';
+import 'package:neostation/l10n/rpcs3_library_locale.dart';
 import 'package:neostation/widgets/confirm_action_dialog.dart';
 import 'package:neostation/providers/file_provider.dart';
 import 'package:neostation/providers/sqlite_config_provider.dart';
@@ -598,11 +600,80 @@ class DirectoriesSettingsContentState
     );
   }
 
+  Future<void> _linkRpcs3DataFolder() async {
+    if (_linkingFolderKey != null) return;
+
+    setState(() => _linkingFolderKey = Rpcs3LibraryService.bookmarkKey);
+    try {
+      final result = await Rpcs3LibraryService.linkAndSync();
+      if (result == null || !mounted) return;
+
+      setState(() {});
+      AppNotification.showNotification(
+        context,
+        result.discoveredGames == 0
+            ? Rpcs3LibraryLocale.noGames(context)
+            : Rpcs3LibraryLocale.syncComplete(context, result.discoveredGames),
+        type: result.discoveredGames == 0
+            ? NotificationType.info
+            : NotificationType.success,
+      );
+    } on FormatException {
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          Rpcs3LibraryLocale.invalidFolder(context),
+          type: NotificationType.error,
+        );
+      }
+    } catch (e) {
+      _log.e('RPCS3 folder link/sync failed: $e');
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          Rpcs3LibraryLocale.syncFailed(context, e),
+          type: NotificationType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _linkingFolderKey = null);
+      }
+    }
+  }
+
+  Future<void> _syncWithRpcs3() async {
+    try {
+      final result = await Rpcs3LibraryService.syncLinkedLibrary();
+      if (!mounted) return;
+      setState(() {});
+      AppNotification.showNotification(
+        context,
+        result.discoveredGames == 0
+            ? Rpcs3LibraryLocale.noGames(context)
+            : Rpcs3LibraryLocale.syncComplete(context, result.discoveredGames),
+        type: result.discoveredGames == 0
+            ? NotificationType.info
+            : NotificationType.success,
+      );
+    } catch (e) {
+      _log.e('RPCS3 library sync failed: $e');
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          Rpcs3LibraryLocale.syncFailed(context, e),
+          type: NotificationType.error,
+        );
+      }
+    }
+  }
+
   List<Widget> _iosEmulatorCards(ThemeData theme) {
     if (!Platform.isIOS) return const [];
 
     return [
       _buildIOSRetroArchSection(theme),
+      _buildIOSRpcs3Section(theme),
       _buildIOSArmsx2Section(theme),
       _buildIOSMeloNXSection(theme),
     ];
@@ -634,6 +705,45 @@ class DirectoriesSettingsContentState
         child: FilledButton.icon(
           onPressed: !isLinked ? null : _syncWithRetroArch,
           icon: Icon(Symbols.bolt_rounded, size: 20.r),
+          label: Text(
+            hasSynced
+                ? AppLocale.iosEmuResync.getString(context)
+                : AppLocale.iosEmuSync.getString(context),
+            style: TextStyle(fontSize: 14.r),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIOSRpcs3Section(ThemeData theme) {
+    final isLinked = Rpcs3LibraryService.isLinked;
+    final hasSynced = Rpcs3LibraryService.hasSyncedLibrary;
+    final count = Rpcs3LibraryService.syncedGameCount;
+
+    final String statusText;
+    if (!isLinked) {
+      statusText = Rpcs3LibraryLocale.statusNeedsLink(context);
+    } else if (!hasSynced) {
+      statusText = Rpcs3LibraryLocale.statusNeedsSync(context);
+    } else {
+      statusText = Rpcs3LibraryLocale.statusSynced(context, count);
+    }
+
+    return _buildIOSEmulatorCard(
+      theme: theme,
+      name: 'RPCS3',
+      icon: Symbols.sports_esports_rounded,
+      statusText: statusText,
+      isLinked: isLinked,
+      bookmarkKey: Rpcs3LibraryService.bookmarkKey,
+      successMessage: '',
+      onLinkPressed: _linkRpcs3DataFolder,
+      trailingAction: SizedBox(
+        height: 48.r,
+        child: FilledButton.icon(
+          onPressed: !isLinked ? null : _syncWithRpcs3,
+          icon: Icon(Symbols.sync_rounded, size: 20.r),
           label: Text(
             hasSynced
                 ? AppLocale.iosEmuResync.getString(context)
@@ -766,6 +876,7 @@ class DirectoriesSettingsContentState
     required String bookmarkKey,
     required String successMessage,
     bool showLinkButton = true,
+    Future<void> Function()? onLinkPressed,
     Widget? trailingAction,
   }) {
     final isLinkingThis = _linkingFolderKey == bookmarkKey;
@@ -776,10 +887,16 @@ class DirectoriesSettingsContentState
       child: OutlinedButton.icon(
         onPressed: isAnyLinkInFlight
             ? null
-            : () => _linkExternalFolder(
-                bookmarkKey: bookmarkKey,
-                successMessage: successMessage,
-              ),
+            : () async {
+                if (onLinkPressed != null) {
+                  await onLinkPressed();
+                } else {
+                  await _linkExternalFolder(
+                    bookmarkKey: bookmarkKey,
+                    successMessage: successMessage,
+                  );
+                }
+              },
         icon: isLinkingThis
             ? SizedBox(
                 width: 18.r,
@@ -821,10 +938,7 @@ class DirectoriesSettingsContentState
                 SizedBox(width: 10.r),
                 Text(
                   name,
-                  style: TextStyle(
-                    fontSize: 16.r,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16.r, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -892,7 +1006,7 @@ class DirectoriesSettingsContentState
             AppNotification.showNotification(
               context,
               'Already using the internal roms folder. Drop ROMs into it '
-                  'via the Files app under "On My iPhone > NeoStation > roms".',
+              'via the Files app under "On My iPhone > NeoStation > roms".',
               type: NotificationType.info,
             );
           }

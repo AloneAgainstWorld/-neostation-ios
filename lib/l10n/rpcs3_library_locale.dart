@@ -3,31 +3,43 @@ import 'package:flutter/widgets.dart';
 /// Localized copy for the experimental RPCS3 iOS library integration.
 abstract final class Rpcs3LibraryLocale {
   static const Map<String, String> _needsLink = {
-    'de': 'Verknüpfe den RPCS3-Ordner „Data“, um die installierte PS3-Bibliothek zu importieren.',
+    'de':
+        'Verknüpfe den RPCS3-Ordner „Data“, um die installierte PS3-Bibliothek zu importieren.',
     'en': 'Link RPCS3’s Data folder to import its installed PS3 library.',
-    'es': 'Vincula la carpeta Data de RPCS3 para importar su biblioteca de PS3 instalada.',
-    'fr': 'Liez le dossier Data de RPCS3 pour importer sa bibliothèque PS3 installée.',
-    'id': 'Tautkan folder Data RPCS3 untuk mengimpor pustaka PS3 yang terpasang.',
-    'it': 'Collega la cartella Data di RPCS3 per importare la libreria PS3 installata.',
+    'es':
+        'Vincula la carpeta Data de RPCS3 para importar su biblioteca de PS3 instalada.',
+    'fr':
+        'Liez le dossier Data de RPCS3 pour importer sa bibliothèque PS3 installée.',
+    'id':
+        'Tautkan folder Data RPCS3 untuk mengimpor pustaka PS3 yang terpasang.',
+    'it':
+        'Collega la cartella Data di RPCS3 per importare la libreria PS3 installata.',
     'ja': 'RPCS3 の Data フォルダをリンクして、インストール済みの PS3 ライブラリを読み込みます。',
     'ko': 'RPCS3의 Data 폴더를 연결하여 설치된 PS3 라이브러리를 가져옵니다.',
-    'pt': 'Vincule a pasta Data do RPCS3 para importar a biblioteca PS3 instalada.',
-    'ru': 'Подключите папку Data RPCS3, чтобы импортировать установленную библиотеку PS3.',
+    'pt':
+        'Vincule a pasta Data do RPCS3 para importar a biblioteca PS3 instalada.',
+    'ru':
+        'Подключите папку Data RPCS3, чтобы импортировать установленную библиотеку PS3.',
     'zh': '连接 RPCS3 的 Data 文件夹以导入已安装的 PS3 游戏库。',
     'zh_Hant': '連結 RPCS3 的 Data 資料夾以匯入已安裝的 PS3 遊戲庫。',
   };
 
   static const Map<String, String> _needsSync = {
-    'de': 'RPCS3 Data ist verknüpft. Synchronisiere, um installierte Spiele einzulesen.',
+    'de':
+        'RPCS3 Data ist verknüpft. Synchronisiere, um installierte Spiele einzulesen.',
     'en': 'RPCS3 Data is linked. Sync to read the installed games.',
-    'es': 'RPCS3 Data está vinculado. Sincroniza para leer los juegos instalados.',
+    'es':
+        'RPCS3 Data está vinculado. Sincroniza para leer los juegos instalados.',
     'fr': 'RPCS3 Data est lié. Synchronisez pour lire les jeux installés.',
-    'id': 'RPCS3 Data sudah tertaut. Sinkronkan untuk membaca game yang terpasang.',
-    'it': 'RPCS3 Data è collegato. Sincronizza per leggere i giochi installati.',
+    'id':
+        'RPCS3 Data sudah tertaut. Sinkronkan untuk membaca game yang terpasang.',
+    'it':
+        'RPCS3 Data è collegato. Sincronizza per leggere i giochi installati.',
     'ja': 'RPCS3 Data はリンク済みです。同期してインストール済みゲームを読み込みます。',
     'ko': 'RPCS3 Data가 연결되었습니다. 설치된 게임을 읽으려면 동기화하세요.',
     'pt': 'RPCS3 Data está vinculado. Sincronize para ler os jogos instalados.',
-    'ru': 'RPCS3 Data подключена. Выполните синхронизацию для чтения установленных игр.',
+    'ru':
+        'RPCS3 Data подключена. Выполните синхронизацию для чтения установленных игр.',
     'zh': 'RPCS3 Data 已连接。同步以读取已安装的游戏。',
     'zh_Hant': 'RPCS3 Data 已連結。同步以讀取已安裝的遊戲。',
   };
@@ -63,16 +75,26 @@ abstract final class Rpcs3LibraryLocale {
   };
 
   static const Map<String, String> _noGames = {
-    'de': 'Keine RPCS3-Spiele gefunden. Wähle in Dateien „RPCS3 > Data“ und prüfe, dass die Spiele zuerst in RPCS3 erscheinen.',
-    'en': 'No RPCS3 games were found. Select Files > RPCS3 > Data and make sure the games appear in RPCS3 first.',
-    'es': 'No se encontraron juegos de RPCS3. Selecciona Archivos > RPCS3 > Data y comprueba que los juegos aparezcan primero en RPCS3.',
-    'fr': 'Aucun jeu RPCS3 trouvé. Sélectionnez Fichiers > RPCS3 > Data et vérifiez d’abord que les jeux apparaissent dans RPCS3.',
-    'id': 'Tidak ada game RPCS3 yang ditemukan. Pilih Files > RPCS3 > Data dan pastikan game sudah muncul di RPCS3.',
-    'it': 'Nessun gioco RPCS3 trovato. Seleziona File > RPCS3 > Data e verifica prima che i giochi compaiano in RPCS3.',
-    'ja': 'RPCS3 ゲームが見つかりません。ファイル > RPCS3 > Data を選び、先に RPCS3 側でゲームが表示されることを確認してください。',
-    'ko': 'RPCS3 게임을 찾지 못했습니다. 파일 > RPCS3 > Data를 선택하고 먼저 RPCS3에서 게임이 보이는지 확인하세요.',
-    'pt': 'Nenhum jogo RPCS3 foi encontrado. Selecione Arquivos > RPCS3 > Data e confirme primeiro que os jogos aparecem no RPCS3.',
-    'ru': 'Игры RPCS3 не найдены. Выберите «Файлы > RPCS3 > Data» и сначала убедитесь, что игры отображаются в RPCS3.',
+    'de':
+        'Keine RPCS3-Spiele gefunden. Wähle in Dateien „RPCS3 > Data“ und prüfe, dass die Spiele zuerst in RPCS3 erscheinen.',
+    'en':
+        'No RPCS3 games were found. Select Files > RPCS3 > Data and make sure the games appear in RPCS3 first.',
+    'es':
+        'No se encontraron juegos de RPCS3. Selecciona Archivos > RPCS3 > Data y comprueba que los juegos aparezcan primero en RPCS3.',
+    'fr':
+        'Aucun jeu RPCS3 trouvé. Sélectionnez Fichiers > RPCS3 > Data et vérifiez d’abord que les jeux apparaissent dans RPCS3.',
+    'id':
+        'Tidak ada game RPCS3 yang ditemukan. Pilih Files > RPCS3 > Data dan pastikan game sudah muncul di RPCS3.',
+    'it':
+        'Nessun gioco RPCS3 trovato. Seleziona File > RPCS3 > Data e verifica prima che i giochi compaiano in RPCS3.',
+    'ja':
+        'RPCS3 ゲームが見つかりません。ファイル > RPCS3 > Data を選び、先に RPCS3 側でゲームが表示されることを確認してください。',
+    'ko':
+        'RPCS3 게임을 찾지 못했습니다. 파일 > RPCS3 > Data를 선택하고 먼저 RPCS3에서 게임이 보이는지 확인하세요.',
+    'pt':
+        'Nenhum jogo RPCS3 foi encontrado. Selecione Arquivos > RPCS3 > Data e confirme primeiro que os jogos aparecem no RPCS3.',
+    'ru':
+        'Игры RPCS3 не найдены. Выберите «Файлы > RPCS3 > Data» и сначала убедитесь, что игры отображаются в RPCS3.',
     'zh': '未找到 RPCS3 游戏。请选择“文件 > RPCS3 > Data”，并先确认游戏能在 RPCS3 中显示。',
     'zh_Hant': '未找到 RPCS3 遊戲。請選擇「檔案 > RPCS3 > Data」，並先確認遊戲能在 RPCS3 中顯示。',
   };
@@ -108,15 +130,22 @@ abstract final class Rpcs3LibraryLocale {
   };
 
   static const Map<String, String> _launchUnavailable = {
-    'de': 'RPCS3-Spiele können angezeigt werden, aber der direkte Spielstart ist noch nicht aktiviert.',
-    'en': 'RPCS3 games can be displayed, but direct game launching is not enabled yet.',
-    'es': 'Los juegos de RPCS3 pueden mostrarse, pero el inicio directo aún no está habilitado.',
-    'fr': 'Les jeux RPCS3 peuvent être affichés, mais leur lancement direct n’est pas encore activé.',
-    'id': 'Game RPCS3 dapat ditampilkan, tetapi peluncuran langsung belum diaktifkan.',
-    'it': 'I giochi RPCS3 possono essere visualizzati, ma l’avvio diretto non è ancora attivo.',
+    'de':
+        'RPCS3-Spiele können angezeigt werden, aber der direkte Spielstart ist noch nicht aktiviert.',
+    'en':
+        'RPCS3 games can be displayed, but direct game launching is not enabled yet.',
+    'es':
+        'Los juegos de RPCS3 pueden mostrarse, pero el inicio directo aún no está habilitado.',
+    'fr':
+        'Les jeux RPCS3 peuvent être affichés, mais leur lancement direct n’est pas encore activé.',
+    'id':
+        'Game RPCS3 dapat ditampilkan, tetapi peluncuran langsung belum diaktifkan.',
+    'it':
+        'I giochi RPCS3 possono essere visualizzati, ma l’avvio diretto non è ancora attivo.',
     'ja': 'RPCS3 ゲームは表示できますが、ゲームの直接起動はまだ有効ではありません。',
     'ko': 'RPCS3 게임은 표시할 수 있지만 직접 실행은 아직 활성화되지 않았습니다.',
-    'pt': 'Os jogos RPCS3 podem ser exibidos, mas a inicialização direta ainda não está ativada.',
+    'pt':
+        'Os jogos RPCS3 podem ser exibidos, mas a inicialização direta ainda não está ativada.',
     'ru': 'Игры RPCS3 можно отображать, но прямой запуск пока не включён.',
     'zh': '可以显示 RPCS3 游戏，但尚未启用直接启动。',
     'zh_Hant': '可以顯示 RPCS3 遊戲，但尚未啟用直接啟動。',

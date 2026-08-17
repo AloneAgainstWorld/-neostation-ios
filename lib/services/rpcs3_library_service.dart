@@ -210,9 +210,7 @@ class Rpcs3LibraryService {
 
   /// Pure filesystem discovery entry point, also used by unit tests.
   @visibleForTesting
-  static Future<List<Rpcs3LibraryGame>> discoverLibrary(
-    String dataRoot,
-  ) async {
+  static Future<List<Rpcs3LibraryGame>> discoverLibrary(String dataRoot) async {
     final root = Directory(path.normalize(dataRoot));
     if (!await root.exists()) return const <Rpcs3LibraryGame>[];
 
@@ -361,7 +359,8 @@ class Rpcs3LibraryService {
       'Icons',
     ]) {
       final candidate = path.join(directory.path, relative);
-      if (await FileSystemEntity.type(candidate) != FileSystemEntityType.notFound) {
+      if (await FileSystemEntity.type(candidate) !=
+          FileSystemEntityType.notFound) {
         return true;
       }
     }
@@ -381,7 +380,8 @@ class Rpcs3LibraryService {
       if (titleId.isEmpty) titleId = _cleanTitleId(expectedTitleId ?? '');
       if (titleId.isEmpty) return null;
 
-      final category = values['CATEGORY']?.toString().trim().toUpperCase() ?? '';
+      final category =
+          values['CATEGORY']?.toString().trim().toUpperCase() ?? '';
       if (hddRules) {
         if (!_isHddCategory(category)) return null;
       } else if (category.isNotEmpty &&
@@ -392,13 +392,13 @@ class Rpcs3LibraryService {
 
       var title = values['TITLE']?.toString().trim() ?? '';
       if (title.isEmpty) title = titleId;
-      final version =
-          values['APP_VER']?.toString().trim().isNotEmpty == true
+      final version = values['APP_VER']?.toString().trim().isNotEmpty == true
           ? values['APP_VER']!.toString().trim()
           : values['VERSION']?.toString().trim() ?? '';
 
       final metadataDir = sfo.parent;
-      final gameRoot = path.basename(metadataDir.path).toUpperCase() == 'PS3_GAME'
+      final gameRoot =
+          path.basename(metadataDir.path).toUpperCase() == 'PS3_GAME'
           ? metadataDir.parent.path
           : metadataDir.path;
       final iconPath =
@@ -434,7 +434,9 @@ class Rpcs3LibraryService {
     final data = ByteData.sublistView(bytes);
     final version = data.getUint32(4, Endian.little);
     if (version != 0x00000101) {
-      throw FormatException('Unsupported PSF version 0x${version.toRadixString(16)}.');
+      throw FormatException(
+        'Unsupported PSF version 0x${version.toRadixString(16)}.',
+      );
     }
 
     final keyTableOffset = data.getUint32(8, Endian.little);
@@ -467,7 +469,10 @@ class Rpcs3LibraryService {
       final keyEnd = _findZeroByte(bytes, absoluteKeyOffset, dataTableOffset);
       if (keyEnd <= absoluteKeyOffset) continue;
       final key = utf8
-          .decode(bytes.sublist(absoluteKeyOffset, keyEnd), allowMalformed: true)
+          .decode(
+            bytes.sublist(absoluteKeyOffset, keyEnd),
+            allowMalformed: true,
+          )
           .trim();
       if (key.isEmpty) continue;
 
@@ -495,7 +500,7 @@ class Rpcs3LibraryService {
   }
 
   static int _findZeroByte(Uint8List bytes, int start, int limit) {
-    final safeLimit = limit.clamp(start, bytes.length);
+    final safeLimit = limit.clamp(start, bytes.length) as int;
     for (var i = start; i < safeLimit; i++) {
       if (bytes[i] == 0) return i;
     }
@@ -565,7 +570,8 @@ class Rpcs3LibraryService {
     final wanted = fileName.toLowerCase();
     try {
       await for (final entity in directory.list(followLinks: false)) {
-        if (entity is File && path.basename(entity.path).toLowerCase() == wanted) {
+        if (entity is File &&
+            path.basename(entity.path).toLowerCase() == wanted) {
           return entity.path;
         }
       }
@@ -650,9 +656,7 @@ class Rpcs3LibraryService {
       } catch (_) {
         text = text.substring(1, text.length - 1);
       }
-    } else if (text.length >= 2 &&
-        text.startsWith("'") &&
-        text.endsWith("'")) {
+    } else if (text.length >= 2 && text.startsWith("'") && text.endsWith("'")) {
       text = text.substring(1, text.length - 1).replaceAll("''", "'");
     }
     return text.trim();
@@ -664,10 +668,17 @@ class Rpcs3LibraryService {
   ) async {
     var value = registeredPath.trim();
     if (value.isEmpty) return null;
-    value = value.replaceAll(r'$(EmulatorDir)', '${path.normalize(dataRoot)}${path.separator}');
+    value = value.replaceAll(
+      r'$(EmulatorDir)',
+      '${path.normalize(dataRoot)}${path.separator}',
+    );
 
     if (value.startsWith('/dev_hdd0/')) {
-      value = path.join(dataRoot, 'dev_hdd0', value.substring('/dev_hdd0/'.length));
+      value = path.join(
+        dataRoot,
+        'dev_hdd0',
+        value.substring('/dev_hdd0/'.length),
+      );
     } else if (value.startsWith('/games/')) {
       value = path.join(dataRoot, 'games', value.substring('/games/'.length));
     }
@@ -685,7 +696,8 @@ class Rpcs3LibraryService {
     if (marker >= 0) {
       final relative = slashNormalized.substring(marker + '/data/'.length);
       final remapped = path.joinAll(<String>[dataRoot, ...relative.split('/')]);
-      if (await FileSystemEntity.type(remapped) != FileSystemEntityType.notFound) {
+      if (await FileSystemEntity.type(remapped) !=
+          FileSystemEntityType.notFound) {
         return path.normalize(remapped);
       }
     }
@@ -739,7 +751,8 @@ class Rpcs3LibraryService {
   ) {
     final key = candidate.titleId.toLowerCase();
     final current = target[key];
-    if (current == null || _metadataScore(candidate) > _metadataScore(current)) {
+    if (current == null ||
+        _metadataScore(candidate) > _metadataScore(current)) {
       target[key] = candidate;
     }
   }
@@ -934,7 +947,10 @@ class Rpcs3LibraryService {
       if (bytes.isEmpty) continue;
 
       final mediaKey = FileProvider.stripRomExtension(item.filename);
-      var extension = path.extension(source.path).toLowerCase().replaceFirst('.', '');
+      var extension = path
+          .extension(source.path)
+          .toLowerCase()
+          .replaceFirst('.', '');
       if (!const <String>{'png', 'jpg', 'jpeg', 'webp'}.contains(extension)) {
         extension = 'png';
       }

@@ -48,6 +48,7 @@ import 'package:path/path.dart' as path;
 import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
+import 'package:neostation/services/rpcs3_library_service.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -234,10 +235,7 @@ Future<void> _cleanupRemovedIflyIntegration({
     await ExternalFolderAccess.clearBookmark(key: bookmarkKey);
 
     final docsDir = await getApplicationDocumentsDirectory();
-    for (final name in const [
-      'ifly_sync_debug.txt',
-      'ifly_launch_debug.txt',
-    ]) {
+    for (final name in const ['ifly_sync_debug.txt', 'ifly_launch_debug.txt']) {
       final file = File(path.join(docsDir.path, name));
       if (await file.exists()) {
         await file.delete();
@@ -250,7 +248,9 @@ Future<void> _cleanupRemovedIflyIntegration({
   } catch (e) {
     // iFly is no longer part of NeoStation, so cleanup failure must never block
     // application startup. The migration will be attempted again next launch.
-    LoggerService.instance.w('Could not clean legacy iFly integration data: $e');
+    LoggerService.instance.w(
+      'Could not clean legacy iFly integration data: $e',
+    );
   }
 }
 
@@ -293,6 +293,7 @@ void main() async {
     await RetroArchLibraryService.loadCachedLibrary();
     await Armsx2LibraryService.loadCachedLibrary();
     await MelonxLibraryService.loadCachedLibrary();
+    await Rpcs3LibraryService.initialize();
 
     // RetroArch, ARMSX2 and MeloNX return their exported libraries through the
     // neostation:// callback scheme. external_folder_access forwards every
@@ -395,10 +396,14 @@ void main() async {
       final debugFile = File(path.join(docsDir.path, 'neostation_debug.txt'));
       final buffer = StringBuffer();
       buffer.writeln('--- NeoStation iOS debug: ${DateTime.now()} ---');
-      buffer.writeln('fileProvider.isInitialized: ${fileProvider.isInitialized}');
+      buffer.writeln(
+        'fileProvider.isInitialized: ${fileProvider.isInitialized}',
+      );
       buffer.writeln('fileProvider.mediaPath: ${fileProvider.mediaPath}');
       buffer.writeln('fileProvider.userDataPath: ${fileProvider.userDataPath}');
-      buffer.writeln('fileProvider.documentsPath: ${fileProvider.documentsPath}');
+      buffer.writeln(
+        'fileProvider.documentsPath: ${fileProvider.documentsPath}',
+      );
       try {
         final configMediaPath = await ConfigService.getMediaPath();
         buffer.writeln('ConfigService.getMediaPath(): $configMediaPath');
@@ -406,9 +411,7 @@ void main() async {
         buffer.writeln('ConfigService.getMediaPath() threw: $e');
       }
       if (fileProvider.mediaPath != null) {
-        final testDir = Directory(
-          path.join(fileProvider.mediaPath!, 'media'),
-        );
+        final testDir = Directory(path.join(fileProvider.mediaPath!, 'media'));
         buffer.writeln(
           'media dir exists at fileProvider.mediaPath/media: '
           '${testDir.existsSync()} (${testDir.path})',

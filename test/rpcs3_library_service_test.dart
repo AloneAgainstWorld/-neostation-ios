@@ -75,9 +75,9 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
           'APP_VER': '01.00',
         }),
       );
-      await File(path.join(hddGame.path, 'ICON0.PNG')).writeAsBytes(
-        const <int>[0x89, 0x50, 0x4e, 0x47],
-      );
+      await File(
+        path.join(hddGame.path, 'ICON0.PNG'),
+      ).writeAsBytes(const <int>[0x89, 0x50, 0x4e, 0x47]);
 
       final extractedMetadata = Directory(
         path.join(
@@ -104,20 +104,19 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
       await discImages.create(recursive: true);
       final iso = File(path.join(discImages.path, 'ISO Only Game.iso'));
       await iso.writeAsBytes(const <int>[]);
-      await File(path.join(dataRoot.path, 'games.yml')).writeAsString(
-        'BLUS99999: "${iso.path}"\n',
-      );
+      await File(
+        path.join(dataRoot.path, 'games.yml'),
+      ).writeAsString('BLUS99999: "${iso.path}"\n');
 
       final games = await Rpcs3LibraryService.discoverLibrary(dataRoot.path);
       final byId = <String, Rpcs3LibraryGame>{
         for (final game in games) game.titleId: game,
       };
 
-      expect(byId.keys, containsAll(<String>[
-        'NPUB12345',
-        'BLES54321',
-        'BLUS99999',
-      ]));
+      expect(
+        byId.keys,
+        containsAll(<String>['NPUB12345', 'BLES54321', 'BLUS99999']),
+      );
       expect(byId['NPUB12345']!.title, 'Installed HDD Game');
       expect(byId['NPUB12345']!.iconPath, isNotNull);
       expect(byId['BLES54321']!.title, 'Extracted Disc Game');
@@ -144,11 +143,9 @@ Uint8List _buildSfo(Map<String, Object> values) {
 
     if (item.value is int) {
       final valueBytes = Uint8List(4);
-      ByteData.sublistView(valueBytes).setUint32(
-        0,
-        item.value as int,
-        Endian.little,
-      );
+      ByteData.sublistView(
+        valueBytes,
+      ).setUint32(0, item.value as int, Endian.little);
       data.add(valueBytes);
       entries.add(
         _SfoEntry(

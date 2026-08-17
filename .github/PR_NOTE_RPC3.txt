@@ -1,1 +1,0 @@
-RPCS3 library integration work in progress.
