@@ -22,7 +22,7 @@ class PermissionCheckWrapper extends StatefulWidget {
 class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
   bool _needsSetup = false;
   bool _isChecking = true;
-  bool _showForkLanguageGate = false;
+  bool _showForkWelcomeGate = false;
 
   static final _log = LoggerService.instance;
 
@@ -42,14 +42,14 @@ class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
 
       // Fast-path: this flag survives SD-card unavailability and early-launcher
       // boot races. Existing installations must never be interrupted by the
-      // new first-run language gate.
+      // fork's first-run welcome screen.
       if (prefs.getBool(PermissionCheckWrapper.setupCompletedKey) == true) {
         await prefs.setBool(forkOnboardingCompletedKey, true);
         if (!mounted) return;
         _pushWizardActive(false);
         setState(() {
           _needsSetup = false;
-          _showForkLanguageGate = false;
+          _showForkWelcomeGate = false;
           _isChecking = false;
         });
         return;
@@ -76,23 +76,23 @@ class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
         _pushWizardActive(false);
         setState(() {
           _needsSetup = false;
-          _showForkLanguageGate = false;
+          _showForkWelcomeGate = false;
           _isChecking = false;
         });
         return;
       }
 
-      // Genuinely fresh install. The fork language choice is now the very first
-      // interactive screen. If it was already confirmed before an interrupted
-      // setup, resume directly in NeoStation's normal SetupWizard instead.
-      final languageGateCompleted =
+      // Genuinely fresh install. Show the fork welcome screen first. If it was
+      // already confirmed before an interrupted setup, resume directly in
+      // NeoStation's normal SetupWizard instead.
+      final welcomeGateCompleted =
           prefs.getBool(forkOnboardingCompletedKey) ?? false;
 
       if (!mounted) return;
       _pushWizardActive(true);
       setState(() {
         _needsSetup = true;
-        _showForkLanguageGate = !languageGateCompleted;
+        _showForkWelcomeGate = !welcomeGateCompleted;
         _isChecking = false;
       });
     } catch (e) {
@@ -101,7 +101,7 @@ class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
       _pushWizardActive(false);
       setState(() {
         _needsSetup = false;
-        _showForkLanguageGate = false;
+        _showForkWelcomeGate = false;
         _isChecking = false;
       });
     }
@@ -119,18 +119,21 @@ class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
     ).setSetupWizardActive(active);
   }
 
-  Future<void> _completeForkLanguageGate() async {
+  Future<void> _completeForkWelcomeGate() async {
+    // Switch to NeoStation's normal SetupWizard immediately. Preference I/O is
+    // intentionally done after the visual transition so tapping Continue never
+    // appears to hang on slower iOS storage.
+    if (!mounted) return;
+    setState(() => _showForkWelcomeGate = false);
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(forkOnboardingCompletedKey, true);
     } catch (e) {
       // A preference write failure must not trap the user before setup. The
-      // language itself is already persisted by SqliteConfigProvider.
-      _log.w('Could not persist first-run language gate state: $e');
+      // device language has already been applied by the welcome screen.
+      _log.w('Could not persist first-run welcome state: $e');
     }
-
-    if (!mounted) return;
-    setState(() => _showForkLanguageGate = false);
   }
 
   void _completeSetup() async {
@@ -152,7 +155,7 @@ class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
     if (!mounted) return;
     setState(() {
       _needsSetup = false;
-      _showForkLanguageGate = false;
+      _showForkWelcomeGate = false;
     });
   }
 
@@ -165,16 +168,16 @@ class _PermissionCheckWrapperState extends State<PermissionCheckWrapper> {
     }
 
     if (_needsSetup) {
-      if (_showForkLanguageGate) {
+      if (_showForkWelcomeGate) {
         return Scaffold(
           body: ForkFirstRunOnboarding(
-            onFinished: _completeForkLanguageGate,
+            onFinished: _completeForkWelcomeGate,
           ),
         );
       }
 
       // Continue with NeoStation's original configuration wizard in the
-      // language the user selected on the preceding screen.
+      // language automatically selected from the iPhone/iPad locale.
       return SetupWizard(onComplete: _completeSetup);
     }
 
