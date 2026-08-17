@@ -887,8 +887,7 @@ class DirectoriesSettingsContentState
         }
       } else if (Platform.isIOS) {
         selected = await ConfigService.getDefaultIOSRomsFolder();
-        if (selected != null &&
-            configProvider.config.romFolders.contains(selected)) {
+        if (configProvider.config.romFolders.contains(selected)) {
           if (mounted) {
             AppNotification.showNotification(
               context,
