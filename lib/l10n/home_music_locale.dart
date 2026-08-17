@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// Localized labels for the fork's main-menu ambience setting.
+/// Localized labels for the fork's main-menu music setting.
 abstract final class HomeMusicLocale {
   static const Map<String, String> _titles = {
     'de': 'Musik im Hauptmenü',
@@ -18,18 +18,18 @@ abstract final class HomeMusicLocale {
   };
 
   static const Map<String, String> _subtitles = {
-    'de': 'Atmosphärische Musik nur im Hauptmenü abspielen',
-    'en': 'Play atmospheric music only in the main menu',
-    'es': 'Reproducir música ambiental solo en el menú principal',
-    'fr': 'Jouer une musique d’ambiance uniquement dans le menu principal',
-    'id': 'Putar musik suasana hanya di menu utama',
-    'it': 'Riproduci musica d’atmosfera solo nel menu principale',
-    'ja': 'メインメニューでのみ雰囲気のある音楽を再生',
-    'ko': '메인 메뉴에서만 분위기 음악 재생',
-    'pt': 'Reproduzir música ambiente apenas no menu principal',
-    'ru': 'Воспроизводить атмосферную музыку только в главном меню',
-    'zh': '仅在主菜单播放氛围音乐',
-    'zh_Hant': '僅在主選單播放氛圍音樂',
+    'de': 'Aktivieren, um eine MP3-, WAV-, OGG- oder FLAC-Datei auszuwählen; sie wird nur im Hauptmenü abgespielt',
+    'en': 'Enable to choose an MP3, WAV, OGG or FLAC file; it plays only in the main menu',
+    'es': 'Actívalo para elegir un archivo MP3, WAV, OGG o FLAC; solo se reproduce en el menú principal',
+    'fr': 'Activer pour choisir un fichier MP3, WAV, OGG ou FLAC ; il sera lu uniquement dans le menu principal',
+    'id': 'Aktifkan untuk memilih berkas MP3, WAV, OGG, atau FLAC; hanya diputar di menu utama',
+    'it': 'Attiva per scegliere un file MP3, WAV, OGG o FLAC; verrà riprodotto solo nel menu principale',
+    'ja': '有効にして MP3、WAV、OGG、FLAC ファイルを選択します。メインメニューでのみ再生されます',
+    'ko': '활성화하여 MP3, WAV, OGG 또는 FLAC 파일을 선택하세요. 메인 메뉴에서만 재생됩니다',
+    'pt': 'Ative para escolher um arquivo MP3, WAV, OGG ou FLAC; ele será reproduzido apenas no menu principal',
+    'ru': 'Включите, чтобы выбрать файл MP3, WAV, OGG или FLAC; он будет воспроизводиться только в главном меню',
+    'zh': '启用后选择 MP3、WAV、OGG 或 FLAC 文件；音乐仅在主菜单播放',
+    'zh_Hant': '啟用後選擇 MP3、WAV、OGG 或 FLAC 檔案；音樂僅在主選單播放',
   };
 
   static String title(BuildContext context) => _lookup(_titles, context);
