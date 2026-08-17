@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:neostation/providers/theme_provider.dart';
 import 'package:neostation/providers/sqlite_config_provider.dart';
 import 'package:neostation/services/home_music_service.dart';
@@ -11,6 +12,7 @@ import 'package:neostation/widgets/shimmering_logo.dart';
 import 'my_systems_section/my_systems_grid.dart';
 import 'my_systems_section/initial_setup_widget.dart';
 import 'custom_main_menu_background.dart';
+import 'fork_first_run_onboarding.dart';
 
 /// Orchestrator for the 'Systems' tab content.
 ///
@@ -29,16 +31,86 @@ class SystemContent extends StatefulWidget {
 
 class _SystemContentState extends State<SystemContent> {
   static const _minSplashDuration = Duration(milliseconds: 2500);
+  static const _forkOnboardingKey = 'neostation_fork_onboarding_v1';
 
   DateTime? _splashShownAt;
   Timer? _releaseTimer;
   bool? _lastHomeMusicActive;
+
+  bool _onboardingCheckStarted = false;
+  bool _forkOnboardingResolved = false;
+  bool _showForkOnboarding = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_onboardingCheckStarted) {
+      _onboardingCheckStarted = true;
+      unawaited(_resolveForkOnboarding());
+    }
+  }
 
   @override
   void dispose() {
     _releaseTimer?.cancel();
     unawaited(HomeMusicService().setMainMenuActive(false));
     super.dispose();
+  }
+
+  /// Decides whether this installation should see the fork introduction.
+  ///
+  /// Existing NeoStation users upgrading to this fork are silently marked as
+  /// migrated when they already have setup history, so the new welcome flow is
+  /// reserved for genuinely fresh installs rather than interrupting upgrades.
+  Future<void> _resolveForkOnboarding() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final alreadyCompleted = prefs.getBool(_forkOnboardingKey) ?? false;
+
+      if (alreadyCompleted) {
+        if (mounted) {
+          setState(() {
+            _forkOnboardingResolved = true;
+            _showForkOnboarding = false;
+          });
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      final configProvider = context.read<SqliteConfigProvider>();
+      final existingInstall =
+          configProvider.config.setupCompleted ||
+          configProvider.hasDetectedSystems ||
+          configProvider.config.lastScan != null;
+
+      if (existingInstall) {
+        await prefs.setBool(_forkOnboardingKey, true);
+      }
+
+      if (mounted) {
+        setState(() {
+          _forkOnboardingResolved = true;
+          _showForkOnboarding = !existingInstall;
+        });
+      }
+    } catch (_) {
+      // A preferences failure should never trap the application before its
+      // normal setup. Skip the optional introduction for this launch.
+      if (mounted) {
+        setState(() {
+          _forkOnboardingResolved = true;
+          _showForkOnboarding = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _completeForkOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_forkOnboardingKey, true);
+    if (!mounted) return;
+    setState(() => _showForkOnboarding = false);
   }
 
   bool _holdSplash(bool isLoading) {
@@ -81,15 +153,22 @@ class _SystemContentState extends State<SystemContent> {
     return Consumer2<SqliteConfigProvider, ThemeProvider>(
       builder: (context, configProvider, themeProvider, child) {
         final isLoading = configProvider.isLoading || configProvider.isScanning;
-        final showSplash = isLoading || _holdSplash(isLoading);
+        final normalSplash = isLoading || _holdSplash(isLoading);
+        final showSplash = normalSplash || !_forkOnboardingResolved;
+        final showForkOnboarding =
+            !showSplash && _forkOnboardingResolved && _showForkOnboarding;
 
         final showInitialSetup =
             !showSplash &&
+            !showForkOnboarding &&
             !configProvider.hasDetectedSystems &&
             configProvider.scanCompleted;
 
         final showContent =
-            !showSplash && configProvider.scanCompleted && !showInitialSetup;
+            !showSplash &&
+            !showForkOnboarding &&
+            configProvider.scanCompleted &&
+            !showInitialSetup;
 
         final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
         _syncHomeMusic(showContent && routeIsCurrent);
@@ -99,6 +178,13 @@ class _SystemContentState extends State<SystemContent> {
           phase = KeyedSubtree(
             key: const ValueKey('splash'),
             child: _buildSplash(context, configProvider),
+          );
+        } else if (showForkOnboarding) {
+          phase = KeyedSubtree(
+            key: const ValueKey('fork_onboarding'),
+            child: ForkFirstRunOnboarding(
+              onFinished: _completeForkOnboarding,
+            ),
           );
         } else if (showInitialSetup) {
           phase = KeyedSubtree(
@@ -123,7 +209,7 @@ class _SystemContentState extends State<SystemContent> {
         );
 
         // Only the actual Systems main menu receives the custom background.
-        // Splash/setup screens and pushed playlists remain unchanged.
+        // Splash/setup/onboarding screens and pushed playlists remain unchanged.
         final customBackground = showContent
             ? themeProvider.customBackgroundPath
             : null;
