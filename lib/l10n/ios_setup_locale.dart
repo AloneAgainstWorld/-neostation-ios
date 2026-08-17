@@ -77,6 +77,36 @@ abstract final class IosSetupLocale {
     'zh_Hant': 'RetroArch 已連結。重新啟動 NeoStation 即可在這裡看到已同步的遊戲。',
   };
 
+  static const Map<String, String> _linkActionLabels = {
+    'de': 'Verknüpfen',
+    'en': 'Link',
+    'es': 'Vincular',
+    'fr': 'Lier',
+    'id': 'Tautkan',
+    'it': 'Collega',
+    'ja': 'リンク',
+    'ko': '연결',
+    'pt': 'Vincular',
+    'ru': 'Связать',
+    'zh': '连接',
+    'zh_Hant': '連結',
+  };
+
+  static const Map<String, String> _installActionLabels = {
+    'de': 'Installieren',
+    'en': 'Install',
+    'es': 'Instalar',
+    'fr': 'Installer',
+    'id': 'Instal',
+    'it': 'Installa',
+    'ja': 'インストール',
+    'ko': '설치',
+    'pt': 'Instalar',
+    'ru': 'Установить',
+    'zh': '安装',
+    'zh_Hant': '安裝',
+  };
+
   static const Map<String, String> _continueLabels = {
     'de': 'Weiter',
     'en': 'Continue',
@@ -92,7 +122,8 @@ abstract final class IosSetupLocale {
     'zh_Hant': '繼續',
   };
 
-  static String linkTitle(BuildContext context) => _lookup(_linkTitles, context);
+  static String linkTitle(BuildContext context) =>
+      _lookup(_linkTitles, context);
   static String linkDescription(BuildContext context) =>
       _lookup(_linkDescriptions, context);
   static String linked(BuildContext context) => _lookup(_linked, context);
@@ -100,6 +131,10 @@ abstract final class IosSetupLocale {
       _lookup(_restartTitles, context);
   static String restartDescription(BuildContext context) =>
       _lookup(_restartDescriptions, context);
+  static String linkAction(BuildContext context) =>
+      _lookup(_linkActionLabels, context);
+  static String installAction(BuildContext context) =>
+      _lookup(_installActionLabels, context);
   static String continueLabel(BuildContext context) =>
       _lookup(_continueLabels, context);
 
