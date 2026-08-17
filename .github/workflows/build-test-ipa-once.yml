@@ -130,18 +130,26 @@ jobs:
       - name: Generate iOS fork app icons
         run: |
           set -euo pipefail
-          SRC="assets/images/logo.png"
+          SRC_B64="assets/images/logo-ios-fork.b64"
+          SRC_JPG="$RUNNER_TEMP/neostation-fork-logo.jpg"
           ICON_DIR="ios/Runner/Assets.xcassets/AppIcon.appiconset"
-          NORMALIZED="$RUNNER_TEMP/neostation-fork-logo.png"
 
-          # macOS sips accepts the source image and rewrites it as a standard
-          # true-color PNG, avoiding flutter_launcher_icons' decoder limitation.
-          sips -s format png "$SRC" --out "$NORMALIZED" >/dev/null
+          python3 - <<'PY'
+          import base64, pathlib
+          source = pathlib.Path("assets/images/logo-ios-fork.b64")
+          target = pathlib.Path(__import__('os').environ['RUNNER_TEMP']) / "neostation-fork-logo.jpg"
+          target.write_bytes(base64.b64decode(source.read_text(encoding='ascii').strip()))
+          if target.stat().st_size < 10000:
+              raise SystemExit("Decoded fork icon is unexpectedly small")
+          print(f"Decoded fork icon: {target.stat().st_size} bytes")
+          PY
+
+          file "$SRC_JPG"
 
           make_icon() {
             local size="$1"
             local name="$2"
-            sips -z "$size" "$size" "$NORMALIZED" --out "$ICON_DIR/$name" >/dev/null
+            sips -s format png -z "$size" "$size" "$SRC_JPG" --out "$ICON_DIR/$name" >/dev/null
           }
 
           make_icon 20   "Icon-App-20x20@1x.png"
