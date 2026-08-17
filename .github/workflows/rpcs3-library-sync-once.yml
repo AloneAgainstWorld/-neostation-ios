@@ -1,9 +1,9 @@
-name: Apply and validate RPCS3 library sync
+name: Validate RPCS3 library integration
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/rpcs3-library-sync
+      - main
 
 permissions:
   contents: write
@@ -11,16 +11,21 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+concurrency:
+  group: rpcs3-library-integration
+  cancel-in-progress: true
+
 jobs:
-  integrate:
-    name: Integrate, analyze and test
+  validate:
+    name: Apply, analyze and test
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
     steps:
-      - name: Checkout repository
+      - name: Checkout feature branch
         uses: actions/checkout@v7
         with:
+          ref: feature/rpcs3-library-sync
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Flutter
@@ -33,309 +38,10 @@ jobs:
         run: flutter pub get
 
       - name: Apply RPCS3 integration wiring
+        run: python3 .github/scripts/apply_rpcs3_library_integration.py
+
+      - name: Format changed Dart files
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          # main.dart: restore bookmark/cache at startup.
-          main_path = Path('lib/main.dart')
-          main = main_path.read_text(encoding='utf-8')
-          import_marker = "import 'package:neostation/services/melonx_library_service.dart';\n"
-          import_line = "import 'package:neostation/services/rpcs3_library_service.dart';\n"
-          if import_line not in main:
-              assert import_marker in main
-              main = main.replace(import_marker, import_marker + import_line, 1)
-
-          cache_marker = """    await RetroArchLibraryService.loadCachedLibrary();
-    await Armsx2LibraryService.loadCachedLibrary();
-    await MelonxLibraryService.loadCachedLibrary();
-"""
-          cache_replacement = """    await RetroArchLibraryService.loadCachedLibrary();
-    await Armsx2LibraryService.loadCachedLibrary();
-    await MelonxLibraryService.loadCachedLibrary();
-    await Rpcs3LibraryService.initialize();
-"""
-          if 'await Rpcs3LibraryService.initialize();' not in main:
-              assert cache_marker in main
-              main = main.replace(cache_marker, cache_replacement, 1)
-          main_path.write_text(main, encoding='utf-8')
-
-          # Settings: add RPCS3 Data-folder card and sync actions.
-          settings_path = Path('lib/screens/settings_screen/new_settings_options/directories_settings_content.dart')
-          settings = settings_path.read_text(encoding='utf-8')
-          settings_import_marker = "import 'package:neostation/services/melonx_library_service.dart';\n"
-          settings_import = "import 'package:neostation/services/rpcs3_library_service.dart';\n"
-          if settings_import not in settings:
-              assert settings_import_marker in settings
-              settings = settings.replace(settings_import_marker, settings_import_marker + settings_import, 1)
-
-          locale_marker = "import 'package:neostation/l10n/app_locale.dart';\n"
-          locale_import = "import 'package:neostation/l10n/rpcs3_library_locale.dart';\n"
-          if locale_import not in settings:
-              assert locale_marker in settings
-              settings = settings.replace(locale_marker, locale_marker + locale_import, 1)
-
-          methods_marker = """  List<Widget> _iosEmulatorCards(ThemeData theme) {
-"""
-          methods = """  Future<void> _linkRpcs3DataFolder() async {
-    if (_linkingFolderKey != null) return;
-
-    setState(() => _linkingFolderKey = Rpcs3LibraryService.bookmarkKey);
-    try {
-      final result = await Rpcs3LibraryService.linkAndSync();
-      if (result == null || !mounted) return;
-
-      setState(() {});
-      AppNotification.showNotification(
-        context,
-        result.discoveredGames == 0
-            ? Rpcs3LibraryLocale.noGames(context)
-            : Rpcs3LibraryLocale.syncComplete(
-                context,
-                result.discoveredGames,
-              ),
-        type: result.discoveredGames == 0
-            ? NotificationType.info
-            : NotificationType.success,
-      );
-    } on FormatException {
-      if (mounted) {
-        AppNotification.showNotification(
-          context,
-          Rpcs3LibraryLocale.invalidFolder(context),
-          type: NotificationType.error,
-        );
-      }
-    } catch (e) {
-      _log.e('RPCS3 folder link/sync failed: $e');
-      if (mounted) {
-        AppNotification.showNotification(
-          context,
-          Rpcs3LibraryLocale.syncFailed(context, e),
-          type: NotificationType.error,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _linkingFolderKey = null);
-      }
-    }
-  }
-
-  Future<void> _syncWithRpcs3() async {
-    try {
-      final result = await Rpcs3LibraryService.syncLinkedLibrary();
-      if (!mounted) return;
-      setState(() {});
-      AppNotification.showNotification(
-        context,
-        result.discoveredGames == 0
-            ? Rpcs3LibraryLocale.noGames(context)
-            : Rpcs3LibraryLocale.syncComplete(
-                context,
-                result.discoveredGames,
-              ),
-        type: result.discoveredGames == 0
-            ? NotificationType.info
-            : NotificationType.success,
-      );
-    } catch (e) {
-      _log.e('RPCS3 library sync failed: $e');
-      if (mounted) {
-        AppNotification.showNotification(
-          context,
-          Rpcs3LibraryLocale.syncFailed(context, e),
-          type: NotificationType.error,
-        );
-      }
-    }
-  }
-
-"""
-          if 'Future<void> _linkRpcs3DataFolder()' not in settings:
-              assert methods_marker in settings
-              settings = settings.replace(methods_marker, methods + methods_marker, 1)
-
-          cards_old = """    return [
-      _buildIOSRetroArchSection(theme),
-      _buildIOSArmsx2Section(theme),
-      _buildIOSMeloNXSection(theme),
-    ];
-"""
-          cards_new = """    return [
-      _buildIOSRetroArchSection(theme),
-      _buildIOSRpcs3Section(theme),
-      _buildIOSArmsx2Section(theme),
-      _buildIOSMeloNXSection(theme),
-    ];
-"""
-          if '_buildIOSRpcs3Section(theme)' not in settings:
-              assert cards_old in settings
-              settings = settings.replace(cards_old, cards_new, 1)
-
-          rpcs3_method_marker = """  /// ARMSX2 is sync-only, like MeloNX. Its exported library is authoritative
-"""
-          rpcs3_method = """  Widget _buildIOSRpcs3Section(ThemeData theme) {
-    final isLinked = Rpcs3LibraryService.isLinked;
-    final hasSynced = Rpcs3LibraryService.hasSyncedLibrary;
-    final count = Rpcs3LibraryService.syncedGameCount;
-
-    final String statusText;
-    if (!isLinked) {
-      statusText = Rpcs3LibraryLocale.statusNeedsLink(context);
-    } else if (!hasSynced) {
-      statusText = Rpcs3LibraryLocale.statusNeedsSync(context);
-    } else {
-      statusText = Rpcs3LibraryLocale.statusSynced(context, count);
-    }
-
-    return _buildIOSEmulatorCard(
-      theme: theme,
-      name: 'RPCS3',
-      icon: Symbols.sports_esports_rounded,
-      statusText: statusText,
-      isLinked: isLinked,
-      bookmarkKey: Rpcs3LibraryService.bookmarkKey,
-      successMessage: '',
-      onLinkPressed: _linkRpcs3DataFolder,
-      trailingAction: SizedBox(
-        height: 48.r,
-        child: FilledButton.icon(
-          onPressed: !isLinked ? null : _syncWithRpcs3,
-          icon: Icon(Symbols.sync_rounded, size: 20.r),
-          label: Text(
-            hasSynced
-                ? AppLocale.iosEmuResync.getString(context)
-                : AppLocale.iosEmuSync.getString(context),
-            style: TextStyle(fontSize: 14.r),
-          ),
-        ),
-      ),
-    );
-  }
-
-"""
-          if 'Widget _buildIOSRpcs3Section' not in settings:
-              assert rpcs3_method_marker in settings
-              settings = settings.replace(rpcs3_method_marker, rpcs3_method + rpcs3_method_marker, 1)
-
-          signature_old = """    bool showLinkButton = true,
-    Widget? trailingAction,
-  }) {
-"""
-          signature_new = """    bool showLinkButton = true,
-    Future<void> Function()? onLinkPressed,
-    Widget? trailingAction,
-  }) {
-"""
-          if 'Future<void> Function()? onLinkPressed' not in settings:
-              assert signature_old in settings
-              settings = settings.replace(signature_old, signature_new, 1)
-
-          callback_old = """        onPressed: isAnyLinkInFlight
-            ? null
-            : () => _linkExternalFolder(
-                bookmarkKey: bookmarkKey,
-                successMessage: successMessage,
-              ),
-"""
-          callback_new = """        onPressed: isAnyLinkInFlight
-            ? null
-            : () async {
-                if (onLinkPressed != null) {
-                  await onLinkPressed();
-                } else {
-                  await _linkExternalFolder(
-                    bookmarkKey: bookmarkKey,
-                    successMessage: successMessage,
-                  );
-                }
-              },
-"""
-          if callback_new not in settings:
-              assert callback_old in settings
-              settings = settings.replace(callback_old, callback_new, 1)
-
-          settings_path.write_text(settings, encoding='utf-8')
-
-          # Game launch: virtual RPCS3 rows are display-only for this stage.
-          launch_path = Path('lib/services/game/game_launch_service.dart')
-          launch = launch_path.read_text(encoding='utf-8')
-          launch_import_marker = "import 'package:neostation/services/melonx_library_service.dart';\n"
-          launch_import = "import 'package:neostation/services/rpcs3_library_service.dart';\n"
-          if launch_import not in launch:
-              assert launch_import_marker in launch
-              launch = launch.replace(launch_import_marker, launch_import_marker + launch_import, 1)
-          launch_locale_marker = "import 'package:neostation/l10n/app_locale.dart';\n"
-          launch_locale = "import 'package:neostation/l10n/rpcs3_library_locale.dart';\n"
-          if launch_locale not in launch:
-              assert launch_locale_marker in launch
-              launch = launch.replace(launch_locale_marker, launch_locale_marker + launch_locale, 1)
-
-          virtual_marker = """      final isMeloNXVirtualRom =
-          Platform.isIOS &&
-          system.folderName.toLowerCase() == 'switch' &&
-          game.romPath != null &&
-          MelonxLibraryService.isVirtualLibraryPath(game.romPath!);
-
-"""
-          virtual_replacement = virtual_marker + """      final isRpcs3VirtualRom =
-          Platform.isIOS &&
-          system.folderName.toLowerCase() == 'ps3' &&
-          game.romPath != null &&
-          Rpcs3LibraryService.isVirtualLibraryPath(game.romPath!);
-
-"""
-          if 'final isRpcs3VirtualRom' not in launch:
-              assert virtual_marker in launch
-              launch = launch.replace(virtual_marker, virtual_replacement, 1)
-
-          exists_old = """        if (isArmsx2VirtualRom || isMeloNXVirtualRom) {
-"""
-          exists_new = """        if (isArmsx2VirtualRom ||
-            isMeloNXVirtualRom ||
-            isRpcs3VirtualRom) {
-"""
-          if exists_new not in launch:
-              assert exists_old in launch
-              launch = launch.replace(exists_old, exists_new, 1)
-
-          ios_marker = """      if (Platform.isIOS) {
-        GameSessionManager.registerGameLaunch(system, game, 'ios_direct_launch');
-"""
-          ios_replacement = """      if (Platform.isIOS) {
-        if (isRpcs3VirtualRom) {
-          return GameLaunchResult.failure(
-            Rpcs3LibraryLocale.launchUnavailable(context),
-            game.romPath,
-          );
-        }
-
-        GameSessionManager.registerGameLaunch(system, game, 'ios_direct_launch');
-"""
-          if 'Rpcs3LibraryLocale.launchUnavailable(context)' not in launch:
-              assert ios_marker in launch
-              launch = launch.replace(ios_marker, ios_replacement, 1)
-          launch_path.write_text(launch, encoding='utf-8')
-
-          # Documentation and build number.
-          pubspec_path = Path('pubspec.yaml')
-          pubspec = pubspec_path.read_text(encoding='utf-8')
-          assert 'version: 0.9.9+129' in pubspec or 'version: 0.9.9+130' in pubspec
-          pubspec = pubspec.replace('version: 0.9.9+129', 'version: 0.9.9+130', 1)
-          pubspec_path.write_text(pubspec, encoding='utf-8')
-
-          readme_path = Path('README.md')
-          readme = readme_path.read_text(encoding='utf-8')
-          bullet = '- **RPCS3 iOS** Data-folder library import for displaying installed PS3 games and artwork (direct game launch remains pending).\n'
-          marker = '- **ARMSX2** library synchronization, direct launching and JIT-oriented launch flows.\n'
-          if bullet not in readme:
-              assert marker in readme
-              readme = readme.replace(marker, marker + bullet, 1)
-          readme_path.write_text(readme, encoding='utf-8')
-          PY
-
           dart format \
             lib/main.dart \
             lib/l10n/rpcs3_library_locale.dart \
@@ -350,36 +56,29 @@ jobs:
           grep -Fq "version: 0.9.9+130" pubspec.yaml
           grep -Fq "Rpcs3LibraryService.initialize" lib/main.dart
           grep -Fq "Widget _buildIOSRpcs3Section" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
-          grep -Fq "rpcs3-library://" lib/services/rpcs3_library_service.dart
+          grep -Fq "rpcs3-library" lib/services/rpcs3_library_service.dart
           grep -Fq "Rpcs3LibraryLocale.launchUnavailable" lib/services/game/game_launch_service.dart
           grep -Fq "RPCS3 iOS" README.md
-          test -f test/rpcs3_library_service_test.dart
 
       - name: Analyze Dart and Flutter code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Run RPCS3 tests
+      - name: Run RPCS3 service tests
         run: flutter test test/rpcs3_library_service_test.dart
 
       - name: Run full Flutter test suite
         run: flutter test
 
-      - name: Commit validated integration
+      - name: Commit validated integration and remove temporary automation
         run: |
           set -euo pipefail
-          rm -f .github/workflows/rpcs3-library-sync-once.yml
+          rm -f \
+            .github/workflows/rpcs3-library-sync-once.yml \
+            .github/scripts/apply_rpcs3_library_integration.py \
+            .github/PR_NOTE_RPC3.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            README.md \
-            pubspec.yaml \
-            lib/main.dart \
-            lib/l10n/rpcs3_library_locale.dart \
-            lib/services/rpcs3_library_service.dart \
-            lib/services/game/game_launch_service.dart \
-            lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
-            test/rpcs3_library_service_test.dart \
-            .github/workflows/rpcs3-library-sync-once.yml
+          git add -A
           git diff --cached --check
           git commit -m "feat(ios): import RPCS3 library from Data folder"
           git push origin HEAD:feature/rpcs3-library-sync
