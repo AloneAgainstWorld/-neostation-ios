@@ -5,8 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/l10n/custom_background_locale.dart';
+import 'package:neostation/l10n/home_music_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/services/sfx_service.dart';
+import 'package:neostation/services/home_music_service.dart';
 import 'package:provider/provider.dart';
 import 'package:neostation/providers/theme_provider.dart';
 import 'package:neostation/services/permission_service.dart';
@@ -51,13 +53,21 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
   void initState() {
     super.initState();
     _initializeKeys();
+    HomeMusicService().addListener(_onHomeMusicChanged);
+    HomeMusicService().init().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _onHomeMusicChanged() {
+    if (mounted) setState(() {});
   }
 
   /// Native System Theme + Registered Theme Variants + Custom Background + Import.
   void _initializeKeys() {
     _itemKeys.clear();
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    final count = themeProvider.getThemeList().length + 3;
+    final count = themeProvider.getThemeList().length + 4;
     for (int i = 0; i < count; i++) {
       _itemKeys.add(GlobalKey());
     }
@@ -65,13 +75,14 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
 
   @override
   void dispose() {
+    HomeMusicService().removeListener(_onHomeMusicChanged);
     _scrollController.dispose();
     super.dispose();
   }
 
   int getItemCount(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    return themeProvider.getThemeList().length + 3;
+    return themeProvider.getThemeList().length + 4;
   }
 
   int get _gridColumns => Responsive.getThemesCrossAxisCount(context);
@@ -138,6 +149,7 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final themes = themeProvider.getThemeList();
     final customBackgroundIndex = themes.length + 1;
+    final menuMusicIndex = themes.length + 2;
 
     if (index == 0) {
       await themeProvider.setTheme('system');
@@ -146,12 +158,35 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     } else if (index == customBackgroundIndex) {
       await _pickCustomBackground();
       return;
+    } else if (index == menuMusicIndex) {
+      await _toggleHomeMusic();
+      return;
     } else {
       await _importTheme();
       return;
     }
     if (mounted) setState(() {});
     widget.onSelectionChanged?.call(index);
+  }
+
+  Future<void> _toggleHomeMusic() async {
+    final music = HomeMusicService();
+    if (music.hasMusic) {
+      await music.setEnabled(!music.enabled);
+    } else {
+      await music.chooseMusic();
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickHomeMusic() async {
+    await HomeMusicService().chooseMusic();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _clearHomeMusic() async {
+    await HomeMusicService().clearMusic();
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickCustomBackground() async {
@@ -276,9 +311,14 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final themes = themeProvider.getThemeList();
     final customBackgroundIndex = themes.length + 1;
+    final menuMusicIndex = themes.length + 2;
 
     if (index == customBackgroundIndex) {
       if (themeProvider.hasCustomBackground) _clearCustomBackground();
+      return;
+    }
+    if (index == menuMusicIndex) {
+      if (HomeMusicService().hasMusic) _clearHomeMusic();
       return;
     }
 
@@ -319,8 +359,9 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
     ];
 
     final customBackgroundIndex = allThemes.length;
-    final importIndex = allThemes.length + 1;
-    final itemCount = allThemes.length + 2;
+    final menuMusicIndex = allThemes.length + 1;
+    final importIndex = allThemes.length + 2;
+    final itemCount = allThemes.length + 3;
 
     if (_itemKeys.length != itemCount) {
       _initializeKeys();
@@ -371,6 +412,38 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
                     onDelete: themeProvider.hasCustomBackground
                         ? _clearCustomBackground
                         : null,
+                  ),
+                );
+              }
+
+              if (index == menuMusicIndex) {
+                final music = HomeMusicService();
+                final fileName = music.selectedFileName;
+                final musicSubtitle = music.hasMusic
+                    ? '${music.enabled ? HomeMusicLocale.active(context) : HomeMusicLocale.disabled(context)} · ${fileName ?? ''}'
+                    : HomeMusicLocale.subtitle(context);
+
+                return Container(
+                  key: _itemKeys[index],
+                  child: _HomeMusicCard(
+                    label: HomeMusicLocale.title(context),
+                    subtitle: musicSubtitle,
+                    hasMusic: music.hasMusic,
+                    enabled: music.enabled,
+                    isFocused: isFocused,
+                    onTap: () {
+                      SfxService().playNavSound();
+                      widget.onSelectionChanged?.call(index);
+                      _toggleHomeMusic();
+                    },
+                    onReplace: music.hasMusic
+                        ? () {
+                            SfxService().playNavSound();
+                            _pickHomeMusic();
+                          }
+                        : null,
+                    onDelete: music.hasMusic ? _clearHomeMusic : null,
+                    replaceTooltip: HomeMusicLocale.replace(context),
                   ),
                 );
               }
@@ -570,3 +643,183 @@ class _CustomBackgroundCard extends StatelessWidget {
     );
   }
 }
+
+class _HomeMusicCard extends StatelessWidget {
+  const _HomeMusicCard({
+    required this.label,
+    required this.subtitle,
+    required this.hasMusic,
+    required this.enabled,
+    required this.isFocused,
+    required this.onTap,
+    required this.replaceTooltip,
+    this.onReplace,
+    this.onDelete,
+  });
+
+  final String label;
+  final String subtitle;
+  final bool hasMusic;
+  final bool enabled;
+  final bool isFocused;
+  final VoidCallback onTap;
+  final VoidCallback? onReplace;
+  final VoidCallback? onDelete;
+  final String replaceTooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AspectRatio(
+          aspectRatio: 4 / 3,
+          child: Container(
+            margin: EdgeInsets.symmetric(vertical: 4.h),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(
+                color: isFocused
+                    ? accent
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.25),
+                width: 2.r,
+              ),
+              boxShadow: isFocused
+                  ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.3),
+                        blurRadius: 8.r,
+                        spreadRadius: 1.r,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6.r),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          hasMusic
+                              ? (enabled
+                                    ? Icons.volume_up_rounded
+                                    : Icons.volume_off_rounded)
+                              : Icons.music_note_rounded,
+                          color: isFocused
+                              ? accent
+                              : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                          size: 40.r,
+                        ),
+                        if (hasMusic) ...[
+                          SizedBox(height: 6.r),
+                          Icon(
+                            enabled
+                                ? Icons.play_arrow_rounded
+                                : Icons.pause_rounded,
+                            color: enabled
+                                ? accent
+                                : theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                            size: 18.r,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        canRequestFocus: false,
+                        onTap: onTap,
+                      ),
+                    ),
+                  ),
+                  if (onDelete != null)
+                    Positioned(
+                      top: 4.r,
+                      right: 4.r,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          canRequestFocus: false,
+                          onTap: onDelete,
+                          child: Padding(
+                            padding: EdgeInsets.all(3.r),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 16.r,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (onReplace != null)
+                    Positioned(
+                      bottom: 4.r,
+                      right: 4.r,
+                      child: Tooltip(
+                        message: replaceTooltip,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            canRequestFocus: false,
+                            onTap: onReplace,
+                            child: Padding(
+                              padding: EdgeInsets.all(4.r),
+                              child: Icon(
+                                Icons.folder_open_rounded,
+                                color: Colors.white,
+                                size: 17.r,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 4.r),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: isFocused
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            fontWeight: isFocused ? FontWeight.bold : FontWeight.normal,
+            fontSize: 12.r,
+          ),
+        ),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+            fontSize: 8.r,
+          ),
+        ),
+      ],
+    );
+  }
+}
+

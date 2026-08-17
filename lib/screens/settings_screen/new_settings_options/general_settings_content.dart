@@ -5,13 +5,11 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
-import 'package:neostation/l10n/home_music_locale.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:fullscreen_window/fullscreen_window.dart';
 import 'package:neostation/services/logger_service.dart';
-import 'package:neostation/services/home_music_service.dart';
 import 'package:neostation/utils/adaptive_scroll.dart';
 import 'package:neostation/utils/nav_tabs.dart';
 import '../../../providers/sqlite_config_provider.dart';
@@ -62,10 +60,6 @@ class GeneralSettingsContentState extends State<GeneralSettingsContent>
     WidgetsBinding.instance.addObserver(this);
     _loadFullscreenState();
     _checkDefaultLauncher();
-    HomeMusicService().addListener(_onHomeMusicChanged);
-    HomeMusicService().init().then((_) {
-      if (mounted) setState(() {});
-    });
 
     // Pre-allocate keys for maximum theoretical setting items (the fixed rows
     // plus one per navigation tab that can be toggled).
@@ -74,14 +68,9 @@ class GeneralSettingsContentState extends State<GeneralSettingsContent>
     }
   }
 
-  void _onHomeMusicChanged() {
-    if (mounted) setState(() {});
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    HomeMusicService().removeListener(_onHomeMusicChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -186,7 +175,6 @@ class GeneralSettingsContentState extends State<GeneralSettingsContent>
     count++; // Auto-update App
     count++; // Auto-update Systems
     count++; // SFX Sounds
-    count++; // Main-menu music
     count++; // 12-Hour Clock
     count += hidableNavTabs().length; // Navigation tab visibility
     count++; // Language
@@ -246,14 +234,6 @@ class GeneralSettingsContentState extends State<GeneralSettingsContent>
     if (index == currentItemIndex) {
       final sfxEnabled = configProvider.config.sfxEnabled;
       configProvider.updateSfxEnabled(!sfxEnabled);
-      return;
-    }
-    currentItemIndex++;
-
-    // Protocol: Fork main-menu ambience.
-    if (index == currentItemIndex) {
-      final music = HomeMusicService();
-      music.setEnabled(!music.enabled);
       return;
     }
     currentItemIndex++;
@@ -486,25 +466,6 @@ class GeneralSettingsContentState extends State<GeneralSettingsContent>
                   );
                 }(),
 
-                // Setting: Main-menu ambience.
-                SizedBox(height: 12.r),
-                () {
-                  final index = currentItemIdx++;
-                  final music = HomeMusicService();
-                  return SettingRow(
-                    key: _itemKeys[index],
-                    focused:
-                        widget.isContentFocused &&
-                        widget.selectedContentIndex == index,
-                    title: HomeMusicLocale.title(context),
-                    subtitle: HomeMusicLocale.subtitle(context),
-                    trailing: CustomToggleSwitch(
-                      value: music.enabled,
-                      onChanged: music.setEnabled,
-                      activeColor: theme.colorScheme.primary,
-                    ),
-                  );
-                }(),
 
                 // Setting: 12-Hour Clock Format.
                 SizedBox(height: 12.r),
