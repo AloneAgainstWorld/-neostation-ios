@@ -1,0 +1,209 @@
+name: Build latest NeoStation iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: neostation-latest-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    environment: Production
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Verify latest first-run fixes
+        run: |
+          set -euo pipefail
+          grep -Fq "ForkOnboardingLocale.welcomeTitle(context)" lib/screens/systems_screen/fork_first_run_onboarding.dart
+          ! grep -Fq "ForkOnboardingLocale.languageTitle(context)" lib/screens/systems_screen/fork_first_run_onboarding.dart
+          grep -Fq "FittedBox(" lib/widgets/setup_wizard.dart
+          grep -Fq "BoxFit.scaleDown" lib/widgets/setup_wizard.dart
+          grep -Fq "HomeMusicLocale.title(context)" lib/screens/settings_screen/new_settings_options/themes_settings_content.dart
+          grep -Fq "menu_music" lib/services/home_music_service.dart
+
+      - name: Create ScreenScraper environment
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : > .env
+          [ -n "$SCREENSCRAPER_DEV_ID" ] && echo "SCREENSCRAPER_DEV_ID=$SCREENSCRAPER_DEV_ID" >> .env
+          [ -n "$SCREENSCRAPER_DEV_PASSWORD" ] && echo "SCREENSCRAPER_DEV_PASSWORD=$SCREENSCRAPER_DEV_PASSWORD" >> .env
+          test "$(wc -l < .env | tr -d ' ')" -eq 2
+          chmod 600 .env
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Scaffold iOS platform
+        run: |
+          set -euo pipefail
+          if [ ! -d ios ]; then
+            flutter create --platforms=ios --org com.neogamelab --project-name neostation .
+          fi
+
+      - name: Set iOS deployment target to 18.0
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re
+          podfile = pathlib.Path('ios/Podfile')
+          text = podfile.read_text(encoding='utf-8')
+          if re.search(r"^\s*#?\s*platform\s+:ios,\s*'[^']+'", text, flags=re.MULTILINE):
+              text = re.sub(r"^\s*#?\s*platform\s+:ios,\s*'[^']+'", "platform :ios, '18.0'", text, count=1, flags=re.MULTILINE)
+          else:
+              text = "platform :ios, '18.0'\n" + text
+          podfile.write_text(text, encoding='utf-8')
+          project = pathlib.Path('ios/Runner.xcodeproj/project.pbxproj')
+          ptext = project.read_text(encoding='utf-8')
+          ptext, count = re.subn(r'IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;', 'IPHONEOS_DEPLOYMENT_TARGET = 18.0;', ptext)
+          if count == 0:
+              raise SystemExit('Missing deployment target')
+          project.write_text(ptext, encoding='utf-8')
+          PY
+
+      - name: Patch Info.plist
+        run: |
+          set -euo pipefail
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :UIFileSharingEnabled" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :LSSupportsOpeningDocumentsInPlace" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.neogamelab.neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string shortcuts" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:2 string armsx2" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:3 string melonx" "$PLIST"
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Patch device_info_plus runner compatibility
+        run: |
+          DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" -path "*device_info_plus*/FPPDeviceInfoPlusPlugin.m" 2>/dev/null | head -1)
+          if [ -n "$DEVICE_INFO_FILE" ]; then sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"; fi
+
+      - name: Generate fork app icons
+        run: |
+          set -euo pipefail
+          SRC="assets/images/fork-icon-valid.jpg"
+          ICON_DIR="ios/Runner/Assets.xcassets/AppIcon.appiconset"
+          make_icon() { sips -s format png -z "$1" "$1" "$SRC" --out "$ICON_DIR/$2" >/dev/null; }
+          make_icon 20 "Icon-App-20x20@1x.png"
+          make_icon 40 "Icon-App-20x20@2x.png"
+          make_icon 60 "Icon-App-20x20@3x.png"
+          make_icon 29 "Icon-App-29x29@1x.png"
+          make_icon 58 "Icon-App-29x29@2x.png"
+          make_icon 87 "Icon-App-29x29@3x.png"
+          make_icon 40 "Icon-App-40x40@1x.png"
+          make_icon 80 "Icon-App-40x40@2x.png"
+          make_icon 120 "Icon-App-40x40@3x.png"
+          make_icon 120 "Icon-App-60x60@2x.png"
+          make_icon 180 "Icon-App-60x60@3x.png"
+          make_icon 76 "Icon-App-76x76@1x.png"
+          make_icon 152 "Icon-App-76x76@2x.png"
+          make_icon 167 "Icon-App-83.5x83.5@2x.png"
+          make_icon 1024 "Icon-App-1024x1024@1x.png"
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Configure Flutter release build
+        run: flutter build ios --release --no-codesign --config-only --dart-define-from-file=.env
+
+      - name: Build unsigned app and package IPA
+        run: |
+          set -euo pipefail
+          rm -rf build/ios/DerivedData build/ios/unsigned NeoStation-Fork-Latest.ipa
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build
+          APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -n "$APP_PATH"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist")" = "18.0"
+          mkdir -p build/ios/unsigned/Payload
+          cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
+          (cd build/ios/unsigned && zip -qry ../../../NeoStation-Fork-Latest.ipa Payload)
+          test -s NeoStation-Fork-Latest.ipa
+
+      - name: Verify ScreenScraper values in compiled binary
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$RUNNER_TEMP/neostation-verify"
+          unzip -q NeoStation-Fork-Latest.ipa -d "$VERIFY_DIR"
+          AOT_BINARY=$(find "$VERIFY_DIR/Payload" -path '*/Frameworks/App.framework/App' -type f -print -quit)
+          test -n "$AOT_BINARY"
+          python3 - "$AOT_BINARY" <<'PY'
+          import os, pathlib, sys
+          binary = pathlib.Path(sys.argv[1]).read_bytes()
+          for name in ('SCREENSCRAPER_DEV_ID','SCREENSCRAPER_DEV_PASSWORD'):
+              if os.environ[name].encode() not in binary:
+                  raise SystemExit(f'Missing {name} in compiled binary')
+          PY
+
+      - name: Create checksum
+        run: shasum -a 256 NeoStation-Fork-Latest.ipa > NeoStation-Fork-Latest.ipa.sha256
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-Fork-Latest-ios
+          path: |
+            NeoStation-Fork-Latest.ipa
+            NeoStation-Fork-Latest.ipa.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove environment file
+        if: always()
+        run: rm -f .env
