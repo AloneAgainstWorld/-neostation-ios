@@ -1,234 +1,83 @@
-# 🎨 NeoStation Theme Guide
+# NeoStation Theme and Menu Customization Guide
 
-Welcome to the NeoStation theme system. This document will explain how to create new themes following established conventions.
+NeoStation separates three different customization systems:
 
-> **Note:** This guide covers the app's **UI color themes** (`lib/themes/`). It is unrelated to **System Art packs** — the downloadable system card backgrounds and logos (formerly also called "themes"; their manifest and cache paths still use `theme.json` naming).
+1. **UI color themes** — Flutter `ThemeData` definitions under `lib/themes/`.
+2. **System Art packs** — downloadable system-card artwork and logos managed by NeoAssets.
+3. **Main-menu media** — a user-selected Systems-menu background and optional menu-music track.
 
----
+These systems are intentionally independent. Changing a color theme does not replace a System Art pack, and a custom menu background/music selection does not become part of `ThemeData`.
 
-## 📋 Theme Structure
+## UI color themes
 
-Each theme is defined in a `*_theme.dart` file within the `lib/themes/` folder.
+Built-in color themes are registered through `ThemeProvider` and `AppThemes`. A theme should provide a coherent Material color scheme, readable text/surface contrast and consistent component colors.
 
-```dart
-// Example: my_theme_theme.dart
-import 'package:flutter/material.dart';
-import 'package:neostation/themes/corner_radii.dart';
+### File placement
 
-// 1. Base color definition
-const Color _primaryColor = Color(0xFFFF5722);     // Primary theme color
-const Color _onPrimaryColor = Color(0xFFFFFFFF);   // Text on primary
-const Color _secondaryColor = Color(0xFF4CAF50);   // Secondary color
-const Color _surfaceColor = Color(0xFF1D232A);    // Surface background
+Create a theme file under:
 
-// 2. ThemeData configuration
-final ThemeData myThemeTheme = ThemeData(
-  useMaterial3: true,
-  colorScheme: ColorScheme.dark(),
-
-  cardColor: _backgroundColor,
-  scaffoldBackgroundColor: _backgroundColor,
-
-  textTheme: TextTheme(
-    displayLarge: TextStyle(color: _onSurfaceColor, fontSize: 32),
-    titleLarge: TextStyle(color: _onSurfaceColor, fontSize: 24),
-    bodyLarge: TextStyle(color: _onSurfaceColor, fontSize: 16),
-  ),
-);
-
-// 3. Class for custom colors
-class MyThemeCustomColors {
-  Color get batteryFull => _batteryFull;
-  Color get batteryMedium => _batteryMedium;
-  
-  Color get errorColor => _errorColor;
-  Color get successColor => _successColor;
-}
+```text
+lib/themes/
 ```
 
----
+Follow the naming/style used by the existing `*_theme.dart` files rather than introducing a second theme architecture.
 
-## 🎨 Required Color Theme
+### Registration
 
-### **Essential Colors**
+A built-in theme must be exposed through the existing theme registry and added to both the theme map and display-name map used by `ThemeProvider`.
 
-| Property | Description | Example |
-|----------|-------------|---------|
-| `primary` | Main color for primary actions | Most important action |
-| `onPrimary` | Text on primary components | Inverse of primary |
-| `secondary` | Secondary color for highlighted elements | Complementary to primary |
-| `surface` | Background for cards and main containers | Not the darkest background |
-| `onSurface` | Text on surfaces | Inverse of surface |
-| `error` | Color for errors/deletion | Red or similar |
-| `onError` | Text on errors | Inverse of error |
-| `outline` | Lines and borders | Soft gray |
-| `shadow` | Shadows | Semi-transparent black |
+Keep identifiers stable once shipped because the selected theme name is persisted in user configuration.
 
-### **Additional Colors (Recommended)**
+### Design checklist
 
-| Property | Usage | Suggestions |
-|----------|-------|-------------|
-| `tertiary` | Accessory elements | Complementary to secondary |
-| `cardColor` | Specific card background | Can be darker than surface |
-| `scaffoldBackgroundColor` | General app background | Darker than surface in dark mode |
+- Maintain readable foreground/background contrast.
+- Keep primary actions visually distinct from passive surfaces.
+- Test focused/selected gamepad states, not only pointer/touch states.
+- Test disabled, error and success surfaces.
+- Review the theme on the main Systems screen, Settings and modal/dialog surfaces.
+- Prefer the established corner-radius, typography and responsive-sizing conventions.
+- Do not hardcode user-visible labels inside theme widgets.
 
-### **Specialized Colors**
+## Imported custom UI themes
 
-```dart
-// Colors for states and notifications
-const Color _successColor = Color(0xFF00d390);   // Success (green)
-const Color _errorColor = Color(0xFFff627d);     // Error (red/pink)
-const Color _warningColor = Color(0xFFFcb700);   // Warning (yellow)
-const Color _infoColor = Color(0xFF00bafe);      // Info (blue)
+NeoStation can also load user-imported custom color themes. Imported theme IDs must not collide with built-in/reserved theme names. Deleting the active imported theme must safely fall back to a built-in/system theme.
 
-// Colors for battery indicator
-const Color _batteryFull = Color(0xFF00d390);    // Full battery
-const Color _batteryMedium = Color(0xFFFcb700);  // Medium battery
-const Color _batteryLow = Color(0xFFff627d);     // Low battery
-```
+## System Art packs
 
----
+System Art packs are not UI color themes. They provide downloadable artwork used by system cards and related presentation surfaces. Their manifest/cache code may still contain historical `theme` naming; do not merge those concepts with `ThemeProvider`.
 
-## 🎨 DaisyUI Color Theme Reference
+## Main-menu custom background
 
-We recommend reviewing **DaisyUI** as a reference for professional color themes:
+The primary Systems menu can use a user-selected background. Supported formats are defined by `ImageUtils`:
 
-🔗 [https://daisyui.com/docs/themes/](https://daisyui.com/docs/themes/)
+- static/animated image: PNG, JPG/JPEG, WebP, GIF;
+- local video: MP4, M4V, MOV.
 
-### **Recommended Themes for Inspiration:**
+The selected file is copied into NeoStation's user-data area. The background is deliberately scoped to the primary Systems menu; game playlists and other top-level screens keep their normal theme background.
 
-1. **dracula** - Popular dark theme for developers
-2. **nord** - Very balanced arctic theme
-3. **solarized** - Classic, with good contrast and warm/cool colors
-4. **catppuccin** - Modern pastel theme, very pleasant
-5. **tokyo-night** - Optimized for developers
+The background widget is kept mounted across top-level tab changes so a decoded image can be shown immediately when returning to Systems instead of briefly exposing the underlying theme surface.
 
----
+## Main-menu music
 
-## ✅ Checklist for a Well-Built Theme
+Theme settings also allow one user-selected menu-music track. Supported formats are:
 
-- [ ] **Adequate contrast** → Ensure text is readable on all backgrounds
-- [ ] **Harmonious theme** → Primary, secondary, and tertiary colors should work together
-- [ ] **Accessibility** → Complies with WCAG 2.1 standards for contrast
-- [ ] **Consistency** → Follows the pattern established in other project themes
-- [ ] **Distinctive primary color** → Primary should stand out without being aggressive
+- MP3;
+- WAV;
+- OGG;
+- FLAC.
 
----
+The selected track is copied into NeoStation user data and loops only while the primary Systems menu is active. Playback stops when the app leaves the menu or is backgrounded, and it yields when the normal music player is already playing.
 
-## 🔧 Integrating Your New Theme
+## Contribution guidance
 
-Once you've created `my_theme_theme.dart`, you must:
+Before submitting a visual change:
 
-### **1. Add to `lib/themes/app_themes.dart`**
+1. run `dart format` on changed Dart files;
+2. run `flutter analyze --no-fatal-infos --no-fatal-warnings`;
+3. run `flutter test`;
+4. verify landscape layout and gamepad focus behavior;
+5. confirm new artwork/audio/video has compatible redistribution terms.
 
-```dart
-import 'lib/my_theme_theme.dart' as my_theme;  // At the beginning of the file
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for code-layer ownership and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the repository contribution workflow.
 
-class AppThemes {
-  static ThemeData get myThemeTheme => my_theme.myThemeTheme;
-  
-  static dynamic get myThemeCustomColors => my_theme.MyThemeCustomColors();
-
-  switch (themeName) {
-    case 'my_theme':
-      return myThemeTheme;
-  }
-}
-```
-
-### **2. Update `lib/providers/theme_provider.dart`**
-
-In `availableThemes`:
-```dart
-static final Map<String, ThemeData> availableThemes = {
-  'my_theme': AppThemes.myThemeThemes,
-};
-```
-
-In `themeDisplayNames`:
-```dart
-static const Map<String, String> themeDisplayNames = {
-  'my_theme': 'My Theme',
-};
-```
-
----
-
-## 🎨 Design Tips
-
-### **Dark Themes**
-
-- **Surface**: Very dark gray, almost black (#1a1f26)
-- **Primary**: Vibrant color but not overly saturated
-- **OnSurface**: White or very light gray (#ecf9ff)
-- Avoid pure neon colors on black backgrounds → strains eyes
-
-### **Light Themes**
-
-- **Surface**: White or very light gray (#f8fafb)
-- **Primary**: Solid color, not aggressive
-- **OnSurface**: Dark gray or almost black (#1c1917)
-- Use subtle shadows for depth
-
----
-
-## 📝 Complete Example: "Cyberpunk" Theme (Adapted)
-
-```dart
-// lib/themes/cyberpunk_theme.dart
-import 'package:flutter/material.dart';
-import 'package:neostation/themes/corner_radii.dart';
-
-const Color _primaryColor = Color(0xFF00f3ff);      // Bright cyan
-const Color _onPrimaryColor = Color(0xFF001a2b);    // Dark cyan for text
-const Color _secondaryColor = Color(0xFFbc13fe);    // Electric violet
-
-const Color _surfaceColor = Color(0xFF0d1117);      // Main background
-const Color _onSurfaceColor = Color(0xFFC9D1D9);    // Main text
-
-final ThemeData cyberpunkTheme = ThemeData(
-  useMaterial3: true,
-  colorScheme: ColorScheme.dark(
-    primary: _primaryColor,
-    onPrimary: _onPrimaryColor,
-    secondary: _secondaryColor,
-    onSecondary: Color(0xFFF5F7FA),
-    surface: _surfaceColor,
-    onSurface: _onSurfaceColor,
-  ),
-
-  cardColor: _backgroundColor,
-  scaffoldBackgroundColor: _backgroundColor,
-
-  textTheme: TextTheme(
-    displayLarge: TextStyle(color: _onSurfaceColor, fontSize: 32),
-    titleLarge: TextStyle(color: _onSurfaceColor, fontSize: 24),
-    bodyLarge: TextStyle(color: _onSurfaceColor, fontSize: 16),
-  ),
-);
-
-class CyberpunkCustomColors {
-  Color get batteryFull => _primaryColor;
-  Color get batteryMedium => _secondaryColor;
-  
-  Color get errorColor => _errorColor;
-  Color get successColor => _successColor;
-}
-```
-
----
-
-## 🚀 Conclusion
-
-Creating a new theme for NeoStation is simple following this structure. Remember:
-
-1. ✅ **Contrast is key** → Read text clearly on all backgrounds
-2. ✅ **Color harmony** → Primary, secondary, and tertiary colors should work together
-3. ✅ **Document your decisions** → Explain why you chose certain colors
-4. ✅ **Test thoroughly** → Review in different modes and scenarios
-
-Thanks for contributing to the NeoStation visual ecosystem! 🎨✨
-
----
-
-*Last updated: 2025*
+_Last updated: August 2026._
