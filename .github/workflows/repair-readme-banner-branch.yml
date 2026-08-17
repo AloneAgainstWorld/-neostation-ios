@@ -1,0 +1,59 @@
+name: Repair README banner on fix branch
+
+on:
+  push:
+    branches:
+      - agent/fix-readme-menu-banner
+    paths:
+      - '.github/workflows/repair-readme-banner-branch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate and re-encode banner
+        run: |
+          set -euxo pipefail
+          file assets/readme/neostation-ios-preview.png
+          sips -g pixelWidth -g pixelHeight -g format assets/readme/neostation-ios-preview.png
+          sips -s format jpeg -s formatOptions 90 assets/readme/neostation-ios-preview.png --out assets/readme/neostation-ios-preview.jpg
+          file assets/readme/neostation-ios-preview.jpg
+          sips -g pixelWidth -g pixelHeight -g format assets/readme/neostation-ios-preview.jpg
+          test -s assets/readme/neostation-ios-preview.jpg
+
+      - name: Update README and remove temporary workflows
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          text = p.read_text()
+          candidates = [
+              '<img src="https://raw.githubusercontent.com/TarbleFR/neostation-ios/main/assets/readme/neostation-ios-preview.png" alt="NeoStation iOS menu preview" width="100%" />',
+              '![NeoStation iOS Preview](assets/readme/neostation-ios-preview.png)',
+          ]
+          new = '<img src="assets/readme/neostation-ios-preview.jpg" alt="NeoStation iOS menu preview" width="100%" />'
+          for old in candidates:
+              if old in text:
+                  p.write_text(text.replace(old, new, 1))
+                  break
+          else:
+              raise SystemExit('Expected banner markup not found')
+          PY
+          rm -f .github/workflows/repair-readme-banner.yml
+          rm -f .github/workflows/repair-readme-banner-branch.yml
+
+      - name: Commit repaired banner
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md assets/readme/neostation-ios-preview.jpg .github/workflows
+          git commit -m "Repair README menu preview banner"
+          git push origin HEAD:agent/fix-readme-menu-banner
