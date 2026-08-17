@@ -1,0 +1,50 @@
+name: Step 8 redundant null cleanup
+
+on:
+  push:
+    branches:
+      - cleanup/remove-redundant-null-check
+    paths:
+      - '.github/workflows/cleanup-step8-null.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout cleanup branch
+        uses: actions/checkout@v7
+        with:
+          ref: cleanup/remove-redundant-null-check
+
+      - name: Remove analyzer-proven redundant null check
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('lib/screens/settings_screen/new_settings_options/directories_settings_content.dart')
+          text = path.read_text()
+          old = """        if (selected != null &&\n            configProvider.config.romFolders.contains(selected)) {\n"""
+          new = """        if (configProvider.config.romFolders.contains(selected)) {\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one redundant iOS null check, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+
+      - name: Verify only expected file changed
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = "lib/screens/settings_screen/new_settings_options/directories_settings_content.dart"
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
+          git commit -m "Remove redundant iOS ROM-folder null check"
+          git push origin HEAD:cleanup/remove-redundant-null-check
