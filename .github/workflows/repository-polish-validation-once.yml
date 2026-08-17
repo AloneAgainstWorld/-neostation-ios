@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - chore/repository-polish-20260818
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -36,11 +39,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          import sys
 
           root = Path('.')
 
-          # 1. Inventory every tracked top-level area visible in the checkout.
           top_dirs = sorted(p.name for p in root.iterdir() if p.is_dir() and p.name not in {'.git', '.dart_tool', 'build'})
           top_files = sorted(p.name for p in root.iterdir() if p.is_file())
           print('Top-level directories:', ', '.join(top_dirs))
@@ -50,7 +51,6 @@ jobs:
           missing = required_dirs - set(top_dirs)
           assert not missing, f'Missing required project directories: {sorted(missing)}'
 
-          # 2. Workspace package paths must all exist.
           pubspec = Path('pubspec.yaml').read_text(encoding='utf-8')
           assert 'version: 0.9.9+129' in pubspec
           workspace = re.search(r'workspace:\n((?:\s+- .*\n)+)', pubspec)
@@ -60,7 +60,6 @@ jobs:
               assert Path(package_path).is_dir(), f'Missing workspace package: {package_path}'
           print('Workspace packages verified:', len(package_paths))
 
-          # 3. No build artifacts/secrets should be tracked.
           forbidden_suffixes = {'.ipa', '.apk', '.aab'}
           forbidden_names = {'.env', '.DS_Store'}
           offenders = []
@@ -71,14 +70,12 @@ jobs:
                   offenders.append(str(p))
           assert not offenders, f'Forbidden generated/private files present: {offenders}'
 
-          # 4. This temporary validator must be the only remaining workflow.
           workflow_dir = Path('.github/workflows')
           workflows = sorted(p.name for p in workflow_dir.glob('*') if p.is_file()) if workflow_dir.exists() else []
           assert workflows == ['repository-polish-validation-once.yml'], f'Unexpected Actions remaining: {workflows}'
           assert not Path('.github/scripts/upstream_monthly_review.py').exists()
           assert not Path('.github/changelog-config.json').exists()
 
-          # 5. Public docs must describe the maintained iOS fork, not the old upstream platform matrix/support routes.
           readme = Path('README.md').read_text(encoding='utf-8')
           architecture = Path('ARCHITECTURE.md').read_text(encoding='utf-8')
           contributing = Path('CONTRIBUTING.md').read_text(encoding='utf-8')
@@ -102,7 +99,6 @@ jobs:
           assert 'GitHub Actions receives' not in env_example
           assert 'Main-menu music' in themes
 
-          # 6. Check relative Markdown links across permanent Markdown docs.
           md_files = [p for p in root.rglob('*.md') if '.git' not in p.parts and '.dart_tool' not in p.parts]
           link_re = re.compile(r'\[[^\]]*\]\(([^)]+)\)')
           broken = []
@@ -124,7 +120,6 @@ jobs:
           assert not broken, 'Broken relative Markdown links: ' + repr(broken[:20])
           print('Markdown links verified:', len(md_files), 'files')
 
-          # 7. Quick source/resource sanity checks relevant to README claims.
           image_utils = Path('lib/utils/image_utils.dart').read_text(encoding='utf-8')
           home_music = Path('lib/services/home_music_service.dart').read_text(encoding='utf-8')
           for ext in ('mp4', 'm4v', 'mov'):
