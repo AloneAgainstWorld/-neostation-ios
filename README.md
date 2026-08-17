@@ -9,7 +9,7 @@
 [![Issues](https://img.shields.io/github/issues/TarbleFR/neostation-ios)](https://github.com/TarbleFR/neostation-ios/issues)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2018%2B-blue)](https://github.com/TarbleFR/neostation-ios)
 
-![NeoStation iOS Preview](assets/readme/neostation-ios-preview.png)
+<img src="https://raw.githubusercontent.com/TarbleFR/neostation-ios/main/assets/readme/neostation-ios-preview.png" alt="NeoStation iOS menu preview" width="100%" />
 
 </div>
 
