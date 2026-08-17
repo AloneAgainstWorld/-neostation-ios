@@ -1,0 +1,142 @@
+name: Validate repository polish once
+
+on:
+  push:
+    branches:
+      - chore/repository-polish-20260818
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  audit:
+    name: Audit, analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Audit repository tree and documentation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          root = Path('.')
+
+          # 1. Inventory every tracked top-level area visible in the checkout.
+          top_dirs = sorted(p.name for p in root.iterdir() if p.is_dir() and p.name not in {'.git', '.dart_tool', 'build'})
+          top_files = sorted(p.name for p in root.iterdir() if p.is_file())
+          print('Top-level directories:', ', '.join(top_dirs))
+          print('Top-level files:', ', '.join(top_files))
+
+          required_dirs = {'assets', 'lib', 'packages', 'test'}
+          missing = required_dirs - set(top_dirs)
+          assert not missing, f'Missing required project directories: {sorted(missing)}'
+
+          # 2. Workspace package paths must all exist.
+          pubspec = Path('pubspec.yaml').read_text(encoding='utf-8')
+          assert 'version: 0.9.9+129' in pubspec
+          workspace = re.search(r'workspace:\n((?:\s+- .*\n)+)', pubspec)
+          assert workspace, 'Missing pubspec workspace block'
+          package_paths = [line.split('-', 1)[1].strip() for line in workspace.group(1).splitlines()]
+          for package_path in package_paths:
+              assert Path(package_path).is_dir(), f'Missing workspace package: {package_path}'
+          print('Workspace packages verified:', len(package_paths))
+
+          # 3. No build artifacts/secrets should be tracked.
+          forbidden_suffixes = {'.ipa', '.apk', '.aab'}
+          forbidden_names = {'.env', '.DS_Store'}
+          offenders = []
+          for p in root.rglob('*'):
+              if '.git' in p.parts or '.dart_tool' in p.parts or 'build' in p.parts:
+                  continue
+              if p.is_file() and (p.name in forbidden_names or p.suffix.lower() in forbidden_suffixes):
+                  offenders.append(str(p))
+          assert not offenders, f'Forbidden generated/private files present: {offenders}'
+
+          # 4. This temporary validator must be the only remaining workflow.
+          workflow_dir = Path('.github/workflows')
+          workflows = sorted(p.name for p in workflow_dir.glob('*') if p.is_file()) if workflow_dir.exists() else []
+          assert workflows == ['repository-polish-validation-once.yml'], f'Unexpected Actions remaining: {workflows}'
+          assert not Path('.github/scripts/upstream_monthly_review.py').exists()
+          assert not Path('.github/changelog-config.json').exists()
+
+          # 5. Public docs must describe the maintained iOS fork, not the old upstream platform matrix/support routes.
+          readme = Path('README.md').read_text(encoding='utf-8')
+          architecture = Path('ARCHITECTURE.md').read_text(encoding='utf-8')
+          contributing = Path('CONTRIBUTING.md').read_text(encoding='utf-8')
+          support = Path('.github/SUPPORT.md').read_text(encoding='utf-8')
+          security = Path('SECURITY.md').read_text(encoding='utf-8')
+          notice = Path('NOTICE.md').read_text(encoding='utf-8')
+          env_example = Path('.env.example').read_text(encoding='utf-8')
+          themes = Path('THEMES.md').read_text(encoding='utf-8')
+
+          assert 'iOS 18+' in readme
+          assert 'Custom main-menu backgrounds' in readme
+          assert 'Optional main-menu music' in readme
+          assert '--dart-define-from-file=.env' in readme
+          assert 'does not target web or iOS' not in architecture
+          assert 'iOS / iPadOS 18+' in architecture
+          assert 'iOS / iPadOS 18+' in contributing
+          assert 'TarbleFR/neostation-ios/issues' in support
+          assert 'misobadev/neostation-frontend/issues/new/choose' not in support
+          assert 'TarbleFR/neostation-ios/security/advisories/new' in security
+          assert 'GitHub Actions run' not in notice
+          assert 'GitHub Actions receives' not in env_example
+          assert 'Main-menu music' in themes
+
+          # 6. Check relative Markdown links across permanent Markdown docs.
+          md_files = [p for p in root.rglob('*.md') if '.git' not in p.parts and '.dart_tool' not in p.parts]
+          link_re = re.compile(r'\[[^\]]*\]\(([^)]+)\)')
+          broken = []
+          for doc in md_files:
+              text = doc.read_text(encoding='utf-8', errors='replace')
+              for target in link_re.findall(text):
+                  target = target.strip()
+                  if not target or target.startswith(('#', 'http://', 'https://', 'mailto:')):
+                      continue
+                  target = target.split('#', 1)[0]
+                  candidate = (doc.parent / target).resolve()
+                  try:
+                      candidate.relative_to(root.resolve())
+                  except ValueError:
+                      broken.append((str(doc), target, 'outside repository'))
+                      continue
+                  if not candidate.exists():
+                      broken.append((str(doc), target, 'missing'))
+          assert not broken, 'Broken relative Markdown links: ' + repr(broken[:20])
+          print('Markdown links verified:', len(md_files), 'files')
+
+          # 7. Quick source/resource sanity checks relevant to README claims.
+          image_utils = Path('lib/utils/image_utils.dart').read_text(encoding='utf-8')
+          home_music = Path('lib/services/home_music_service.dart').read_text(encoding='utf-8')
+          for ext in ('mp4', 'm4v', 'mov'):
+              assert f"'{ext}'" in image_utils
+          for ext in ('mp3', 'wav', 'ogg', 'flac'):
+              assert f"'{ext}'" in home_music
+
+          print('Repository polish audit passed.')
+          PY
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run Flutter tests
+        run: flutter test
