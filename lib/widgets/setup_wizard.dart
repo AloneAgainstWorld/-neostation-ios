@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -19,11 +20,14 @@ import 'package:neostation/services/neo_assets_service.dart';
 import 'package:neostation/providers/file_provider.dart';
 import 'package:neostation/services/esde_import_service.dart';
 import 'package:neostation/services/global_notification_service.dart';
+
 import '../providers/sqlite_config_provider.dart';
 import '../utils/gamepad_nav.dart';
+
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/l10n/ios_setup_locale.dart';
+
 import '../widgets/tv_directory_picker.dart';
 import '../widgets/folder_not_empty_dialog.dart';
 import '../models/secondary_display_state.dart';
@@ -102,9 +106,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   // moves up into the slot ES-DE would have occupied so the progress dots
   // match the steps the user actually walks through.
   int get _stepEsde => Platform.isIOS ? -1 : (Platform.isAndroid ? 4 : 3);
-  int get _stepArtPack => Platform.isAndroid
-      ? 5
-      : (Platform.isIOS ? 3 : 4);
+  int get _stepArtPack => Platform.isAndroid ? 5 : (Platform.isIOS ? 3 : 4);
 
   // iOS keeps the existing internal step indices to avoid touching the
   // established navigation logic, but its visible progress starts at Folder.
@@ -286,9 +288,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
   // Desktop: 0=UserData, 1=FolderSelect, 2=Scanning, 3=EsdeImport,
   //          4=ArtPack (5 steps)
   // iOS:     FolderSelect, Scanning, ArtPack (3 visible steps)
-  int get _totalSteps => Platform.isAndroid
-      ? 6
-      : (Platform.isIOS ? 3 : 5);
+  int get _totalSteps => Platform.isAndroid ? 6 : (Platform.isIOS ? 3 : 5);
 
   @override
   Widget build(BuildContext context) {
@@ -1868,7 +1868,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
       return Platform.isIOS
           ? (_selectedFolder != null
                 ? IosSetupLocale.continueLabel(context)
-                : IosSetupLocale.linkTitle(context))
+                : IosSetupLocale.linkAction(context))
           : AppLocale.selectFolder.getString(context);
     }
     if (_currentStep == _stepEsde) {
@@ -1884,7 +1884,9 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
       final canDownload =
           !neoAssets.hasActiveTheme && neoAssets.themes.isNotEmpty;
       return canDownload
-          ? AppLocale.wizardDownloadArtPack.getString(context)
+          ? (Platform.isIOS
+                ? IosSetupLocale.installAction(context)
+                : AppLocale.wizardDownloadArtPack.getString(context))
           : AppLocale.finish.getString(context);
     }
     return AppLocale.next.getString(context);
@@ -2053,7 +2055,7 @@ class _SetupWizardState extends State<SetupWizard> with WidgetsBindingObserver {
             AppNotification.showNotification(
               context,
               'Linked! If your games don\'t show up in a few seconds, '
-                  'relaunch NeoStation to see them.',
+              'relaunch NeoStation to see them.',
               type: NotificationType.info,
             );
           }
