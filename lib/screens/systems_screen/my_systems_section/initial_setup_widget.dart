@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:neostation/l10n/app_locale.dart';
+import 'package:neostation/l10n/ios_setup_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:provider/provider.dart';
 import 'package:neostation/responsive.dart';
@@ -31,15 +32,14 @@ class InitialSetupWidget extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Almost there',
+              IosSetupLocale.restartTitle(context),
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'RetroArch is linked. Relaunch NeoStation to see your '
-                  'synced games here.',
+              IosSetupLocale.restartDescription(context),
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
