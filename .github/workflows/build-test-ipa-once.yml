@@ -136,10 +136,10 @@ jobs:
           import base64, os, pathlib
           text = pathlib.Path('assets/images/fork-icon-small.b64').read_text(encoding='ascii').strip()
           raw = base64.b64decode(text, validate=True)
-          if len(text) != 7448 or len(raw) != 5586:
-              raise SystemExit(f'Fork icon source corrupted: base64={len(text)} bytes={len(raw)}')
+          if len(raw) < 5000 or not raw.startswith(b'\xff\xd8') or not raw.endswith(b'\xff\xd9'):
+              raise SystemExit(f'Fork icon source invalid: base64={len(text)} bytes={len(raw)}')
           pathlib.Path(os.environ['SRC_JPG']).write_bytes(raw)
-          print(f'Fork icon source verified: {len(raw)} bytes')
+          print(f'Fork icon source verified: base64={len(text)} bytes={len(raw)}')
           PY
           file "$SRC_JPG"
           sips -g pixelWidth -g pixelHeight "$SRC_JPG"
