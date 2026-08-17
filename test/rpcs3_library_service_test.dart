@@ -26,7 +26,7 @@ void main() {
     });
 
     test('parses RPCS3 games.yml scalar mapping', () {
-      final parsed = Rpcs3LibraryService.parseGamesYmlTextForTesting('''
+      final parsed = Rpcs3LibraryService.parseGamesYmlTextForTesting(r'''
 ---
 "BLUS12345": "/private/var/mobile/Game One.iso"
 NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
