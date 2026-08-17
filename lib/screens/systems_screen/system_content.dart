@@ -6,6 +6,7 @@ import 'package:flutter_localization/flutter_localization.dart';
 import 'package:provider/provider.dart';
 import 'package:neostation/providers/theme_provider.dart';
 import 'package:neostation/providers/sqlite_config_provider.dart';
+import 'package:neostation/services/home_music_service.dart';
 import 'package:neostation/widgets/shimmering_logo.dart';
 import 'my_systems_section/my_systems_grid.dart';
 import 'my_systems_section/initial_setup_widget.dart';
@@ -31,10 +32,12 @@ class _SystemContentState extends State<SystemContent> {
 
   DateTime? _splashShownAt;
   Timer? _releaseTimer;
+  bool? _lastHomeMusicActive;
 
   @override
   void dispose() {
     _releaseTimer?.cancel();
+    unawaited(HomeMusicService().setMainMenuActive(false));
     super.dispose();
   }
 
@@ -59,6 +62,20 @@ class _SystemContentState extends State<SystemContent> {
     return true;
   }
 
+  /// Keeps audio side effects outside build while still following route
+  /// visibility. A pushed game library leaves this widget mounted underneath,
+  /// so checking [ModalRoute.isCurrent] is what prevents ambience from leaking
+  /// beyond the main console-selection screen.
+  void _syncHomeMusic(bool active) {
+    if (_lastHomeMusicActive == active) return;
+    _lastHomeMusicActive = active;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted && active) return;
+      unawaited(HomeMusicService().setMainMenuActive(active));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer2<SqliteConfigProvider, ThemeProvider>(
@@ -73,6 +90,9 @@ class _SystemContentState extends State<SystemContent> {
 
         final showContent =
             !showSplash && configProvider.scanCompleted && !showInitialSetup;
+
+        final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        _syncHomeMusic(showContent && routeIsCurrent);
 
         final Widget phase;
         if (showSplash) {
