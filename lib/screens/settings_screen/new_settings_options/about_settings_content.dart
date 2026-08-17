@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/l10n/fork_credit_locale.dart';
+import 'package:neostation/l10n/fork_about_locale.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
@@ -73,7 +74,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _appVersion = 'v1.0.0';
+          _appVersion = 'v0.9.9';
         });
       }
     }
@@ -86,9 +87,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
     }
   }
 
-  int getItemCount() {
-    return 6;
-  }
+  int getItemCount() => 4;
 
   void selectItem(int index) {
     switch (index) {
@@ -99,15 +98,9 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
         _launchUrl('https://github.com/misobadev/neostation-frontend');
         break;
       case 2:
-        _launchUrl('https://ko-fi.com/neostation');
+        _launchUrl('https://www.patreon.com/cw/TarbleFR');
         break;
       case 3:
-        _launchUrl('https://www.patreon.com/cw/NeoStation');
-        break;
-      case 4:
-        _launchUrl('https://discord.gg/xE2kgKsRVq');
-        break;
-      case 5:
         _launchUrl('https://neostation.dev/');
         break;
     }
@@ -135,19 +128,22 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                     SizedBox(
                       width: 64.r,
                       height: 64.r,
-                      child: Image.asset(
-                        'assets/images/logo_transparent.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Icon(
-                          Symbols.games_rounded,
-                          size: 64.r,
-                          color: theme.colorScheme.primary,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14.r),
+                        child: Image.asset(
+                          'assets/images/fork-icon-valid.jpg',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Symbols.games_rounded,
+                            size: 64.r,
+                            color: theme.colorScheme.primary,
+                          ),
                         ),
                       ),
                     ),
                     SizedBox(height: 6.r),
                     Text(
-                      'NeoStation',
+                      'NeoStation Fork',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         fontSize: 12.r,
@@ -155,7 +151,7 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                     ),
                     SizedBox(height: 1.h),
                     Text(
-                      "Beta $_appVersion",
+                      'Beta ${_appVersion.isNotEmpty ? _appVersion : 'v0.9.9'}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(
                           alpha: 0.6,
@@ -205,10 +201,10 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                       ),
                       SizedBox(height: 8.h),
                       _buildInfoCard(
-                        icon: Symbols.coffee_rounded,
-                        title: AppLocale.supportOnKofi.getString(context),
-                        value: 'ko-fi.com/neostation',
-                        url: 'https://ko-fi.com/neostation',
+                        icon: Symbols.favorite_rounded,
+                        title: ForkAboutLocale.patreonTitle(context),
+                        value: 'patreon.com/cw/TarbleFR',
+                        url: 'https://www.patreon.com/cw/TarbleFR',
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
@@ -216,36 +212,14 @@ class AboutSettingsContentState extends State<AboutSettingsContent> {
                       ),
                       SizedBox(height: 8.h),
                       _buildInfoCard(
-                        icon: Symbols.favorite_rounded,
-                        title: AppLocale.supportOnPatreon.getString(context),
-                        value: 'patreon.com/NeoStation',
-                        url: 'https://www.patreon.com/cw/NeoStation',
-                        theme: theme,
-                        isFocused:
-                            widget.isContentFocused &&
-                            widget.selectedContentIndex == 3,
-                      ),
-                      SizedBox(height: 8.h),
-                      _buildInfoCard(
-                        icon: Symbols.chat_bubble_outline_rounded,
-                        title: AppLocale.joinCommunity.getString(context),
-                        value: 'discord.gg/xE2kgKsRVq',
-                        url: 'https://discord.gg/xE2kgKsRVq',
-                        theme: theme,
-                        isFocused:
-                            widget.isContentFocused &&
-                            widget.selectedContentIndex == 4,
-                      ),
-                      SizedBox(height: 8.h),
-                      _buildInfoCard(
                         icon: Symbols.language_rounded,
-                        title: AppLocale.visitWebsite.getString(context),
-                        value: 'neostation.dev',
+                        title: ForkAboutLocale.upstreamWebsiteTitle(context),
+                        value: ForkAboutLocale.upstreamWebsiteDescription(context),
                         url: 'https://neostation.dev/',
                         theme: theme,
                         isFocused:
                             widget.isContentFocused &&
-                            widget.selectedContentIndex == 5,
+                            widget.selectedContentIndex == 3,
                       ),
                     ],
                   ),
