@@ -1,0 +1,101 @@
+name: Validate RPCS3 Shortcut Build 140 once
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'feature/rpcs3-shortcut-switch-control-build140'
+    runs-on: macos-15
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply Build 140 migration
+        run: python3 tools/apply_build140.py
+
+      - name: Validate and sign RPCS3 Shortcut
+        shell: bash
+        run: |
+          set -euo pipefail
+          plutil -lint tools/rpcs3_shortcut_source.plist
+          mkdir -p assets/shortcuts
+          if ! command -v shortcuts >/dev/null 2>&1; then
+            echo 'Apple shortcuts CLI is unavailable on this runner.' >&2
+            exit 1
+          fi
+          shortcuts sign \
+            --mode anyone \
+            --input-path tools/rpcs3_shortcut_source.plist \
+            --output-path 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
+          test -s 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
+          echo "Signed Shortcut bytes: $(stat -f%z 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut')"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Format changed Dart sources
+        run: |
+          dart format \
+            lib/services/rpcs3_launch_service.dart \
+            lib/services/ios_shortcut_jit_launch_service.dart \
+            lib/services/game/game_launch_service.dart \
+            lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
+            packages/external_folder_access/lib/external_folder_access.dart \
+            test/rpcs3_stage6_test.dart \
+            test/rpcs3_stage7_test.dart
+
+      - name: Verify Build 138 and 139 regressions remain intact
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R "Duration(seconds: 2)" lib/screens/game_screen/my_games_list.dart
+          grep -R "paused: true" lib/services/sfx_service.dart
+          grep -R "volume: 0.0" lib/services/sfx_service.dart
+          test ! -e assets/data/rpcs3_stikdebug_launch.js
+          grep -R "buildJitRequestUrl" packages/external_folder_access/lib/external_folder_access.dart
+          grep -R "buildJitRequestUrl" packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift
+          grep -R "NeoStation - RPCS3 Start" lib/services/ios_shortcut_jit_launch_service.dart
+          grep -R "Set Switch Control Switch State" tools/rpcs3_shortcut_source.plist
+
+      - name: Flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Focused RPCS3 and audio/video regression tests
+        run: |
+          flutter test test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
+          if test -f test/video_preview_lifecycle_test.dart; then flutter test test/video_preview_lifecycle_test.dart; fi
+          if test -f test/sfx_service_test.dart; then flutter test test/sfx_service_test.dart; fi
+          if test -f test/audio_policy_service_test.dart; then flutter test test/audio_policy_service_test.dart; fi
+
+      - name: Full Flutter test suite
+        run: flutter test
+
+      - name: Commit validated Build 140 source and remove temporary tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'NeoStation CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm tools/apply_build140.py .github/workflows/validate-rpcs3-shortcut-build140-once.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 1
+          fi
+          git commit -m 'Implement RPCS3 Shortcut Switch Control launch'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
