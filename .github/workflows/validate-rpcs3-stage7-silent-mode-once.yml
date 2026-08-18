@@ -38,8 +38,9 @@ jobs:
           python3 tools/rpcs3_stage7_patch.py
           python3 - <<'PY'
           from pathlib import Path
-          file = Path('lib/services/rpcs3_launch_service.dart')
-          text = file.read_text(encoding='utf-8')
+
+          launch_file = Path('lib/services/rpcs3_launch_service.dart')
+          text = launch_file.read_text(encoding='utf-8')
           marker = "  static const int currentBootGameOffset = 0x36224;\n"
           replacement = marker + (
               "\n  // Compatibility aliases retained for existing diagnostics/tests.\n"
@@ -50,7 +51,80 @@ jobs:
               if marker not in text:
                   raise SystemExit('RPCS3 compatibility alias marker missing')
               text = text.replace(marker, replacement, 1)
-          file.write_text(text, encoding='utf-8')
+
+          old_tail = """        .replaceAll(
+                    '__NEOSTATION_SUPPORTED_CORES_JSON__',
+                    jsonEncode(supportedCoreBootOffsets),
+                  );
+          """
+          new_tail = """        .replaceAll(
+                    '__NEOSTATION_SUPPORTED_CORES_JSON__',
+                    jsonEncode(supportedCoreBootOffsets),
+                  )
+                  .replaceAll(
+                    '__NEOSTATION_CORE_UUID_JSON__',
+                    jsonEncode(currentCoreUuid),
+                  )
+                  .replaceAll(
+                    '__NEOSTATION_BOOT_OFFSET_HEX__',
+                    currentBootGameOffset.toRadixString(16),
+                  );
+          """
+          if '__NEOSTATION_CORE_UUID_JSON__' not in text:
+              if old_tail not in text:
+                  # The helper output has two-space indentation before format.
+                  old_tail = """        .replaceAll(
+                    '__NEOSTATION_SUPPORTED_CORES_JSON__',
+                    jsonEncode(supportedCoreBootOffsets),
+                  );
+          """
+              if old_tail not in text:
+                  raise SystemExit('RPCS3 buildScript tail marker missing')
+              text = text.replace(old_tail, new_tail, 1)
+          launch_file.write_text(text, encoding='utf-8')
+
+          # Source-level regression test avoids loading flutter_soloud's native
+          # Linux FFI library while still proving the Theme ordering/session fix.
+          Path('test/home_music_silent_mode_test.dart').write_text(
+              """import 'dart:io';
+
+          import 'package:flutter_test/flutter_test.dart';
+
+          void main() {
+            test('Theme commits menu visibility before audio initialization', () {
+              final homeMusic = File(
+                'lib/services/home_music_service.dart',
+              ).readAsStringSync();
+              final assignment = homeMusic.indexOf('_mainMenuActive = value;');
+              final initialization = homeMusic.indexOf(
+                'if (!_initialized)',
+                assignment,
+              );
+              expect(assignment, greaterThanOrEqualTo(0));
+              expect(initialization, greaterThan(assignment));
+              expect(
+                homeMusic,
+                contains('await _restoreSilentModeAudioSession();'),
+              );
+
+              final themeSettings = File(
+                'lib/screens/settings_screen/new_settings_options/themes_settings_content.dart',
+              ).readAsStringSync();
+              expect(
+                themeSettings,
+                contains('homeMusic.setMainMenuActive(false)'),
+              );
+
+              final sfx = File('lib/services/sfx_service.dart').readAsStringSync();
+              expect(
+                sfx,
+                contains('await _restoreSilentModeAudioSession();'),
+              );
+            });
+          }
+          """,
+              encoding='utf-8',
+          )
           PY
 
       - name: Format changed Dart files
