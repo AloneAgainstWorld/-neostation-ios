@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/l10n/rpcs3_library_locale.dart';
@@ -15,6 +16,7 @@ import 'package:neostation/services/melonx_library_service.dart';
 import 'package:neostation/services/rpcs3_library_service.dart';
 import 'package:neostation/services/rpcs3_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
+
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
 import '../../models/emulator_model.dart';
@@ -165,7 +167,13 @@ class GameLaunchService {
             'ios_rpcs3_stikdebug',
           );
           await FavoritesService.recordGamePlayed(game);
-          final launched = await Rpcs3LaunchService.launchTitle(titleId);
+          final linkedGame = Rpcs3LibraryService.cachedGameForTitleId(titleId);
+          final launched = await Rpcs3LaunchService.launchTitle(
+            titleId,
+            displayTitle: game.name,
+            sourcePath: linkedGame?.sourcePath,
+            sourceKind: linkedGame?.sourceKind,
+          );
           if (launched) return GameLaunchResult.success();
           if (!context.mounted) return GameLaunchResult.failure('', '');
           return GameLaunchResult.failure(

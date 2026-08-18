@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
@@ -8,8 +9,11 @@ import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:neostation/services/saf_directory_service.dart';
 import 'package:neostation/services/sfx_service.dart';
+
 import '../repositories/game_repository.dart';
 import '../models/game_model.dart';
+
+import 'package:neostation/services/audio_policy_service.dart';
 
 /// Service responsible for background music playback, metadata extraction, and
 /// visualization data.
@@ -231,6 +235,9 @@ class MusicPlayerService extends ChangeNotifier {
     // native engine, so a subsequent music init() will find it already up.
     try {
       await SfxService().reinitializeAfterEngineRestart();
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'music-player-engine-resumed',
+      );
     } catch (e) {
       _logger.w("Error reloading SFX after resume: $e");
     }
@@ -278,6 +285,10 @@ class MusicPlayerService extends ChangeNotifier {
       if (!_soloud!.isInitialized) {
         await _soloud!.init();
       }
+
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'music-player-engine-initialized',
+      );
 
       _soloud!.setVisualizationEnabled(true);
       _soloud!.setFftSmoothing(0.8);
@@ -617,8 +628,12 @@ class MusicPlayerService extends ChangeNotifier {
 
             await Future.delayed(const Duration(milliseconds: 100));
 
+            await AudioPolicyService().prepareForPlayback('music-player');
             _logger.d("Loading audio source: $effectivePath");
             _currentSource = await SoLoud.instance.loadFile(effectivePath);
+            await AudioPolicyService().ensureSilentCompatibleSession(
+              reason: 'music-player-source-loaded',
+            );
 
             if (_currentSource == null) {
               throw Exception("SoLoud failed to load audio file");
@@ -629,6 +644,7 @@ class MusicPlayerService extends ChangeNotifier {
               _currentSource!,
               volume: _isDucked ? _volume * 0.5 : _volume,
             );
+            await AudioPolicyService().afterPlaybackStarted('music-player');
 
             _isPlaying = true;
 
@@ -746,7 +762,9 @@ class MusicPlayerService extends ChangeNotifier {
   /// Resumes the active audio playback.
   Future<void> resume() async {
     if (!_isInitialized || _currentHandle == null) return;
+    await AudioPolicyService().prepareForPlayback('music-player-resume');
     SoLoud.instance.setPause(_currentHandle!, false);
+    await AudioPolicyService().afterPlaybackStarted('music-player-resume');
     _isPlaying = true;
     notifyListeners();
   }

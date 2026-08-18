@@ -14,9 +14,11 @@ import 'package:neostation/widgets/shimmering_logo.dart';
 import 'package:neostation/providers/retro_achievements_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:provider/provider.dart';
+
 import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
+
 import '../../services/game_service.dart';
 import '../../utils/game_launch_utils.dart';
 import '../../services/music_player_service.dart';
@@ -41,7 +43,9 @@ import 'my_games_carousel.dart';
 import 'game_list_view.dart';
 import 'music/music_list.dart';
 import 'music/music_player.dart';
+
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+
 import '../../providers/system_background_provider.dart';
 import '../../models/secondary_display_state.dart';
 import '../../widgets/game_view_mode_dropdown.dart';
@@ -51,9 +55,12 @@ import '../../widgets/letter_indicator.dart';
 import '../../constants/system_folder_names.dart';
 import '../../utils/artwork_cache.dart';
 import '../../utils/game_list_update.dart';
+
 import 'package:neostation/themes/chrome_surface.dart';
+
 import '../../themes/corner_radii.dart';
 
+import 'package:neostation/services/audio_policy_service.dart';
 part 'my_games_list/gamepad_nav.dart';
 part 'my_games_list/favorites_reorder.dart';
 part 'my_games_list/data_loading.dart';
@@ -136,9 +143,8 @@ class _SystemGamesListState extends State<SystemGamesList> {
   Timer? _videoTimer;
   bool _showVideo = false;
   bool _isVideoLoading = false;
-  static const Duration _videoDelay = Duration(
-    milliseconds: 1500,
-  ); // Debounce for video playback.
+  int _videoGeneration = 0;
+  Future<void> _videoTransition = Future<void>.value();
   bool _lastShowInfo = false; // Memoizes 'showGameInfo' config state.
   String? _lastGameViewMode; // Memoizes 'gameViewMode' config state.
   bool _isGameLaunching =

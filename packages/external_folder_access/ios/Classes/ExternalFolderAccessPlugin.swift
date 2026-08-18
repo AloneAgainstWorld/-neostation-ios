@@ -113,6 +113,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             openRawUrl(call: call, result: result)
         case "configureAudioSessionForSilentMode":
             configureAudioSessionForSilentMode(result: result)
+        case "openJitRequest":
+            openJitRequest(call: call, result: result)
         case "openUrlWithDelayedRetry":
             openUrlWithDelayedRetry(call: call, result: result)
         case "openUrlAfterJitPreflight":
@@ -453,6 +455,79 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             // and the native retry was scheduled. Do not keep Flutter waiting
             // while NeoStation is in the background.
             result(true)
+        }
+    }
+
+    // MARK: - Immediate StikDebug request
+
+    private func openJitRequest(
+        call: FlutterMethodCall,
+        result: @escaping FlutterResult
+    ) {
+        guard let args = call.arguments as? [String: Any],
+            let targetBaseBundleId = args["targetBaseBundleId"] as? String,
+            !targetBaseBundleId.isEmpty
+        else {
+            result(FlutterError(
+                code: "INVALID_ARGS",
+                message: "openJitRequest requires targetBaseBundleId",
+                details: nil
+            ))
+            return
+        }
+
+        let scriptName = ((args["scriptName"] as? String) ?? "universal.js")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let debugFileName = Self.safeDebugFileName(
+            (args["debugFileName"] as? String) ?? "jit_request_debug.txt"
+        )
+        let suffix = Self.currentSideloadBundleSuffix()
+        let targetBundleId = (suffix?.isEmpty == false)
+            ? "\(targetBaseBundleId).\(suffix!)"
+            : targetBaseBundleId
+
+        var components = URLComponents()
+        components.scheme = "stikjit"
+        components.host = "enable-jit"
+        components.queryItems = [
+            URLQueryItem(name: "bundle-id", value: targetBundleId),
+            URLQueryItem(name: "script-name", value: scriptName),
+        ]
+        if let scriptData = args["scriptData"] as? String,
+            !scriptData.isEmpty
+        {
+            components.queryItems?.append(
+                URLQueryItem(name: "script-data", value: scriptData)
+            )
+        }
+
+        guard let url = components.url else {
+            result(FlutterError(
+                code: "INVALID_JIT_URL",
+                message: "Could not build StikDebug request URL",
+                details: nil
+            ))
+            return
+        }
+
+        Self.writeLaunchDebug(
+            fileName: debugFileName,
+            replace: true,
+            message: "STATE: JIT_REQUEST\n"
+                + "Application state: \(Self.applicationStateName())\n"
+                + "Target base bundle: \(targetBaseBundleId)\n"
+                + "Target effective bundle: \(targetBundleId)\n"
+                + "Script: \(scriptName)\n"
+                + "URL: \(url.absoluteString)"
+        )
+
+        UIApplication.shared.open(url, options: [:]) { opened in
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: opened ? "STATE: JIT_REQUEST_OPENED" : "STATE: JIT_REQUEST_FAILED"
+            )
+            result(opened)
         }
     }
 

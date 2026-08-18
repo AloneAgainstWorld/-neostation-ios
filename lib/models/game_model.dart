@@ -172,48 +172,59 @@ class GameModel {
     return !syntheticNames.contains(normalized);
   }
 
-  factory GameModel.fromDatabaseModel(DatabaseGameModel db) {
-    final scrapedName = db.screenscraperRealName?.trim();
+  /// Resolves names from an existing database row, including rows created by
+  /// older RPCS3 builds whose ScreenScraper value was only the Title ID.
+  static ({String displayName, String realName, bool hasMeaningfulScrapedName})
+  resolveDatabaseNamesForDisplay(DatabaseGameModel db) {
     final isRpcs3Virtual = db.romPath.toLowerCase().startsWith(
       'rpcs3-library://',
     );
+    if (!isRpcs3Virtual) {
+      final name = db.titleName ?? db.realName ?? db.filename;
+      return (
+        displayName: name,
+        realName: db.realName ?? db.filename,
+        hasMeaningfulScrapedName:
+            db.screenscraperRealName?.trim().isNotEmpty ?? false,
+      );
+    }
 
-    final meaningfulScrapedName =
-        isRpcs3Virtual &&
-            isMeaningfulRpcs3MetadataNameForTesting(
-              scrapedName,
-              titleId: db.titleId,
-              filename: db.filename,
-            )
-        ? scrapedName
-        : null;
-    final meaningfulRealName =
-        isRpcs3Virtual &&
-            isMeaningfulRpcs3MetadataNameForTesting(
-              db.realName,
-              titleId: db.titleId,
-              filename: db.filename,
-            )
-        ? db.realName?.trim()
-        : null;
+    final scraped = db.screenscraperRealName?.trim();
+    final realName = db.realName?.trim();
     final localTitle = db.titleName?.trim();
+    final meaningfulScraped = isMeaningfulRpcs3MetadataNameForTesting(
+      scraped,
+      titleId: db.titleId,
+      filename: db.filename,
+    );
+    final meaningfulReal = isMeaningfulRpcs3MetadataNameForTesting(
+      realName,
+      titleId: db.titleId,
+      filename: db.filename,
+    );
+    final resolved =
+        (meaningfulScraped ? scraped : null) ??
+        (meaningfulReal ? realName : null) ??
+        ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
+        db.filename;
+    final resolvedReal =
+        (meaningfulReal ? realName : null) ??
+        ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
+        db.filename;
+    return (
+      displayName: resolved!,
+      realName: resolvedReal!,
+      hasMeaningfulScrapedName: meaningfulScraped,
+    );
+  }
 
-    final displayName = isRpcs3Virtual
-        ? meaningfulScrapedName ??
-              meaningfulRealName ??
-              ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
-              db.filename
-        : db.titleName ?? db.realName ?? db.filename;
-    final resolvedRealName = isRpcs3Virtual
-        ? meaningfulRealName ??
-              ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
-              db.filename
-        : db.realName ?? db.filename;
+  factory GameModel.fromDatabaseModel(DatabaseGameModel db) {
+    final resolvedNames = resolveDatabaseNamesForDisplay(db);
 
     return GameModel(
       romname: db.romname,
-      realname: resolvedRealName!,
-      name: displayName!,
+      realname: resolvedNames.realName,
+      name: resolvedNames.displayName,
       descriptions: db.descriptions,
       year: db.year ?? '',
       developer: db.developer ?? '',

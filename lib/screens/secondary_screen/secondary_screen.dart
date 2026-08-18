@@ -1,14 +1,18 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+
 import '../../l10n/app_locale.dart';
+
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/services/secondary_apps_service.dart';
 import 'package:video_player/video_player.dart';
+
 import '../../models/config_model.dart';
 import '../../models/secondary_achievement_item.dart';
 import '../../models/secondary_display_state.dart';
@@ -22,6 +26,8 @@ import 'widgets/achievement_comments.dart';
 import 'widgets/achievement_panel.dart';
 import 'widgets/app_dock.dart';
 import 'widgets/now_playing_panel.dart';
+
+import 'package:neostation/services/audio_policy_service.dart';
 
 class SecondaryScreen extends StatefulWidget {
   const SecondaryScreen({super.key, this.initialThemeName});
@@ -554,6 +560,9 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
       await controller.initialize();
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'secondary-preview-video-initialized',
+      );
       if (!mounted || gen != _videoGeneration) {
         await controller.dispose();
         return;
@@ -565,6 +574,9 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
 
       await controller.setLooping(true);
       await controller.play();
+      await AudioPolicyService().afterPlaybackStarted(
+        'secondary-preview-video',
+      );
 
       if (!mounted || gen != _videoGeneration) {
         await controller.dispose();

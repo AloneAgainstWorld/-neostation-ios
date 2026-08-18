@@ -144,6 +144,12 @@ class Rpcs3LibraryService {
   static bool get hasSyncedLibrary => _syncCompleted;
   static int get syncedGameCount => _cache?.length ?? 0;
 
+  static Rpcs3LibraryGame? cachedGameForTitleId(String? titleId) {
+    final normalized = titleId?.trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) return null;
+    return _cache?[normalized];
+  }
+
   static bool isVirtualLibraryPath(String romPath) {
     final uri = Uri.tryParse(romPath);
     return uri != null &&
@@ -1181,7 +1187,10 @@ class Rpcs3LibraryService {
                 title_id = CASE
                   WHEN title_id IS NULL OR title_id = '' THEN ? ELSE title_id END,
                 title_name = CASE
-                  WHEN title_name IS NULL OR title_name = '' THEN ? ELSE title_name END,
+                  WHEN title_name IS NULL OR title_name = ''
+                    OR UPPER(TRIM(title_name)) = UPPER(TRIM(COALESCE(title_id, '')))
+                    OR UPPER(TRIM(title_name)) = UPPER(TRIM(filename))
+                  THEN ? ELSE title_name END,
                 updated_at = datetime('now')
               WHERE rom_path = ?
               ''',
@@ -1228,6 +1237,29 @@ class Rpcs3LibraryService {
           ],
         );
 
+        await txn.rawUpdate(
+          '''
+          UPDATE user_screenscraper_metadata
+          SET real_name = NULL
+          WHERE app_system_id = ?
+            AND filename IN (?, ?)
+            AND real_name IS NOT NULL
+            AND (
+              UPPER(TRIM(real_name)) = UPPER(TRIM(?))
+              OR UPPER(TRIM(real_name)) = UPPER(TRIM(?))
+              OR UPPER(TRIM(real_name)) = UPPER(TRIM(?))
+            )
+          ''',
+          <Object?>[
+            systemId,
+            syntheticFilename,
+            '${game.titleId}.rpcs3',
+            game.titleId,
+            syntheticFilename,
+            '${game.titleId}.rpcs3',
+          ],
+        );
+
         if (game.iconPath != null) {
           artwork.add((filename: syntheticFilename, iconPath: game.iconPath!));
         }
@@ -1267,6 +1299,8 @@ class Rpcs3LibraryService {
       });
     }
 
+    await _repairPersistedRpcs3Names(games, systemId);
+
     final artworkFiles = await _writeArtwork(artwork);
     final countRows = await db.rawQuery(
       'SELECT COUNT(*) AS count FROM user_roms WHERE app_system_id = ?',
@@ -1288,6 +1322,137 @@ class Rpcs3LibraryService {
       removedRows: removedRows,
       totalPs3Rows: totalPs3Rows,
     );
+  }
+
+  static Future<void> _repairPersistedRpcs3Names(
+    List<Rpcs3LibraryGame> games,
+    String systemId,
+  ) async {
+    if (games.isEmpty) return;
+
+    final db = await SqliteService.getDatabase();
+    final romInfo = await db.rawQuery('PRAGMA table_info(user_roms)');
+    final romColumns = romInfo
+        .map((row) => row['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    final metadataInfo = await db.rawQuery(
+      'PRAGMA table_info(user_screenscraper_metadata)',
+    );
+    final metadataColumns = metadataInfo
+        .map((row) => row['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet();
+
+    final romRepairColumns = <String>[
+      for (final column in const <String>[
+        'real_name',
+        'ss_real_name',
+        'game_display_name',
+      ])
+        if (romColumns.contains(column)) column,
+    ];
+    final metadataRepairColumns = <String>[
+      for (final column in const <String>[
+        'real_name',
+        'ss_real_name',
+        'game_display_name',
+      ])
+        if (metadataColumns.contains(column)) column,
+    ];
+    final metadataHasFilename = metadataColumns.contains('filename');
+    final metadataHasSystem = metadataColumns.contains('app_system_id');
+
+    var repairedValues = 0;
+    await db.transaction((txn) async {
+      for (final game in games) {
+        final titleId = game.titleId.trim().toUpperCase();
+        final title = game.title.trim();
+        if (titleId.isEmpty || title.isEmpty) continue;
+        final normalizedTitle = title.toUpperCase();
+        if (normalizedTitle == titleId || normalizedTitle == '$titleId.RPCS3') {
+          continue;
+        }
+
+        // Always refresh the authoritative local title. This migrates rows
+        // created by earlier builds where title_name was only the serial.
+        repairedValues += await txn.rawUpdate(
+          '''
+          UPDATE user_roms
+          SET title_name = ?, updated_at = datetime('now')
+          WHERE app_system_id = ?
+            AND (
+              UPPER(TRIM(COALESCE(title_id, ''))) = ?
+              OR UPPER(TRIM(filename)) IN (?, ?)
+            )
+            AND (
+              title_name IS NULL
+              OR TRIM(title_name) = ''
+              OR UPPER(TRIM(title_name)) IN (?, ?)
+            )
+          ''',
+          <Object?>[
+            title,
+            systemId,
+            titleId,
+            titleId,
+            '$titleId.RPCS3',
+            titleId,
+            '$titleId.RPCS3',
+          ],
+        );
+
+        // Some historical databases carried presentation fields directly on
+        // user_roms. Only clear values that normalize exactly to the serial.
+        for (final column in romRepairColumns) {
+          repairedValues += await txn.rawUpdate(
+            '''
+            UPDATE user_roms
+            SET $column = NULL, updated_at = datetime('now')
+            WHERE app_system_id = ?
+              AND (
+                UPPER(TRIM(COALESCE(title_id, ''))) = ?
+                OR UPPER(TRIM(filename)) IN (?, ?)
+              )
+              AND UPPER(
+                REPLACE(TRIM(COALESCE($column, '')), '.RPCS3', '')
+              ) = ?
+            ''',
+            <Object?>[systemId, titleId, titleId, '$titleId.RPCS3', titleId],
+          );
+        }
+
+        // Current ScreenScraper metadata is stored in a separate table. Query
+        // its schema first because older installations may expose only a subset
+        // of these columns.
+        if (!metadataHasFilename) continue;
+        for (final column in metadataRepairColumns) {
+          final systemClause = metadataHasSystem ? 'AND app_system_id = ?' : '';
+          final arguments = <Object?>[
+            titleId,
+            '$titleId.RPCS3',
+            if (metadataHasSystem) systemId,
+            titleId,
+          ];
+          repairedValues += await txn.rawUpdate('''
+            UPDATE user_screenscraper_metadata
+            SET $column = NULL
+            WHERE UPPER(TRIM(filename)) IN (?, ?)
+              $systemClause
+              AND UPPER(
+                REPLACE(TRIM(COALESCE($column, '')), '.RPCS3', '')
+              ) = ?
+            ''', arguments);
+        }
+      }
+    });
+
+    if (repairedValues > 0) {
+      _log.i(
+        'Rpcs3LibraryService: repaired $repairedValues legacy synthetic '
+        'metadata value(s).',
+      );
+    }
   }
 
   static Future<int> _writeArtwork(
@@ -1337,8 +1502,9 @@ class Rpcs3LibraryService {
         }
         if (hasExisting) continue;
 
-        await File(path.join(directory.path, '$mediaKey.$extension'))
-            .writeAsBytes(bytes, flush: true);
+        await File(
+          path.join(directory.path, '$mediaKey.$extension'),
+        ).writeAsBytes(bytes, flush: true);
         written++;
       }
     }

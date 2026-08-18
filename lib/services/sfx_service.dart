@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:external_folder_access/external_folder_access.dart';
+import 'package:neostation/services/audio_policy_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -44,6 +44,10 @@ class SfxService {
 
   /// Cache of pre-loaded [AudioSource] objects for low-latency playback.
   final Map<String, AudioSource> _sources = {};
+
+  /// Handles of currently active short UI sounds. Keeping them lets a policy
+  /// change or engine teardown silence voices that already started.
+  final List<SoundHandle> _activeHandles = <SoundHandle>[];
 
   bool _isInitialized = false;
   bool _isInitializing = false;
@@ -89,8 +93,9 @@ class SfxService {
         // directory isn't fully ready before the first loadAsset() call.
         try {
           final tempDir = await getTemporaryDirectory();
-          await Directory('${tempDir.path}/SoLoudLoader-Temp-Files')
-              .create(recursive: true);
+          await Directory(
+            '${tempDir.path}/SoLoudLoader-Temp-Files',
+          ).create(recursive: true);
         } catch (_) {}
         await SoLoud.instance.init();
       }
@@ -99,7 +104,9 @@ class SfxService {
       // ignores the hardware Silent switch. Re-apply NeoStation's intended
       // non-primary/ambient category after engine initialization so UI
       // navigation sounds follow the iPhone Ring/Silent setting.
-      await _restoreSilentModeAudioSession();
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'sfx-engine-initialized',
+      );
 
       final allPaths = [..._navSounds, _enterSound, _backSound];
       for (final path in allPaths) {
@@ -130,7 +137,9 @@ class SfxService {
       }
 
       // Asset loading can make the backend reactivate a non-ambient category.
-      await _restoreSilentModeAudioSession();
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'sfx-assets-loaded',
+      );
       _isInitialized = true;
       _log.i(
         '[SfxService] Ready. ${_sources.length}/${allPaths.length} sounds loaded.',
@@ -152,6 +161,7 @@ class SfxService {
   /// stale handles and mark uninitialized; assets reload on the next
   /// [init]/playback call.
   void handleEngineTornDown() {
+    _activeHandles.clear();
     _sources.clear();
     _isInitialized = false;
     _isInitializing = false;
@@ -169,6 +179,7 @@ class SfxService {
   ///
   /// Note: This does NOT shut down the shared [SoLoud] engine.
   Future<void> dispose() async {
+    await stopAllSounds();
     for (final source in _sources.values) {
       try {
         await SoLoud.instance.disposeSource(source);
@@ -225,7 +236,26 @@ class SfxService {
   /// Globally enables or disables SFX playback.
   void setEnabled(bool value) {
     _enabled = value;
+    if (!value) unawaited(stopAllSounds());
     _log.d('[SfxService] SFX ${value ? 'enabled' : 'disabled'}');
+  }
+
+  /// Stops every UI voice that is still valid without changing the user's
+  /// configured SFX volume or enabled preference.
+  Future<void> stopAllSounds() async {
+    if (_activeHandles.isEmpty || !SoLoud.instance.isInitialized) {
+      _activeHandles.clear();
+      return;
+    }
+    final handles = List<SoundHandle>.from(_activeHandles);
+    _activeHandles.clear();
+    for (final handle in handles) {
+      try {
+        if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+          await SoLoud.instance.stop(handle);
+        }
+      } catch (_) {}
+    }
   }
 
   /// Validates if a playback request should proceed based on the debounce threshold.
@@ -252,20 +282,15 @@ class SfxService {
       return;
     }
     try {
-      // Another shared-engine client may have changed AVAudioSession since SFX
-      // initialization. Reassert `.ambient` immediately before every UI sound.
-      await _restoreSilentModeAudioSession();
-      SoLoud.instance.play(source, volume: _volume);
+      await AudioPolicyService().prepareForPlayback('sfx');
+      final handle = SoLoud.instance.play(source, volume: _volume);
+      _activeHandles.add(handle);
+      _activeHandles.removeWhere(
+        (candidate) => !SoLoud.instance.getIsValidVoiceHandle(candidate),
+      );
+      await AudioPolicyService().afterPlaybackStarted('sfx');
     } catch (e) {
       _log.w('[SfxService] Playback error for $path: $e');
-    }
-  }
-
-  Future<void> _restoreSilentModeAudioSession() async {
-    try {
-      await ExternalFolderAccess.configureAudioSessionForSilentMode();
-    } catch (error) {
-      _log.w('[SfxService] Could not restore iOS silent-mode session: $error');
     }
   }
 

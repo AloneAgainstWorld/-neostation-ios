@@ -124,6 +124,28 @@ class ExternalFolderAccess {
     }
   }
 
+  /// Opens one StikDebug `enable-jit` request immediately while NeoStation is
+  /// foregrounded. Unlike the legacy preflight helper, this method schedules no
+  /// UIApplication work after NeoStation is backgrounded.
+  static Future<bool?> openJitRequest({
+    required String targetBaseBundleId,
+    String scriptName = 'universal.js',
+    String? scriptDataBase64Url,
+    String debugFileName = 'jit_request_debug.txt',
+  }) async {
+    if (!Platform.isIOS) return null;
+    try {
+      return await _channel.invokeMethod<bool>('openJitRequest', {
+        'targetBaseBundleId': targetBaseBundleId,
+        'scriptName': scriptName,
+        if (scriptDataBase64Url != null) 'scriptData': scriptDataBase64Url,
+        'debugFileName': debugFileName,
+      });
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// Opens [url] immediately, then asks the native iOS layer to open the same
   /// URL again after [retryDelay]. The retry is kept alive with a short
   /// UIApplication background task so it has a chance to fire after the first
