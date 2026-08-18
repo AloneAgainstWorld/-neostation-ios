@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neostation/services/rpcs3_launch_service.dart';
@@ -6,7 +6,7 @@ import 'package:neostation/services/rpcs3_library_service.dart';
 import 'package:neostation/services/rpcs3_title_catalog_service.dart';
 
 void main() {
-  group('RPCS3 Stage 6 reliability', () {
+  group('RPCS3 reliability', () {
     test(
       'cached raw serial receives GameDB title even without live folder',
       () async {
@@ -36,48 +36,19 @@ void main() {
       );
     });
 
-    test(
-      'resume pass arms from a real background transition without a timer',
-      () {
-        final started = DateTime.utc(2026, 8, 18, 12);
-        expect(
-          Rpcs3LaunchService.shouldContinuePendingForTesting(
-            now: started.add(const Duration(seconds: 3)),
-            startedAt: started,
-            launchWasBackgrounded: true,
-          ),
-          isTrue,
-        );
-        expect(
-          Rpcs3LaunchService.shouldContinuePendingForTesting(
-            now: started.add(const Duration(seconds: 12)),
-            startedAt: started,
-            launchWasBackgrounded: true,
-          ),
-          isTrue,
-        );
-        expect(
-          Rpcs3LaunchService.shouldContinuePendingForTesting(
-            now: started.add(const Duration(seconds: 12)),
-            startedAt: started,
-            launchWasBackgrounded: false,
-          ),
-          isFalse,
-        );
-      },
-    );
+    test('launcher validates serials but has no direct-core protocol', () {
+      expect(Rpcs3LaunchService.normalizeTitleId('bles00412'), 'BLES00412');
+      expect(Rpcs3LaunchService.normalizeTitleId(''), isNull);
 
-    test('direct-launch template receives exact request and function map', () {
-      const template =
-          'request=__NEOSTATION_REQUEST_JSON__ '
-          'cores=__NEOSTATION_SUPPORTED_CORES_JSON__';
-      final rendered = Rpcs3LaunchService.buildScriptForTesting(
-        template,
-        'bles00412',
-      );
-      expect(rendered, contains(jsonEncode('BLES00412')));
-      expect(rendered, contains('5C4D64FFB79930AD879C13009838F136'));
-      expect(rendered, isNot(contains('__NEOSTATION_')));
+      final service = File(
+        'lib/services/rpcs3_launch_service.dart',
+      ).readAsStringSync();
+      expect(service, contains('openJitRequest'));
+      expect(service, contains("scriptName: 'universal.js'"));
+      expect(service, isNot(contains('supportedCoreFunctions')));
+      expect(service, isNot(contains('SECOND_PASS')));
+      expect(service, isNot(contains('buildScriptForTesting')));
+      expect(service, isNot(contains('WidgetsBindingObserver')));
     });
   });
 }
