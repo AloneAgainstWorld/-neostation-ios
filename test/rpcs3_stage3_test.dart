@@ -106,13 +106,17 @@ void main() {
     });
 
     test('RPCS3 launcher uses stable Universal JIT only', () {
-      final service = File('lib/services/rpcs3_launch_service.dart')
-          .readAsStringSync();
+      final service = File(
+        'lib/services/rpcs3_launch_service.dart',
+      ).readAsStringSync();
       expect(service, contains('openJitRequest'));
       expect(service, contains("scriptName: 'universal.js'"));
       expect(service, isNot(contains('supportedCoreFunctions')));
       expect(service, isNot(contains('SECOND_PASS')));
-      expect(File('assets/data/rpcs3_stikdebug_launch.js').existsSync(), isFalse);
+      expect(
+        File('assets/data/rpcs3_stikdebug_launch.js').existsSync(),
+        isFalse,
+      );
     });
 
     test('invalid RPCS3 title IDs are rejected', () {

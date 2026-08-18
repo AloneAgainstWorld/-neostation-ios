@@ -35,19 +35,13 @@ class IosShortcutJitLaunchService {
   static const String _rpcs3ShortcutInstallUrl = '';
 
   static bool get hasMeloNXShortcutInstaller =>
-      _melonxShortcutInstallUrl.startsWith(
-        'https://www.icloud.com/shortcuts/',
-      );
+      _melonxShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
 
   static bool get hasArmsx2ShortcutInstaller =>
-      _armsx2ShortcutInstallUrl.startsWith(
-        'https://www.icloud.com/shortcuts/',
-      );
+      _armsx2ShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
 
   static bool get hasRpcs3ShortcutInstaller =>
-      _rpcs3ShortcutInstallUrl.startsWith(
-        'https://www.icloud.com/shortcuts/',
-      );
+      _rpcs3ShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
 
   /// Opens the shared ARMSX2 launch Shortcut. While the iCloud sharing link
   /// is not configured yet, fall back to Apple's official create-shortcut URL.
@@ -59,14 +53,9 @@ class IosShortcutJitLaunchService {
         : Uri.parse('shortcuts://create-shortcut');
 
     try {
-      return await launchUrl(
-        target,
-        mode: LaunchMode.externalApplication,
-      );
+      return await launchUrl(target, mode: LaunchMode.externalApplication);
     } catch (e) {
-      _log.e(
-        'IosShortcutJitLaunchService: failed to open ARMSX2 setup: $e',
-      );
+      _log.e('IosShortcutJitLaunchService: failed to open ARMSX2 setup: $e');
       return false;
     }
   }
@@ -102,14 +91,9 @@ class IosShortcutJitLaunchService {
         : Uri.parse('shortcuts://create-shortcut');
 
     try {
-      return await launchUrl(
-        target,
-        mode: LaunchMode.externalApplication,
-      );
+      return await launchUrl(target, mode: LaunchMode.externalApplication);
     } catch (e) {
-      _log.e(
-        'IosShortcutJitLaunchService: failed to open RPCS3 setup: $e',
-      );
+      _log.e('IosShortcutJitLaunchService: failed to open RPCS3 setup: $e');
       return false;
     }
   }
@@ -134,14 +118,9 @@ class IosShortcutJitLaunchService {
     );
 
     try {
-      return await launchUrl(
-        shortcutUri,
-        mode: LaunchMode.externalApplication,
-      );
+      return await launchUrl(shortcutUri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      _log.e(
-        'IosShortcutJitLaunchService: failed to run $shortcutName: $e',
-      );
+      _log.e('IosShortcutJitLaunchService: failed to run $shortcutName: $e');
       return false;
     }
   }
