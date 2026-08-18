@@ -27,17 +27,33 @@ jobs:
         run: |
           set -euo pipefail
           plutil -lint tools/rpcs3_shortcut_source.plist
-          mkdir -p assets/shortcuts
+          mkdir -p assets/shortcuts .shortcut-sign
           if ! command -v shortcuts >/dev/null 2>&1; then
             echo 'Apple shortcuts CLI is unavailable on this runner.' >&2
             exit 1
           fi
-          shortcuts sign \
-            --mode anyone \
-            --input tools/rpcs3_shortcut_source.plist \
-            --output 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
-          test -s 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
-          echo "Signed Shortcut bytes: $(stat -f%z 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut')"
+
+          SIGN_INPUT='.shortcut-sign/NeoStation-RPCS3-Start-sign-input.shortcut'
+          SIGN_OUTPUT='.shortcut-sign/NeoStation-RPCS3-Start-sign-output.shortcut'
+          FINAL='assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
+          cp tools/rpcs3_shortcut_source.plist "$SIGN_INPUT"
+
+          set +e
+          shortcuts sign --mode anyone --input "$SIGN_INPUT" --output "$SIGN_OUTPUT"
+          SIGN_STATUS=$?
+          set -e
+          if [ "$SIGN_STATUS" -ne 0 ]; then
+            echo 'XML signing failed; retrying the same valid plist as binary1.'
+            rm -f "$SIGN_OUTPUT"
+            cp tools/rpcs3_shortcut_source.plist "$SIGN_INPUT"
+            plutil -convert binary1 "$SIGN_INPUT"
+            shortcuts sign --mode anyone --input "$SIGN_INPUT" --output "$SIGN_OUTPUT"
+          fi
+
+          mv "$SIGN_OUTPUT" "$FINAL"
+          rm -rf .shortcut-sign
+          test -s "$FINAL"
+          echo "Signed Shortcut bytes: $(stat -f%z "$FINAL")"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
