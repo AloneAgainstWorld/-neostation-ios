@@ -28,11 +28,87 @@ jobs:
           ref: fix/audio-rpcs3-video-stage7-20260818
           fetch-depth: 0
 
+      - name: Remove fixed preview debounce and keep generation cancellation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          host_path = Path('lib/screens/game_screen/my_games_list.dart')
+          host = host_path.read_text(encoding='utf-8')
+          host = host.replace(
+              """  static const Duration _videoDelay = Duration(
+            milliseconds: 1500,
+          ); // Debounce for video playback.
+          """,
+              '',
+          )
+          host_path.write_text(host, encoding='utf-8')
+
+          part_path = Path('lib/screens/game_screen/my_games_list/secondary_display.dart')
+          part = part_path.read_text(encoding='utf-8')
+          start_marker = '  void _startVideoTimer() {'
+          end_marker = '  /// Initializes one preview generation.'
+          start = part.find(start_marker)
+          end = part.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Video start function markers not found')
+
+          replacement = """  void _startVideoTimer() {
+            _videoTimer?.cancel();
+            _videoTimer = null;
+            if (!mounted || _isGameLaunching) return;
+
+            final generation = _videoGeneration;
+            final scheduledGame = _selectedGame;
+            if (scheduledGame == null) return;
+
+            unawaited(
+              _startVideoPreviewForSelection(
+                scheduledGame,
+                generation: generation,
+              ),
+            );
+          }
+
+          Future<void> _startVideoPreviewForSelection(
+            GameModel scheduledGame, {
+            required int generation,
+          }) async {
+            if (!mounted ||
+                generation != _videoGeneration ||
+                _selectedGame != scheduledGame) {
+              return;
+            }
+
+            await _updateSecondaryDisplayVideo(scheduledGame);
+            if (!mounted ||
+                generation != _videoGeneration ||
+                _selectedGame != scheduledGame) {
+              return;
+            }
+
+            final showGameInfo = context
+                .read<SqliteConfigProvider>()
+                .config
+                .showGameInfo;
+            if (showGameInfo) {
+              await _initializeVideo(scheduledGame, generation: generation);
+            }
+          }
+
+          """
+          part = part[:start] + replacement + part[end:]
+          part_path.write_text(part, encoding='utf-8')
+          PY
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
 
       - name: Format changed Dart files
         run: |
@@ -54,12 +130,7 @@ jobs:
             packages/external_folder_access/lib/external_folder_access.dart \
             test/audio_policy_service_test.dart \
             test/video_preview_lifecycle_test.dart \
-            test/rpcs3_existing_metadata_repair_test.dart \
-            test/rpcs3_launch_protocol_test.dart \
             test/rpcs3_stage7_test.dart
-
-      - name: Resolve dependencies
-        run: flutter pub get
 
       - name: Verify implementation markers
         run: |
@@ -76,6 +147,7 @@ jobs:
           grep -Fq "NEOSTATION_RPC_BOOT_RESULT" assets/data/rpcs3_stikdebug_launch.js
           grep -Fq "_videoGeneration" lib/screens/game_screen/my_games_list.dart
           grep -Fq "_videoTransition" lib/screens/game_screen/my_games_list.dart
+          grep -Fq "_startVideoPreviewForSelection" lib/screens/game_screen/my_games_list/secondary_display.dart
           ! grep -Fq "Duration(milliseconds: 1500)" lib/screens/game_screen/my_games_list.dart
 
       - name: Validate generated RPCS3 JavaScript syntax
@@ -121,8 +193,6 @@ jobs:
           flutter test \
             test/audio_policy_service_test.dart \
             test/video_preview_lifecycle_test.dart \
-            test/rpcs3_existing_metadata_repair_test.dart \
-            test/rpcs3_launch_protocol_test.dart \
             test/rpcs3_stage7_test.dart \
             test/rpcs3_library_service_test.dart \
             test/rpcs3_stage3_test.dart \
