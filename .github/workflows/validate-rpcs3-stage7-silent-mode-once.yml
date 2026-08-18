@@ -65,7 +65,7 @@ jobs:
           grep -Fq "isMeaningfulRpcs3MetadataNameForTesting" lib/models/game_model.dart
           grep -Fq "_restoreSilentModeAudioSession" lib/services/home_music_service.dart
           grep -Fq "Theme is never the Systems main menu" lib/screens/settings_screen/new_settings_options/themes_settings_content.dart
-          grep -Fq "Reassert `.ambient` immediately before every UI sound" lib/services/sfx_service.dart
+          grep -Fq "immediately before every UI sound" lib/services/sfx_service.dart
 
       - name: Check RPCS3 JavaScript syntax
         run: |
