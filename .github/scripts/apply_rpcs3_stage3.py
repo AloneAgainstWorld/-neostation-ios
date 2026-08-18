@@ -36,6 +36,19 @@ def _load_previous_wrapper() -> str:
     raise SystemExit('Could not locate the original compressed RPCS3 patch in Git history')
 
 
+def _print_failure_context(message: str, generator: str) -> None:
+    label = message.removeprefix('Missing patch marker: ').strip()
+    if not label:
+        return
+    index = generator.find(label)
+    if index < 0:
+        print(f'Could not find generator label for diagnostic: {label}')
+        return
+    print('\n--- RPCS3 generator context ---')
+    print(generator[max(0, index - 3500): index + 3500])
+    print('--- end generator context ---\n')
+
+
 payload = _load_previous_wrapper()
 source = zlib.decompress(base64.b64decode(payload)).decode('utf-8')
 
@@ -71,4 +84,8 @@ if source.count(old_generated_marker) != 1:
     )
 source = source.replace(old_generated_marker, new_generated_marker, 1)
 
-exec(compile(source, '<rpcs3-stage3>', 'exec'))
+try:
+    exec(compile(source, '<rpcs3-stage3>', 'exec'))
+except SystemExit as exc:
+    _print_failure_context(str(exc), source)
+    raise
