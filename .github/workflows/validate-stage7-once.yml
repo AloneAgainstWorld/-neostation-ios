@@ -31,11 +31,16 @@ jobs:
           ref: fix/audio-rpcs3-video-stage7-20260818
           fetch-depth: 0
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
       - name: Repair patch anchors for the current main source
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path('tools/apply_stage7.py')
           text = path.read_text(encoding='utf-8')
           old = '''replace_once(
@@ -53,8 +58,6 @@ jobs:
             if (Platform.isIOS) {
           """,
           )'''
-          # The source has unrelated storage initialization between the startup
-          # log and the iOS block. Patch only the stable log statement.
           new = '''replace_once(
               'lib/main.dart',
               "  log.i('Starting NeoStation...');\\n",
@@ -149,12 +152,6 @@ jobs:
             test/rpcs3_stage6_test.dart \
             test/rpcs3_stage7_test.dart
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2.23.0
-        with:
-          channel: stable
-          cache: true
-
       - name: Resolve dependencies
         run: flutter pub get
 
@@ -179,7 +176,6 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-
           source = Path('assets/data/rpcs3_stikdebug_launch.js').read_text(encoding='utf-8')
           source = source.replace('__NEOSTATION_REQUEST_JSON__', json.dumps({
               'titleId': 'BLES00412',
