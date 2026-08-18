@@ -36,15 +36,17 @@ void main() {
       );
     });
 
-    test('launcher validates serials but has no direct-core protocol', () {
+    test('launcher validates serials without restoring direct-core protocol', () {
       expect(Rpcs3LaunchService.normalizeTitleId('bles00412'), 'BLES00412');
       expect(Rpcs3LaunchService.normalizeTitleId(''), isNull);
 
       final service = File(
         'lib/services/rpcs3_launch_service.dart',
       ).readAsStringSync();
-      expect(service, contains('openJitRequest'));
+      expect(service, contains('openUrlAfterJitPreflight'));
       expect(service, contains("scriptName: 'universal.js'"));
+      expect(service, contains('rpcs3ShortcutName'));
+      expect(service, isNot(contains('openJitRequest')));
       expect(service, isNot(contains('supportedCoreFunctions')));
       expect(service, isNot(contains('SECOND_PASS')));
       expect(service, isNot(contains('buildScriptForTesting')));

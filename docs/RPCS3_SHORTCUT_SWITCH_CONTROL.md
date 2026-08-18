@@ -1,31 +1,27 @@
-# RPCS3 iOS — optional Switch Control auto-Start
+# RPCS3 iOS — Switch Control auto-Start
 
-NeoStation Build 140 removes the experimental RPCS3Core memory-injection / second-pass StikDebug launcher. The stable PS3 launch path is now:
+NeoStation keeps the experimental RPCS3Core memory-injection / second-pass StikDebug launcher retired. The current PS3 launch path is intentionally simpler:
 
-1. NeoStation asks StikDebug to enable JIT for RPCS3 with `universal.js`.
-2. RPCS3 opens normally.
-3. Without any automation, the user presses **Start / Commencer** and chooses a game in RPCS3.
+1. NeoStation starts the normal StikDebug Universal JIT flow for RPCS3 with `universal.js`.
+2. The native iOS preflight helper keeps a short background task alive and waits about 8 seconds for the JIT/RPCS3 foreground transition.
+3. NeoStation then opens Apple's `shortcuts://run-shortcut` URL for the exact helper named `NeoStation+RPCS3+Start`.
+4. The Shortcut selects the `NeoStation RPCS3` Switch Control set and activates the configured `Full Screen` switch.
+5. The Switch Control recipe/macro runs its custom gesture and taps RPCS3's **Start / Commencer** button.
 
-An optional **device-local** iOS automation can try to press RPCS3's Start button automatically when RPCS3 opens. This is intentionally separate from NeoStation because iOS does not provide third-party apps with a public API to create Switch Control switches, recipes, saved gestures, or Personal Automations.
+The Accessibility configuration is still device-local. iOS does not give NeoStation a public API to create the user's Switch Control switch, switch set, recipe/macro, or custom tap gesture, so those pieces must be configured once on the iPhone.
 
-## Why the automation cannot be pre-bound by NeoStation
-
-The tap coordinate and the Switch Control switch/recipe belong to the user's Accessibility configuration. A shared Shortcut cannot safely create or bind those private device entities for another user. NeoStation therefore opens Apple's official Shortcut editor from its setup service, but the following one-time Accessibility setup must be done on the iPhone.
-
-## 1. Create the Switch Control gesture
+## 1. Configure Switch Control
 
 On the iPhone:
 
 1. Open **Settings > Accessibility > Switch Control > Switches**.
-2. Add a local switch. A convenient test source is **Screen > Full Screen**.
-3. Assign a normal action such as **Select Item** for the base switch.
-4. Go back to **Switch Control > Recipes**.
-5. Create a recipe named **NeoStation RPCS3 Start**.
-6. Assign the switch created above to a **Custom Gesture**.
-7. Record a single tap at the exact location of RPCS3's **Start / Commencer** button, using the same orientation in which RPCS3 is normally opened.
-8. Save the recipe.
+2. Add **Screen > Full Screen** and use a normal base action such as **Select Item**.
+3. Create a recipe/macro named **NeoStation RPCS3 Start**.
+4. Assign **Full Screen** to a **Custom Gesture**.
+5. Record a single tap at the exact position of RPCS3's **Start / Commencer** button, using the same device orientation in which RPCS3 opens.
+6. Create a Switch Control set named **NeoStation RPCS3** and keep the configured Full Screen switch/recipe in that set.
 
-If the device exposes **Switch Sets**, a dedicated set named `NeoStation RPCS3` can be created to isolate this switch/recipe from normal Switch Control usage.
+The exact labels can vary slightly by iOS language/version. On iOS 27, the configuration observed during NeoStation testing exposes the switch set, `Full Screen` switch state, and recipe/macro directly.
 
 ## 2. Create the Shortcut
 
@@ -33,38 +29,29 @@ Create a Shortcut named exactly:
 
 `NeoStation+RPCS3+Start`
 
-Recommended actions:
+For the current iOS 27 setup, use these actions in this order:
 
-1. **Set Switch Control** -> On.
-2. If available on the installed iOS version, **Set Switch Control Switch Set** -> `NeoStation RPCS3`.
-3. **Set Switch Control Switch State** -> select the switch used by the recipe and toggle/activate it.
-4. **Set Switch Control** -> Off.
+1. **Set Switch Control Switch Set** -> `NeoStation RPCS3`.
+2. **Set Switch Control Switch State** -> activate `Full Screen`.
+3. **Wait** -> 1 second.
+4. **Set Switch Control Switch State** -> deactivate `Full Screen`.
 
-If the tap happens before RPCS3 has rendered its Start screen, add the shortest Wait action that is actually required on that device. Do not increase it unless on-device testing shows that RPCS3 is not ready yet.
+The 1-second wait is only there to keep the switch active briefly enough for the configured recipe/gesture to run. Adjust it only if on-device testing proves that a different delay is required.
 
-The important experiment is whether **Set Switch Control Switch State** causes the assigned recipe/custom gesture to execute on the installed iOS build. Apple documents that the action can manipulate configured Switch Control switches, but does not promise that every switch source/recipe combination will synthesize a gesture.
+## 3. Personal Automation is not required
 
-## 3. Create the Personal Automation
+Older NeoStation builds relied on a **Personal Automation** triggered when RPCS3 opened. Builds containing the direct Shortcut handoff now invoke `NeoStation+RPCS3+Start` themselves after the JIT warm-up, so that Personal Automation is **not required**.
 
-In **Shortcuts > Automation**:
+If an old Personal Automation such as **When RPCS3 is opened -> Run NeoStation+RPCS3+Start** is still enabled, disable it before testing the direct NeoStation path. Otherwise the Shortcut can run twice.
 
-1. Create a new Personal Automation.
-2. Choose **App**.
-3. Select **RPCS3**.
-4. Choose **Is Opened**.
-5. Select **Run Immediately** when that option is available.
-6. Add **Run Shortcut** -> `NeoStation+RPCS3+Start`.
+## Expected path
 
-This event-based trigger is preferred over NeoStation timers: the shortcut starts because iOS reports that RPCS3 actually opened.
+`NeoStation -> StikDebug / universal.js -> RPCS3 -> NeoStation+RPCS3+Start -> Switch Control -> Start / Commencer`
 
-## Expected outcomes
+The selected RPCS3 Title ID is also passed to the Shortcut as optional text input for diagnostics/future revisions. The current Switch Control helper does not need to consume that input.
 
-### Automation works
+## On-device fallback
 
-NeoStation -> StikDebug -> RPCS3 -> Switch Control gesture -> Start screen is pressed automatically.
+The final foreground behavior of Apple's Shortcuts URL scheme can vary by iOS release. If on-device testing shows that running the Shortcut leaves the Shortcuts app in the foreground when the custom gesture fires, add an **Open App -> RPCS3** action immediately before activating `Full Screen`, then test again. If that still does not behave reliably, the previous Personal Automation remains a valid fallback while NeoStation keeps the stable Universal JIT launch path.
 
-The user still chooses the game in RPCS3 unless RPCS3 later exposes a supported deep link/App Intent for a specific title.
-
-### Automation does not execute the gesture
-
-Leave the Personal Automation disabled or remove it. NeoStation continues to use the stable standard RPCS3 launch, so the user simply presses Start manually and selects the game. No second-pass injection, RPCS3Core UUID, boot offset, or internal boot call is involved anymore.
+No RPCS3Core UUID, boot offset, internal boot call, or second-pass injection is used by this flow.
