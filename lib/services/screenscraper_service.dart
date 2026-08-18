@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/logger_service.dart';
 import '../repositories/scraper_repository.dart';
@@ -307,6 +308,30 @@ class ScreenScraperService {
     }
   }
 
+  static void _addSerialLookup(
+    Map<String, String> queryParameters,
+    String? serialNumber,
+  ) {
+    final serial = serialNumber?.trim() ?? '';
+    if (serial.isNotEmpty) queryParameters['serialnum'] = serial;
+  }
+
+  /// Pure lookup parameters used by tests and by [fetchGameInfo].
+  @visibleForTesting
+  static Map<String, String> buildGameLookupParametersForTesting({
+    required String systemId,
+    required String romName,
+    String? serialNumber,
+  }) {
+    final parameters = <String, String>{
+      'systemeid': systemId,
+      'romtype': 'rom',
+      'romnom': romName,
+    };
+    _addSerialLookup(parameters, serialNumber);
+    return parameters;
+  }
+
   /// Fetches game information from the API using name or hash.
   ///
   /// Returns a map containing both `gameInfo` and updated `userInfo` (quota).
@@ -317,6 +342,7 @@ class ScreenScraperService {
     String? md5,
     int? maxDailyRequests,
     String? gameName,
+    String? serialNumber,
   }) async {
     try {
       final credentials = _cachedCredentials ?? await getSavedCredentials();
@@ -342,16 +368,18 @@ class ScreenScraperService {
         targetAppSystemId,
       );
 
-      final queryParameters = {
+      final queryParameters = <String, String>{
         'devid': _devId,
         'devpassword': _devPassword,
         'softname': softname,
         'output': 'json',
-        'ssid': credentials['username'],
-        'sspassword': credentials['password'],
-        'systemeid': systemId,
-        'romtype': 'rom',
-        'romnom': cleanRomName,
+        'ssid': credentials['username'] ?? '',
+        'sspassword': credentials['password'] ?? '',
+        ...buildGameLookupParametersForTesting(
+          systemId: systemId,
+          romName: cleanRomName,
+          serialNumber: serialNumber,
+        ),
       };
 
       final preferredLanguage = credentials['preferred_language'];
@@ -574,6 +602,7 @@ class ScreenScraperService {
     required String systemFolder,
     required String romPath,
     String? gameName,
+    String? serialNumber,
     Function(String status, double progress)? onProgress,
     bool forceOverwrite = false,
   }) async {
@@ -601,7 +630,9 @@ class ScreenScraperService {
 
       onProgress?.call(AppLocale.fetchingMetadata, 0.1);
 
-      final isMeloNxVirtual = romPath.toLowerCase().startsWith('melonx://');
+      final lowerRomPath = romPath.toLowerCase();
+      final isMeloNxVirtual = lowerRomPath.startsWith('melonx://');
+      final isRpcs3Virtual = lowerRomPath.startsWith('rpcs3-library://');
 
       Map<String, dynamic>? gameInfoResult;
       int attempts = 0;
@@ -612,9 +643,11 @@ class ScreenScraperService {
           romName,
           appSystemId: appSystemId,
           maxDailyRequests: 0,
-          gameName: (systemFolder == 'android' || isMeloNxVirtual)
+          gameName:
+              (systemFolder == 'android' || isMeloNxVirtual || isRpcs3Virtual)
               ? gameName
               : null,
+          serialNumber: isRpcs3Virtual ? serialNumber : null,
         );
         if (gameInfoResult != null && gameInfoResult['gameInfo'] != null) break;
         attempts++;
@@ -657,7 +690,7 @@ class ScreenScraperService {
             appSystemId: appSystemId,
             preferredLanguage: preferredLanguage,
             allowedMediaTypes: allowedMediaTypes,
-            forceOverwrite: forceOverwrite || isMeloNxVirtual,
+            forceOverwrite: forceOverwrite || isMeloNxVirtual || isRpcs3Virtual,
             maxDailyRequests: null,
             onProgress: (p) =>
                 onProgress?.call(AppLocale.downloadingImages, 0.2 + (p * 0.8)),
@@ -683,9 +716,11 @@ class ScreenScraperService {
                 password: credentials['password']?.toString() ?? '',
                 allowedMediaTypes: allowedMediaTypes,
                 alreadyDownloadedTypes: [
-                  ...(downloadResult['downloadedTypes'] as List<dynamic>? ?? const [])
+                  ...(downloadResult['downloadedTypes'] as List<dynamic>? ??
+                          const [])
                       .map((e) => e.toString()),
-                  ...(downloadResult['existingTypes'] as List<dynamic>? ?? const [])
+                  ...(downloadResult['existingTypes'] as List<dynamic>? ??
+                          const [])
                       .map((e) => e.toString()),
                 ],
                 sourceMedias: medias,
@@ -698,10 +733,12 @@ class ScreenScraperService {
                   .toSet();
           final requestedImageTypes = allowedMediaTypes
               .where(
-                (type) => const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
+                (type) =>
+                    const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
               )
               .toSet();
-          mediaSuccess = requestedImageTypes.isEmpty ||
+          mediaSuccess =
+              requestedImageTypes.isEmpty ||
               requestedImageTypes.any(successfulTypes.contains);
         }
       }
@@ -731,6 +768,7 @@ class ScreenScraperService {
     required String systemFolder,
     required String romPath,
     String? gameName,
+    String? serialNumber,
     bool forceOverwrite = false,
     Function(String status, double progress)? onProgress,
   }) async {
@@ -754,7 +792,9 @@ class ScreenScraperService {
       }
 
       onProgress?.call(AppLocale.fetchingMetadata, 0.15);
-      final isMeloNxVirtual = romPath.toLowerCase().startsWith('melonx://');
+      final lowerRomPath = romPath.toLowerCase();
+      final isMeloNxVirtual = lowerRomPath.startsWith('melonx://');
+      final isRpcs3Virtual = lowerRomPath.startsWith('rpcs3-library://');
 
       Map<String, dynamic>? gameInfoResult;
       for (var attempt = 0; attempt < 3; attempt++) {
@@ -764,9 +804,11 @@ class ScreenScraperService {
           romName,
           appSystemId: appSystemId,
           maxDailyRequests: 0,
-          gameName: (systemFolder == 'android' || isMeloNxVirtual)
+          gameName:
+              (systemFolder == 'android' || isMeloNxVirtual || isRpcs3Virtual)
               ? gameName
               : null,
+          serialNumber: isRpcs3Virtual ? serialNumber : null,
         );
         if (gameInfoResult != null && gameInfoResult['gameInfo'] != null) break;
       }
@@ -779,7 +821,8 @@ class ScreenScraperService {
       final medias = gameInfo['medias'] as List<dynamic>? ?? const [];
       final credentials = await getSavedCredentials();
       final preferredLanguage = credentials?['preferred_language'] ?? 'en';
-      final regionPriority = await ScreenscraperRegionConfig.getRegionPriority();
+      final regionPriority =
+          await ScreenscraperRegionConfig.getRegionPriority();
       final selectedManual = ScreenscraperMediaResolver.selectBestMedia(
         medias,
         'manuel',
@@ -820,7 +863,8 @@ class ScreenScraperService {
         '$cleanRomName.$extension',
       );
 
-      final downloaded = result['success'] == true && await File(manualPath).exists();
+      final downloaded =
+          result['success'] == true && await File(manualPath).exists();
       return {
         'success': downloaded,
         'message': downloaded
@@ -1029,9 +1073,13 @@ class ScreenScraperService {
       final filename = rom['filename'].toString();
       final romPath = rom['rom_path'].toString();
       final titleName = rom['title_name']?.toString();
-      final isMeloNxVirtual = romPath.toLowerCase().startsWith('melonx://');
+      final titleId = rom['title_id']?.toString().trim();
+      final lowerRomPath = romPath.toLowerCase();
+      final isMeloNxVirtual = lowerRomPath.startsWith('melonx://');
+      final isRpcs3Virtual = lowerRomPath.startsWith('rpcs3-library://');
       final displayName =
-          isMeloNxVirtual && (titleName?.trim().isNotEmpty ?? false)
+          (isMeloNxVirtual || isRpcs3Virtual) &&
+              (titleName?.trim().isNotEmpty ?? false)
           ? titleName!.trim()
           : filename;
 
@@ -1054,9 +1102,11 @@ class ScreenScraperService {
         filename,
         appSystemId: appSystemId,
         maxDailyRequests: maxDailyRequests,
-        gameName: (systemFolder == 'android' || isMeloNxVirtual)
+        gameName:
+            (systemFolder == 'android' || isMeloNxVirtual || isRpcs3Virtual)
             ? titleName
             : null,
+        serialNumber: isRpcs3Virtual ? titleId : null,
       );
       var gameInfo = gameResult?['gameInfo'];
       int requestsMade = 1;
@@ -1134,7 +1184,8 @@ class ScreenScraperService {
             maxDailyRequests: maxDailyRequests,
             forceOverwrite:
                 scraperConfig['scrape_mode'].toString() == 'all' ||
-                isMeloNxVirtual,
+                isMeloNxVirtual ||
+                isRpcs3Virtual,
           );
           if (res['cancelled'] == true) {
             return {
@@ -1179,10 +1230,12 @@ class ScreenScraperService {
                       .toSet();
               final requestedImageTypes = allowedTypes
                   .where(
-                    (type) => const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
+                    (type) =>
+                        const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
                   )
                   .toSet();
-              mediaSucceeded = requestedImageTypes.isEmpty ||
+              mediaSucceeded =
+                  requestedImageTypes.isEmpty ||
                   requestedImageTypes.any(successfulTypes.contains);
             }
           }

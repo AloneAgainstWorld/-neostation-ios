@@ -1658,6 +1658,7 @@ class _SystemGamesListState extends State<SystemGamesList> {
         systemFolder: targetSystemFolder,
         romPath: game.romPath ?? '',
         gameName: game.name,
+        serialNumber: game.titleId,
         forceOverwrite: forceOverwrite,
         onProgress: (statusKey, progress) {
           if (!mounted) return;

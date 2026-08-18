@@ -283,6 +283,7 @@ class GameSettingsScrappingTabState extends State<GameSettingsScrappingTab> {
         systemFolder: targetSystem.primaryFolderName,
         romPath: romPath,
         gameName: widget.game.name,
+        serialNumber: widget.game.titleId,
         forceOverwrite: true,
         onProgress: (status, progress) {
           if (mounted) setState(() => _scrapeProgress = progress);
