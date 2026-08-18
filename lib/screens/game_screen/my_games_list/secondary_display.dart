@@ -383,9 +383,28 @@ extension _SecondaryDisplay on _SystemGamesListState {
     final scheduledGame = _selectedGame;
     if (scheduledGame == null) return;
 
-    unawaited(
-      _startVideoPreviewForSelection(scheduledGame, generation: generation),
-    );
+    // Keep the artwork/details stable for two seconds before AVPlayer is even
+    // created. Rapid navigation therefore only resets this cancellable timer;
+    // stale selections never initialize an audio/video pipeline.
+    if (!_isVideoLoading) {
+      rebuild(() => _isVideoLoading = true);
+    }
+    _videoTimer = Timer(_SystemGamesListState._videoStartDelay, () {
+      _videoTimer = null;
+      if (!mounted ||
+          _isGameLaunching ||
+          generation != _videoGeneration ||
+          _selectedGame != scheduledGame) {
+        if (mounted && generation == _videoGeneration) {
+          rebuild(() => _isVideoLoading = false);
+        }
+        return;
+      }
+
+      unawaited(
+        _startVideoPreviewForSelection(scheduledGame, generation: generation),
+      );
+    });
   }
 
   Future<void> _startVideoPreviewForSelection(
