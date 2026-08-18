@@ -1,0 +1,65 @@
+name: Validate RPCS3 Build 140 once
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'feature/rpcs3-shortcuts-switch-control-build140'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build 140 branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/rpcs3-shortcuts-switch-control-build140
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify RPCS3 stable-path markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "version: 0.9.9+140" pubspec.yaml
+          grep -q "openJitRequest" lib/services/rpcs3_launch_service.dart
+          grep -q "scriptName: 'universal.js'" lib/services/rpcs3_launch_service.dart
+          test ! -e assets/data/rpcs3_stikdebug_launch.js
+          ! grep -q "supportedCoreFunctions" lib/services/rpcs3_launch_service.dart
+          ! grep -q "SECOND_PASS" lib/services/rpcs3_launch_service.dart
+          ! grep -q "WidgetsBindingObserver" lib/services/rpcs3_launch_service.dart
+          grep -q "NeoStation+RPCS3+Start" lib/services/ios_shortcut_jit_launch_service.dart
+          grep -q "RPCS3" docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib/services/rpcs3_launch_service.dart lib/services/ios_shortcut_jit_launch_service.dart test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run RPCS3 regression tests
+        run: flutter test test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart test/rpcs3_library_service_test.dart
+
+      - name: Run silent-mode and video regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=()
+          for f in test/audio_policy_service_test.dart test/video_preview_lifecycle_test.dart test/sfx_silent_mode_race_test.dart; do
+            if [[ -f "$f" ]]; then files+=("$f"); fi
+          done
+          if (( ${#files[@]} )); then flutter test "${files[@]}"; fi
+
+      - name: Run full Flutter test suite
+        run: flutter test
