@@ -1,5 +1,7 @@
 import 'dart:io';
+
 import 'package:path/path.dart' as path;
+
 import '../providers/file_provider.dart';
 import 'database_game_model.dart';
 
@@ -150,18 +152,62 @@ class GameModel {
   }
 
   /// Transforms a [DatabaseGameModel] into a [GameModel].
+  static bool isMeaningfulRpcs3MetadataNameForTesting(
+    String? value, {
+    required String? titleId,
+    required String filename,
+  }) {
+    final name = value?.trim() ?? '';
+    if (name.isEmpty) return false;
+
+    String normalize(String candidate) =>
+        candidate.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase();
+
+    final normalized = normalize(name);
+    final syntheticNames = <String>{
+      if (titleId != null && titleId.trim().isNotEmpty) normalize(titleId),
+      normalize(filename),
+      normalize(FileProvider.stripRomExtension(filename)),
+    };
+    return !syntheticNames.contains(normalized);
+  }
+
   factory GameModel.fromDatabaseModel(DatabaseGameModel db) {
     final scrapedName = db.screenscraperRealName?.trim();
     final isRpcs3Virtual = db.romPath.toLowerCase().startsWith(
       'rpcs3-library://',
     );
-    final hasScrapedRpcs3Name =
-        isRpcs3Virtual && scrapedName != null && scrapedName.isNotEmpty;
-    final displayName = hasScrapedRpcs3Name
+
+    final meaningfulScrapedName =
+        isRpcs3Virtual &&
+            isMeaningfulRpcs3MetadataNameForTesting(
+              scrapedName,
+              titleId: db.titleId,
+              filename: db.filename,
+            )
         ? scrapedName
+        : null;
+    final meaningfulRealName =
+        isRpcs3Virtual &&
+            isMeaningfulRpcs3MetadataNameForTesting(
+              db.realName,
+              titleId: db.titleId,
+              filename: db.filename,
+            )
+        ? db.realName?.trim()
+        : null;
+    final localTitle = db.titleName?.trim();
+
+    final displayName = isRpcs3Virtual
+        ? meaningfulScrapedName ??
+              meaningfulRealName ??
+              ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
+              db.filename
         : db.titleName ?? db.realName ?? db.filename;
-    final resolvedRealName = hasScrapedRpcs3Name
-        ? scrapedName
+    final resolvedRealName = isRpcs3Virtual
+        ? meaningfulRealName ??
+              ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
+              db.filename
         : db.realName ?? db.filename;
 
     return GameModel(

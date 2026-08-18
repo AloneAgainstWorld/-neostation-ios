@@ -3,13 +3,13 @@
 // https://github.com/StikDebug/StikDebug/blob/main/StikDebug/Scripts/universal.js
 //
 // Pass one has already enabled JIT and the user has pressed RPCS3's native
-// Start button. This script attaches to the running process, verifies the exact
-// RPCS3 core UUID, calls rpcs3_ios_boot_game(title_id), restores registers and
-// detaches. A missing/mismatched core fails closed.
+// Start button. This script attaches to the running process, fingerprints the
+// loaded RPCS3 core, chooses the matching exported boot-function offset, calls
+// rpcs3_ios_boot_game(title_id), restores registers and detaches. Unknown cores
+// fail closed instead of jumping to an unverified address.
 
 const neoTitleId = __NEOSTATION_TITLE_ID_JSON__;
-const neoExpectedCoreUuid = __NEOSTATION_CORE_UUID_JSON__;
-const neoBootGameOffset = 0x__NEOSTATION_BOOT_OFFSET_HEX__n;
+const neoSupportedCoreOffsets = __NEOSTATION_SUPPORTED_CORES_JSON__;
 const neoReturnTrapInstruction = 'c0013ed4'; // brk #0xf00e, little endian
 
 let pid = get_pid();
@@ -21,13 +21,13 @@ try {
     const tid = resolveStoppedThread(attachResponse);
     if (!tid) throw new Error('Could not determine a stopped RPCS3 thread');
 
-    const core = findFingerprintCore();
-    if (!core) {
+    const fingerprint = findFingerprintCore();
+    if (!fingerprint) {
         log('NEOSTATION_RPC_DIRECT_CORE_NOT_READY');
         throw new Error('libRPCS3Core.dylib is not loaded yet');
     }
 
-    callBootGame(core, tid);
+    callBootGame(fingerprint.core, fingerprint.bootOffset, tid);
     log(`NEOSTATION_RPC_DIRECT_BOOT_COMPLETED: ${neoTitleId}`);
 } catch (error) {
     log(`NEOSTATION_RPC_DIRECT_ERROR: ${error && error.stack ? error.stack : error}`);
@@ -65,16 +65,20 @@ function findFingerprintCore() {
     if (!core) return null;
 
     const actualUuid = String(core.uuid || '').replace(/-/g, '').toUpperCase();
-    const expectedUuid = neoExpectedCoreUuid.replace(/-/g, '').toUpperCase();
-    if (actualUuid !== expectedUuid) {
-        throw new Error(`RPCS3 core UUID mismatch: ${actualUuid} != ${expectedUuid}`);
+    const rawOffset = neoSupportedCoreOffsets[actualUuid];
+    if (rawOffset === undefined || rawOffset === null) {
+        throw new Error(
+            `Unsupported RPCS3 core UUID: ${actualUuid}; supported=${Object.keys(neoSupportedCoreOffsets).join(',')}`);
     }
-    return core;
+
+    const bootOffset = BigInt(rawOffset);
+    log(`NEOSTATION_RPC_DIRECT_FINGERPRINT: uuid=${actualUuid} offset=0x${bootOffset.toString(16)}`);
+    return { core: core, bootOffset: bootOffset };
 }
 
-function callBootGame(core, tid) {
+function callBootGame(core, bootOffset, tid) {
     const loadAddress = parseRemoteAddress(core.load_address);
-    const bootAddress = loadAddress + neoBootGameOffset;
+    const bootAddress = loadAddress + bootOffset;
     log(`NEOSTATION_RPC_DIRECT_CORE: load=0x${loadAddress.toString(16)} boot=0x${bootAddress.toString(16)}`);
 
     const saveId = send_command(`QSaveRegisterState;thread:${tid};`);

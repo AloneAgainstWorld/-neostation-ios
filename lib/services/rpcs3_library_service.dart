@@ -113,8 +113,10 @@ class Rpcs3SyncResult {
 /// - `Data/games/ExtractedGames/`
 /// - `Data/games/DiscImages/`
 ///
-/// RPCS3's `games.yml` map is also read so registered ISO/disc-image entries can
-/// still appear when their PARAM.SFO is not directly visible to Dart.
+/// `Data/games/DiscImages`, `Data/games/DiscImgs` (legacy alias),
+/// `Data/games/ExtractedGames` and `Data/dev_hdd0/game` are authoritative.
+/// RPCS3's `games.yml` is deliberately not used to create rows because it
+/// can retain stale or cross-linked registrations after a game is removed.
 ///
 /// Imported rows intentionally use an internal `rpcs3-library://` URI. They are
 /// display-only until RPCS3 publishes a supported direct-game deeplink.
@@ -380,91 +382,96 @@ class Rpcs3LibraryService {
       maxDepth: 5,
       hddRules: false,
     );
-    await scan(
-      path.join('games', 'DiscImages'),
-      sourceKind: 'disc-image',
-      maxDepth: 5,
-      hddRules: false,
+    final discDirectoryNames = await _discoverDiscImageDirectoryNames(
+      root.path,
     );
-
-    // RPCS3 records registered disc-image/external games as TITLE_ID -> path.
-    // This is especially useful for ISO files whose PARAM.SFO cannot be read
-    // directly without implementing a PS3 ISO filesystem parser in Flutter.
-    final gamesYmlCandidates = <File>[
-      File(path.join(root.path, 'games.yml')),
-      File(path.join(root.path, 'config', 'games.yml')),
-    ];
-    for (final gamesYml in gamesYmlCandidates) {
-      if (!await gamesYml.exists()) continue;
-      final registered = await _parseGamesYml(gamesYml);
-      for (final entry in registered.entries) {
-        final titleId = _cleanTitleId(entry.key);
-        if (titleId.isEmpty) continue;
-
-        final resolvedPath = await _resolveRegisteredPath(
-          root.path,
-          entry.value,
-        );
-        final existing = byTitleId[titleId.toLowerCase()];
-        if (existing != null) continue;
-
-        Rpcs3LibraryGame? fromSfo;
-        if (resolvedPath != null &&
-            await FileSystemEntity.isDirectory(resolvedPath)) {
-          final sfoFiles = await _findNamedFiles(
-            Directory(resolvedPath),
-            targetName: 'param.sfo',
-            maxDepth: 4,
-          );
-          for (final sfo in sfoFiles) {
-            fromSfo = await _gameFromSfo(
-              sfo,
-              dataRoot: root.path,
-              sourceKind: 'games.yml',
-              hddRules: false,
-              expectedTitleId: titleId,
-            );
-            if (fromSfo != null) break;
-          }
-        }
-
-        if (fromSfo != null) {
-          _putPreferred(byTitleId, fromSfo);
-          continue;
-        }
-
-        // `games.yml` can retain registrations after their ISO/folder was
-        // deleted. Do not resurrect those stale records in NeoStation.
-        if (resolvedPath == null) {
-          _log.i(
-            'Rpcs3LibraryService: ignored stale games.yml entry '
-            '$titleId -> ${entry.value}',
-          );
-          continue;
-        }
-
-        final rawSource = resolvedPath;
-        final fileName = path.basename(rawSource);
-        final fallbackTitle = path.basenameWithoutExtension(fileName).trim();
-        final iconPath = await _findCachedIcon(root.path, titleId);
-        _putPreferred(
-          byTitleId,
-          Rpcs3LibraryGame(
-            titleId: titleId,
-            title: fallbackTitle.isEmpty ? titleId : fallbackTitle,
-            version: '',
-            category: '',
-            sourcePath: rawSource,
-            sourceKind: 'games.yml',
-            iconPath: iconPath,
-          ),
-        );
-      }
+    for (final discDirectoryName in discDirectoryNames) {
+      await scan(
+        path.join('games', discDirectoryName),
+        sourceKind: 'disc-image',
+        maxDepth: 5,
+        hddRules: false,
+      );
+      await _addDiscImageFolderFallbacks(
+        dataRoot: root.path,
+        directoryName: discDirectoryName,
+        target: byTitleId,
+      );
     }
+
+    // Do not create entries from games.yml. RPCS3 can leave a historical
+    // TITLE_ID mapped to another still-existing disc path, which previously
+    // resurrected deleted titles such as BLES01484. Physical folders/files are
+    // now the sole source of truth for disc-image presence.
 
     final games = byTitleId.values.toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return games;
+  }
+
+  static Future<List<String>> _discoverDiscImageDirectoryNames(
+    String dataRoot,
+  ) async {
+    final gamesRoot = Directory(path.join(dataRoot, 'games'));
+    if (!await gamesRoot.exists()) return const <String>[];
+
+    final names = <String>[];
+    try {
+      await for (final entity in gamesRoot.list(followLinks: false)) {
+        if (entity is! Directory) continue;
+        final basename = path.basename(entity.path);
+        final normalized = basename.toLowerCase();
+        if (normalized == 'discimages' || normalized == 'discimgs') {
+          names.add(basename);
+        }
+      }
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: could not list disc-image roots: $error');
+    }
+    names.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return names.toSet().toList(growable: false);
+  }
+
+  static Future<void> _addDiscImageFolderFallbacks({
+    required String dataRoot,
+    required String directoryName,
+    required Map<String, Rpcs3LibraryGame> target,
+  }) async {
+    final directory = Directory(path.join(dataRoot, 'games', directoryName));
+    if (!await directory.exists()) return;
+
+    try {
+      await for (final entity in directory.list(followLinks: false)) {
+        String titleId = '';
+        if (entity is Directory) {
+          titleId = _cleanTitleId(path.basename(entity.path));
+        } else if (entity is File) {
+          titleId = _cleanTitleId(path.basenameWithoutExtension(entity.path));
+        }
+        if (titleId.isEmpty || target.containsKey(titleId.toLowerCase())) {
+          continue;
+        }
+
+        final iconPath = entity is Directory
+            ? await _findFileCaseInsensitive(entity, 'ICON0.PNG') ??
+                  await _findCachedIcon(dataRoot, titleId)
+            : await _findCachedIcon(dataRoot, titleId);
+        _putPreferred(
+          target,
+          Rpcs3LibraryGame(
+            titleId: titleId,
+            title: titleId,
+            version: '',
+            category: '',
+            sourcePath: entity.path,
+            sourceKind: 'disc-image-folder',
+            iconPath: iconPath,
+          ),
+        );
+      }
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: could not enumerate $directoryName: $error');
+    }
   }
 
   static Future<String?> _resolveLinkedDataRoot() async {

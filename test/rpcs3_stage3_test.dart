@@ -114,7 +114,9 @@ void main() {
         'bles00412',
       );
       expect(script, contains('"BLES00412"'));
-      expect(script, contains(Rpcs3LaunchService.expectedCoreUuid));
+      expect(script, contains('5C4D64FFB79930AD879C13009838F136'));
+      expect(script, contains('221732'));
+      expect(script, contains('CFE15492152B331E83959A3CF9AC8A9F'));
       expect(script, contains('NEOSTATION_RPC_DIRECT_CORE_NOT_READY'));
       expect(script, contains('NEOSTATION_RPC_DIRECT_BOOT_COMPLETED'));
       expect(script, isNot(contains('__NEOSTATION_')));
@@ -123,6 +125,21 @@ void main() {
     test('invalid RPCS3 title IDs are rejected', () {
       expect(Rpcs3LaunchService.normalizeTitleId('../bad'), isNull);
       expect(Rpcs3LaunchService.normalizeTitleId('BLES00412'), 'BLES00412');
+    });
+
+    test('synthetic ScreenScraper serial falls back to PARAM.SFO title', () {
+      final game = GameModel.fromDatabaseModel(
+        DatabaseGameModel(
+          filename: 'BLES00412',
+          romPath: 'rpcs3-library://game?title-id=BLES00412',
+          titleId: 'BLES00412',
+          titleName: 'The Lord of the Rings: Conquest™',
+          realName: 'BLES00412',
+          screenscraperRealName: 'BLES00412',
+        ),
+      );
+      expect(game.name, 'The Lord of the Rings: Conquest™');
+      expect(game.realname, 'The Lord of the Rings: Conquest™');
     });
 
     test('scraped RPCS3 name replaces the local fallback title', () {

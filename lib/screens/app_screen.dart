@@ -9,6 +9,7 @@ import 'package:neostation/services/systems_update_service.dart';
 import 'package:neostation/widgets/update_dialog.dart';
 import 'package:neostation/widgets/systems_update_dialog.dart';
 import 'package:neostation/services/logger_service.dart';
+
 import '../widgets/fixed_header.dart';
 import 'systems_screen/system_content.dart';
 import 'systems_screen/custom_main_menu_background.dart';
@@ -18,9 +19,12 @@ import 'settings_screen/new_settings_screen.dart';
 import 'scraper_screen/new_scraper_options_screen.dart';
 import 'neo_sync_screen/neo_sync_tab.dart';
 import '../widgets/scraper_content.dart';
+
 import 'package:neostation/services/game_service.dart';
+import 'package:neostation/services/home_music_service.dart';
 import 'package:neostation/providers/theme_provider.dart';
 import 'package:neostation/repositories/emulator_repository.dart';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -473,6 +477,12 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
 
   /// Handles tab selection lifecycle including state updates and UI side-effects.
   void _onTabSelected(int index) {
+    if (index != AppTabs.systems) {
+      // Stop ambience immediately, before the outgoing Systems widget's
+      // asynchronous dispose/post-frame callbacks can race the destination tab.
+      unawaited(HomeMusicService().setMainMenuActive(false));
+    }
+
     setState(() {
       _selectedTabIndex = index;
       _selectedSystemIndex = 0;
