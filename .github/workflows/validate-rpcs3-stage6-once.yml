@@ -31,7 +31,14 @@ jobs:
 
       - name: Apply Stage 6 patch
         run: |
-          sed -i 's/_processSingleRomThread/_processRomInThread/g' tools/rpcs3_stage6_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          patch = Path('tools/rpcs3_stage6_patch.py')
+          text = patch.read_text(encoding='utf-8')
+          text = text.replace('_processSingleRomThread', '_processRomInThread')
+          text = text.replace("\\n  static Future<void> _saveGameMetadata", "\\n  /// Checks the local availability")
+          patch.write_text(text, encoding='utf-8')
+          PY
           python3 tools/rpcs3_stage6_patch.py
 
       - name: Format changed Dart files
