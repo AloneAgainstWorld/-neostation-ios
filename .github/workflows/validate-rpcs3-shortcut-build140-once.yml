@@ -34,8 +34,8 @@ jobs:
           fi
           shortcuts sign \
             --mode anyone \
-            --input-path tools/rpcs3_shortcut_source.plist \
-            --output-path 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
+            --input tools/rpcs3_shortcut_source.plist \
+            --output 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
           test -s 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
           echo "Signed Shortcut bytes: $(stat -f%z 'assets/shortcuts/NeoStation-RPCS3-Start.shortcut')"
 
