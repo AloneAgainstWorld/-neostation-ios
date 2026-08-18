@@ -151,10 +151,23 @@ class GameModel {
 
   /// Transforms a [DatabaseGameModel] into a [GameModel].
   factory GameModel.fromDatabaseModel(DatabaseGameModel db) {
+    final scrapedName = db.screenscraperRealName?.trim();
+    final isRpcs3Virtual = db.romPath.toLowerCase().startsWith(
+      'rpcs3-library://',
+    );
+    final hasScrapedRpcs3Name =
+        isRpcs3Virtual && scrapedName != null && scrapedName.isNotEmpty;
+    final displayName = hasScrapedRpcs3Name
+        ? scrapedName
+        : db.titleName ?? db.realName ?? db.filename;
+    final resolvedRealName = hasScrapedRpcs3Name
+        ? scrapedName
+        : db.realName ?? db.filename;
+
     return GameModel(
       romname: db.romname,
-      realname: db.realName ?? db.filename,
-      name: db.titleName ?? db.realName ?? db.filename,
+      realname: resolvedRealName!,
+      name: displayName!,
       descriptions: db.descriptions,
       year: db.year ?? '',
       developer: db.developer ?? '',
