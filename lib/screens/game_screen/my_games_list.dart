@@ -145,9 +145,6 @@ class _SystemGamesListState extends State<SystemGamesList> {
   bool _isVideoLoading = false;
   int _videoGeneration = 0;
   Future<void> _videoTransition = Future<void>.value();
-  static const Duration _videoDelay = Duration(
-    milliseconds: 1500,
-  ); // Debounce for video playback.
   bool _lastShowInfo = false; // Memoizes 'showGameInfo' config state.
   String? _lastGameViewMode; // Memoizes 'gameViewMode' config state.
   bool _isGameLaunching =
@@ -681,8 +678,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
             style: TextStyle(
               fontSize: 14.r,
               fontWeight: FontWeight.w400,
-              color: Theme.of(context).colorScheme.onSurface
-                  .withValues(alpha: 0.7),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
               letterSpacing: 0.3,
             ),
           ),
@@ -713,21 +711,24 @@ class _SystemGamesListState extends State<SystemGamesList> {
           borderRadius: BorderRadius.circular(16.r),
           boxShadow: [
             BoxShadow(
-              color: Theme.of(context).colorScheme.shadow
-                  .withValues(alpha: 0.3),
+              color: Theme.of(
+                context,
+              ).colorScheme.shadow.withValues(alpha: 0.3),
               blurRadius: 16.r,
               offset: const Offset(0, 8),
             ),
             BoxShadow(
-              color: Theme.of(context).colorScheme.shadow
-                  .withValues(alpha: 0.1),
+              color: Theme.of(
+                context,
+              ).colorScheme.shadow.withValues(alpha: 0.1),
               blurRadius: 32.r,
               offset: const Offset(0, 16),
             ),
           ],
           border: Border.all(
-            color: Theme.of(context).colorScheme.outline
-                .withValues(alpha: 0.15),
+            color: Theme.of(
+              context,
+            ).colorScheme.outline.withValues(alpha: 0.15),
             width: 1.r,
           ),
         ),
@@ -755,8 +756,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
               style: TextStyle(
                 fontSize: 11.r,
                 fontWeight: FontWeight.w400,
-                color: Theme.of(context).colorScheme.onSurface
-                    .withValues(alpha: 0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.5),
                 letterSpacing: 0.2,
               ),
               textAlign: TextAlign.center,
@@ -815,9 +817,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                           SizedBox(width: 16.r),
                           Switch(
                             value: currentScanValue,
-                            activeThumbColor: Theme.of(context)
-                                .colorScheme
-                                .primary,
+                            activeThumbColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
                             onChanged: (value) async {
                               final oldSystem = widget.system;
                               setStateBuilder(() {
@@ -877,8 +879,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                             color: Colors.black.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12.r),
                             border: Border.all(
-                              color: Theme.of(context).colorScheme.primary
-                                  .withValues(alpha: 0.2),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.2),
                               width: 1.r,
                             ),
                           ),
@@ -897,9 +900,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                                         ?.copyWith(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 10.r,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
                                         ),
                                   ),
                                   Text(
@@ -908,9 +911,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                                         ?.copyWith(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 10.r,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
                                         ),
                                   ),
                                 ],
@@ -921,10 +924,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                                 child: LinearProgressIndicator(
                                   value: provider.scanProgress,
                                   minHeight: 6.r,
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.1),
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.1),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     Theme.of(context).colorScheme.primary,
                                   ),
@@ -979,13 +981,15 @@ class _SystemGamesListState extends State<SystemGamesList> {
                       right: 12.r,
                     ),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary
-                          .withValues(alpha: 0.9),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(8.r),
                       boxShadow: [
                         BoxShadow(
-                          color: Theme.of(context).colorScheme.primary
-                              .withValues(alpha: 0.3),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.3),
                           blurRadius: 8.r,
                           offset: const Offset(0, 2),
                         ),
@@ -1104,8 +1108,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                     artworkVersion: _artworkVersion,
                   ),
                   Container(
-                    color: Theme.of(context).colorScheme.shadow
-                        .withValues(alpha: 0.2),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.shadow.withValues(alpha: 0.2),
                   ),
                 ],
               ),
@@ -1134,9 +1139,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                 // pane laid over the artwork instead of a cut-out block.
                 gradient: ChromeSurface.fade(context),
                 borderRadius:
-                    Theme.of(context)
-                        .extension<CornerRadii>()
-                        ?.radiusExternal ??
+                    Theme.of(
+                      context,
+                    ).extension<CornerRadii>()?.radiusExternal ??
                     BorderRadius.circular(14.r),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outline,
@@ -1144,8 +1149,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).colorScheme.shadow
-                        .withValues(alpha: 0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.shadow.withValues(alpha: 0.5),
                     blurRadius: 3.r,
                     offset: Offset(2.r, 2.r),
                   ),
@@ -1153,9 +1159,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
               ),
               child: ClipRRect(
                 borderRadius:
-                    Theme.of(context)
-                        .extension<CornerRadii>()
-                        ?.radiusInternal ??
+                    Theme.of(
+                      context,
+                    ).extension<CornerRadii>()?.radiusInternal ??
                     BorderRadius.circular(9.r),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(
@@ -1343,9 +1349,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
               decoration: BoxDecoration(
                 color: ChromeSurface.fill(context),
                 borderRadius:
-                    Theme.of(context)
-                        .extension<CornerRadii>()
-                        ?.radiusExternal ??
+                    Theme.of(
+                      context,
+                    ).extension<CornerRadii>()?.radiusExternal ??
                     BorderRadius.circular(14.r),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outline,
@@ -1353,8 +1359,9 @@ class _SystemGamesListState extends State<SystemGamesList> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).colorScheme.shadow
-                        .withValues(alpha: 0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.shadow.withValues(alpha: 0.5),
                     blurRadius: 3.r,
                     offset: Offset(2.r, 2.r),
                   ),

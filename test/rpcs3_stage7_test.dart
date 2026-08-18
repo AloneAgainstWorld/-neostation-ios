@@ -25,10 +25,12 @@ void main() {
   test(
     'RPCS3 protocol is immediate and records real return/state diagnostics',
     () {
-      final service = File('lib/services/rpcs3_launch_service.dart')
-          .readAsStringSync();
-      final script = File('assets/data/rpcs3_stikdebug_launch.js')
-          .readAsStringSync();
+      final service = File(
+        'lib/services/rpcs3_launch_service.dart',
+      ).readAsStringSync();
+      final script = File(
+        'assets/data/rpcs3_stikdebug_launch.js',
+      ).readAsStringSync();
       expect(service, contains('openJitRequest'));
       expect(service, isNot(contains('warmupDelay:')));
       expect(script, contains('NEOSTATION_RPC_STATE_BEFORE'));
@@ -40,8 +42,9 @@ void main() {
   );
 
   test('generated script contains the inspected RPCS3 0.2 function map', () {
-    final template = File('assets/data/rpcs3_stikdebug_launch.js')
-        .readAsStringSync();
+    final template = File(
+      'assets/data/rpcs3_stikdebug_launch.js',
+    ).readAsStringSync();
     final script = Rpcs3LaunchService.buildScriptForTesting(
       template,
       'BLES00412',

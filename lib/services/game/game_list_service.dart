@@ -27,8 +27,9 @@ class GameListService {
   static final RegExp _whitespaceRegex = RegExp(r'\s+');
 
   static bool _hasScreenscraperRealName(DatabaseGameModel dbGame) {
-    return GameModel.resolveDatabaseNamesForDisplay(dbGame)
-        .hasMeaningfulScrapedName;
+    return GameModel.resolveDatabaseNamesForDisplay(
+      dbGame,
+    ).hasMeaningfulScrapedName;
   }
 
   /// Sanitizes a filename for display in the UI based on user preferences.
@@ -84,11 +85,14 @@ class GameListService {
     required Set<String> validExtensionsSet,
   }) {
     final filename = dbGame.filename;
+    final isRpcs3Virtual = dbGame.romPath.toLowerCase().startsWith(
+      'rpcs3-library://',
+    );
     final resolvedNames = GameModel.resolveDatabaseNamesForDisplay(dbGame);
     final scraped = _hasScreenscraperRealName(dbGame);
     final coalesced = resolvedNames.displayName;
 
-    if (preferFileName) {
+    if (preferFileName && !isRpcs3Virtual) {
       return (
         name: _formatListNameFromFilename(
           filename,

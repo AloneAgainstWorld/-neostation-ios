@@ -282,8 +282,9 @@ abstract final class Rpcs3LaunchService {
     _log.i('RPCS3 launch protocol: $line');
     try {
       final documents = await getApplicationDocumentsDirectory();
-      await File(path.join(documents.path, 'rpcs3_launch_protocol_debug.txt'))
-          .writeAsString('$line\n', mode: FileMode.append, flush: true);
+      await File(
+        path.join(documents.path, 'rpcs3_launch_protocol_debug.txt'),
+      ).writeAsString('$line\n', mode: FileMode.append, flush: true);
     } catch (_) {}
   }
 }

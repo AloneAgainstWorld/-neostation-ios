@@ -93,8 +93,9 @@ class SfxService {
         // directory isn't fully ready before the first loadAsset() call.
         try {
           final tempDir = await getTemporaryDirectory();
-          await Directory('${tempDir.path}/SoLoudLoader-Temp-Files')
-              .create(recursive: true);
+          await Directory(
+            '${tempDir.path}/SoLoudLoader-Temp-Files',
+          ).create(recursive: true);
         } catch (_) {}
         await SoLoud.instance.init();
       }

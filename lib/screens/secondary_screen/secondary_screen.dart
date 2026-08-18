@@ -835,13 +835,15 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
                                             if (value.gameImageBytes != null)
                                               buildBackgroundBytes(
                                                 value.gameImageBytes!,
-                                                fit: BoxFit.contain, // "se debe ver completo"
+                                                fit: BoxFit
+                                                    .contain, // "se debe ver completo"
                                               )
                                             else if (value.gameScreenshot !=
                                                 null)
                                               buildBackground(
                                                 value.gameScreenshot!,
-                                                fit: BoxFit.contain, // "se debe ver completo"
+                                                fit: BoxFit
+                                                    .contain, // "se debe ver completo"
                                               )
                                             else if (value.gameFanart != null ||
                                                 value.gameWheel != null)
@@ -850,13 +852,15 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
                                             if (value.gameImageBytes != null)
                                               buildBackgroundBytes(
                                                 value.gameImageBytes!,
-                                                fit: BoxFit.contain, // "se debe ver completo"
+                                                fit: BoxFit
+                                                    .contain, // "se debe ver completo"
                                               )
                                             else if (value.gameScreenshot !=
                                                 null)
                                               buildBackground(
                                                 value.gameScreenshot!,
-                                                fit: BoxFit.contain, // "se debe ver completo"
+                                                fit: BoxFit
+                                                    .contain, // "se debe ver completo"
                                               )
                                             else if (value.gameFanart != null ||
                                                 value.gameWheel != null)

@@ -6,8 +6,9 @@ void main() {
   test(
     'primary preview serializes replacement and rejects stale generations',
     () {
-      final host = File('lib/screens/game_screen/my_games_list.dart')
-          .readAsStringSync();
+      final host = File(
+        'lib/screens/game_screen/my_games_list.dart',
+      ).readAsStringSync();
       final media = File(
         'lib/screens/game_screen/my_games_list/secondary_display.dart',
       ).readAsStringSync();

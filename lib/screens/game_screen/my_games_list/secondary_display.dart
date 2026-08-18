@@ -361,7 +361,8 @@ extension _SecondaryDisplay on _SystemGamesListState {
               game.systemFolderName != null
           ? game.systemFolderName!
           : widget.system.id;
-      final path = 'assets/images/logos/$sysId.webp'; // Correcting to logo fallback for grid consistency.
+      final path =
+          'assets/images/logos/$sysId.webp'; // Correcting to logo fallback for grid consistency.
       imageProvider = AssetImage(path);
       imagePath = path;
     }
@@ -375,27 +376,42 @@ extension _SecondaryDisplay on _SystemGamesListState {
   /// Initiates the media preview sequence for the primary and secondary displays.
   void _startVideoTimer() {
     _videoTimer?.cancel();
+    _videoTimer = null;
     if (!mounted || _isGameLaunching) return;
 
     final generation = _videoGeneration;
     final scheduledGame = _selectedGame;
-    _videoTimer = Timer(_SystemGamesListState._videoDelay, () async {
-      if (!mounted || generation != _videoGeneration) return;
-      if (scheduledGame != null && _selectedGame == scheduledGame) {
-        // Always attempt secondary display video update.
-        await _updateSecondaryDisplayVideo(scheduledGame);
-        if (!mounted) return;
+    if (scheduledGame == null) return;
 
-        // Primary display video is conditional based on user preference for 'Game Info'.
-        final showGameInfo = context
-            .read<SqliteConfigProvider>()
-            .config
-            .showGameInfo;
-        if (showGameInfo) {
-          await _initializeVideo(scheduledGame, generation: generation);
-        }
-      }
-    });
+    unawaited(
+      _startVideoPreviewForSelection(scheduledGame, generation: generation),
+    );
+  }
+
+  Future<void> _startVideoPreviewForSelection(
+    GameModel scheduledGame, {
+    required int generation,
+  }) async {
+    if (!mounted ||
+        generation != _videoGeneration ||
+        _selectedGame != scheduledGame) {
+      return;
+    }
+
+    await _updateSecondaryDisplayVideo(scheduledGame);
+    if (!mounted ||
+        generation != _videoGeneration ||
+        _selectedGame != scheduledGame) {
+      return;
+    }
+
+    final showGameInfo = context
+        .read<SqliteConfigProvider>()
+        .config
+        .showGameInfo;
+    if (showGameInfo) {
+      await _initializeVideo(scheduledGame, generation: generation);
+    }
   }
 
   /// Initializes one preview generation. Controller destruction/creation is

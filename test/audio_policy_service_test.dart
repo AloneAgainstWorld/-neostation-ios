@@ -4,8 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('all NeoStation audio clients use the central audio policy', () {
-    final policy = File('lib/services/audio_policy_service.dart')
-        .readAsStringSync();
+    final policy = File(
+      'lib/services/audio_policy_service.dart',
+    ).readAsStringSync();
     expect(policy, contains('class AudioPolicyService'));
     expect(policy, contains('ensureSilentCompatibleSession'));
 

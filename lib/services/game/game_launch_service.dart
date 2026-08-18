@@ -453,22 +453,20 @@ class GameLaunchService {
                 system,
               );
 
-              final result = await platform.invokeMethod(
-                'launchGenericIntent',
-                {
-                  'package': packageName,
-                  'activity': activityName,
-                  'action': action,
-                  'category': category,
-                  'data': data,
-                  'type': type,
-                  'extras': extrasList,
-                  'activity_flags': launchCmd['activity_flags'] != null
-                      ? List<String>.from(launchCmd['activity_flags'] as List)
-                      : <String>[],
-                  'keep_saf_uri': launchCmd['keep_saf_uri'] == true,
-                },
-              );
+              final result = await platform
+                  .invokeMethod('launchGenericIntent', {
+                    'package': packageName,
+                    'activity': activityName,
+                    'action': action,
+                    'category': category,
+                    'data': data,
+                    'type': type,
+                    'extras': extrasList,
+                    'activity_flags': launchCmd['activity_flags'] != null
+                        ? List<String>.from(launchCmd['activity_flags'] as List)
+                        : <String>[],
+                    'keep_saf_uri': launchCmd['keep_saf_uri'] == true,
+                  });
 
               if (result == true) {
                 GameSessionManager.registerGameLaunch(system, game);
@@ -1745,8 +1743,9 @@ class GameLaunchService {
 
       // Nothing exists yet; hand back the most likely location so the caller's
       // "cores directory not found" message names somewhere actionable.
-      return LinuxEmulatorDiscovery.retroArchCoresDirCandidates(retroArch.path)
-          .first;
+      return LinuxEmulatorDiscovery.retroArchCoresDirCandidates(
+        retroArch.path,
+      ).first;
     } else if (Platform.isMacOS) {
       final homeDir = ConfigService.getRealHomePath();
       return path.join(homeDir, 'Library/Application Support/RetroArch/cores');
