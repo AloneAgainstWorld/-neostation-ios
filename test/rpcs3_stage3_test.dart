@@ -23,6 +23,23 @@ void main() {
       expect(params['serialnum'], 'BLES00113');
     });
 
+    test('RPCS3 retries by title only when it is better than the serial', () {
+      expect(
+        ScreenScraperService.shouldRetryRpcs3ByNameForTesting(
+          'The Lord of the Rings: Conquest',
+          'BLES00412',
+        ),
+        isTrue,
+      );
+      expect(
+        ScreenScraperService.shouldRetryRpcs3ByNameForTesting(
+          'BLES00412',
+          'BLES00412',
+        ),
+        isFalse,
+      );
+    });
+
     test('all URI-backed emulator rows survive physical scans', () {
       expect(
         SqliteDatabaseService.isPersistentExternalLibraryPath(
@@ -89,39 +106,38 @@ void main() {
       );
     });
 
-    test('RPCS3 launch script waits through the native Start gate', () {
+    test('RPCS3 direct script is fingerprinted and title-specific', () {
       final template = File('assets/data/rpcs3_stikdebug_launch.js')
           .readAsStringSync();
       final script = Rpcs3LaunchService.buildScriptForTesting(
         template,
-        'bles00113',
+        'bles00412',
       );
-      expect(script, contains('"BLES00113"'));
+      expect(script, contains('"BLES00412"'));
       expect(script, contains(Rpcs3LaunchService.expectedCoreUuid));
-      expect(script, contains('NEOSTATION_RPC_WAITING_FOR_START'));
-      expect(script, contains('NEOSTATION_RPC_CORE_DISCOVERED'));
-      expect(script, contains('NEOSTATION_RPC_BOOT_COMPLETED'));
+      expect(script, contains('NEOSTATION_RPC_DIRECT_CORE_NOT_READY'));
+      expect(script, contains('NEOSTATION_RPC_DIRECT_BOOT_COMPLETED'));
       expect(script, isNot(contains('__NEOSTATION_')));
     });
 
     test('invalid RPCS3 title IDs are rejected', () {
       expect(Rpcs3LaunchService.normalizeTitleId('../bad'), isNull);
-      expect(Rpcs3LaunchService.normalizeTitleId('BLES00113'), 'BLES00113');
+      expect(Rpcs3LaunchService.normalizeTitleId('BLES00412'), 'BLES00412');
     });
 
-    test('scraped RPCS3 name replaces the raw Title ID', () {
+    test('scraped RPCS3 name replaces the local fallback title', () {
       final game = GameModel.fromDatabaseModel(
         DatabaseGameModel(
-          filename: 'BLES00113',
-          romPath: 'rpcs3-library://game?title-id=BLES00113',
-          titleId: 'BLES00113',
-          titleName: 'BLES00113',
-          screenscraperRealName: 'Bladestorm: The Hundred Years’ War',
+          filename: 'BLES00412',
+          romPath: 'rpcs3-library://game?title-id=BLES00412',
+          titleId: 'BLES00412',
+          titleName: 'The Lord of the Rings: Conquest',
+          screenscraperRealName:
+              'Le Seigneur des Anneaux : L’Âge des conquêtes',
         ),
       );
-      expect(game.name, 'Bladestorm: The Hundred Years’ War');
-      expect(game.realname, 'Bladestorm: The Hundred Years’ War');
-      expect(game.titleId, 'BLES00113');
+      expect(game.name, 'Le Seigneur des Anneaux : L’Âge des conquêtes');
+      expect(game.titleId, 'BLES00412');
     });
 
     test('French RPCS3 status uses natural singular and plural', () {

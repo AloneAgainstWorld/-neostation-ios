@@ -658,6 +658,16 @@ class ScreenScraperService {
     return requested.isEmpty || requested.any(successfulTypes.contains);
   }
 
+  @visibleForTesting
+  static bool shouldRetryRpcs3ByNameForTesting(
+    String? gameName,
+    String? serialNumber,
+  ) {
+    final name = gameName?.trim() ?? '';
+    final serial = serialNumber?.trim() ?? '';
+    return name.isNotEmpty && name.toUpperCase() != serial.toUpperCase();
+  }
+
   /// Scrapes a single game by its filename and updates its local state.
   static Future<Map<String, dynamic>> scrapeSingleGame({
     required String appSystemId,
@@ -714,6 +724,19 @@ class ScreenScraperService {
         );
         if (gameInfoResult != null && gameInfoResult['gameInfo'] != null) break;
         attempts++;
+      }
+
+      if ((gameInfoResult == null || gameInfoResult['gameInfo'] == null) &&
+          isRpcs3Virtual &&
+          shouldRetryRpcs3ByNameForTesting(gameName, serialNumber)) {
+        gameInfoResult = await fetchGameInfo(
+          screenScraperSystemId.toString(),
+          romName,
+          appSystemId: appSystemId,
+          maxDailyRequests: 0,
+          gameName: gameName,
+          serialNumber: null,
+        );
       }
 
       if (gameInfoResult == null || gameInfoResult['gameInfo'] == null) {
@@ -848,6 +871,19 @@ class ScreenScraperService {
           serialNumber: isRpcs3Virtual ? serialNumber : null,
         );
         if (gameInfoResult != null && gameInfoResult['gameInfo'] != null) break;
+      }
+
+      if ((gameInfoResult == null || gameInfoResult['gameInfo'] == null) &&
+          isRpcs3Virtual &&
+          shouldRetryRpcs3ByNameForTesting(gameName, serialNumber)) {
+        gameInfoResult = await fetchGameInfo(
+          screenScraperSystemId.toString(),
+          romName,
+          appSystemId: appSystemId,
+          maxDailyRequests: 0,
+          gameName: gameName,
+          serialNumber: null,
+        );
       }
 
       if (gameInfoResult == null || gameInfoResult['gameInfo'] == null) {
@@ -1147,6 +1183,21 @@ class ScreenScraperService {
       );
       var gameInfo = gameResult?['gameInfo'];
       int requestsMade = 1;
+
+      if (gameInfo == null &&
+          isRpcs3Virtual &&
+          shouldRetryRpcs3ByNameForTesting(titleName, titleId)) {
+        final nameResult = await fetchGameInfo(
+          screenscraperSystemId.toString(),
+          filename,
+          appSystemId: appSystemId,
+          maxDailyRequests: maxDailyRequests,
+          gameName: titleName,
+          serialNumber: null,
+        );
+        gameInfo = nameResult?['gameInfo'];
+        requestsMade++;
+      }
 
       if (gameResult?['userInfo'] != null) {
         final ui = gameResult!['userInfo'];

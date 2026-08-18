@@ -28,6 +28,11 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     private var delayedRetryBackgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var delayedRetryDebugFileName: String?
 
+    /// State for RPCS3's bounded two-pass JIT/title-launch sequence.
+    private var twoPassWorkItem: DispatchWorkItem?
+    private var twoPassBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var twoPassDebugFileName: String?
+
     /// Bookmarks are stored per-emulator so several external folders can be
     /// linked side by side (RetroArch's, ARMSX2's, ...) instead of the one
     /// global slot this plugin originally had. The historical key is reused
@@ -112,6 +117,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             openUrlWithDelayedRetry(call: call, result: result)
         case "openUrlAfterJitPreflight":
             openUrlAfterJitPreflight(call: call, result: result)
+        case "openAppWithTwoPassJit":
+            openAppWithTwoPassJit(call: call, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -636,6 +643,267 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds, execute: workItem)
             result(true)
         }
+    }
+
+    /// Runs Universal JIT, foregrounds RPCS3 for its native Start gate,
+    /// reattaches with a direct-title script, then returns to RPCS3.
+    private func openAppWithTwoPassJit(
+        call: FlutterMethodCall,
+        result: @escaping FlutterResult
+    ) {
+        guard let args = call.arguments as? [String: Any],
+            let targetBaseBundleId = args["targetBaseBundleId"] as? String,
+            !targetBaseBundleId.isEmpty,
+            let secondScriptData = args["secondScriptData"] as? String,
+            !secondScriptData.isEmpty
+        else {
+            result(
+                FlutterError(
+                    code: "INVALID_TWO_PASS_ARGS",
+                    message: "openAppWithTwoPassJit requires a target bundle and second-pass script data",
+                    details: nil
+                )
+            )
+            return
+        }
+
+        func clampedMilliseconds(
+            _ key: String,
+            fallback: Int,
+            minimum: Int,
+            maximum: Int
+        ) -> Int {
+            let raw: Int
+            if let value = args[key] as? Int {
+                raw = value
+            } else if let value = args[key] as? NSNumber {
+                raw = value.intValue
+            } else {
+                raw = fallback
+            }
+            return min(max(raw, minimum), maximum)
+        }
+
+        let initialDelayMs = clampedMilliseconds(
+            "initialDelayMs",
+            fallback: 11_000,
+            minimum: 5_000,
+            maximum: 16_000
+        )
+        let postLaunchDelayMs = clampedMilliseconds(
+            "postLaunchDelayMs",
+            fallback: 10_000,
+            minimum: 4_000,
+            maximum: 14_000
+        )
+        let returnDelayMs = clampedMilliseconds(
+            "returnDelayMs",
+            fallback: 6_000,
+            minimum: 2_000,
+            maximum: 8_000
+        )
+        let secondScriptName = ((args["secondScriptName"] as? String)
+            ?? "neostation-rpcs3-direct.js")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let debugFileName = Self.safeDebugFileName(
+            (args["debugFileName"] as? String) ?? "rpcs3_launch_debug.txt"
+        )
+
+        let currentBundleId = Bundle.main.bundleIdentifier ?? ""
+        let sideloadSuffix = Self.currentSideloadBundleSuffix()
+        let targetBundleId: String
+        if let sideloadSuffix = sideloadSuffix, !sideloadSuffix.isEmpty {
+            targetBundleId = "\(targetBaseBundleId).\(sideloadSuffix)"
+        } else {
+            targetBundleId = targetBaseBundleId
+        }
+
+        func makeURL(host: String, items: [URLQueryItem]) -> URL? {
+            var components = URLComponents()
+            components.scheme = "stikjit"
+            components.host = host
+            components.queryItems = items
+            return components.url
+        }
+
+        guard let firstPreflightURL = makeURL(
+            host: "enable-jit",
+            items: [
+                URLQueryItem(name: "bundle-id", value: targetBundleId),
+                URLQueryItem(name: "script-name", value: "universal.js"),
+            ]
+        ), let launchURL = makeURL(
+            host: "launch-app",
+            items: [URLQueryItem(name: "bundle-id", value: targetBundleId)]
+        ), let secondPreflightURL = makeURL(
+            host: "enable-jit",
+            items: [
+                URLQueryItem(name: "bundle-id", value: targetBundleId),
+                URLQueryItem(name: "script-name", value: secondScriptName),
+                URLQueryItem(name: "script-data", value: secondScriptData),
+            ]
+        ) else {
+            result(
+                FlutterError(
+                    code: "INVALID_TWO_PASS_URL",
+                    message: "Could not construct the RPCS3 two-pass StikDebug URLs",
+                    details: targetBundleId
+                )
+            )
+            return
+        }
+
+        cancelTwoPassSequence(reason: "REPLACED_BY_NEW_REQUEST")
+        twoPassDebugFileName = debugFileName
+        Self.writeLaunchDebug(
+            fileName: debugFileName,
+            replace: true,
+            message: "STATE: TWO_PASS_REQUESTED\n"
+                + "NeoStation bundle: \(currentBundleId)\n"
+                + "Target base bundle: \(targetBaseBundleId)\n"
+                + "Target effective bundle: \(targetBundleId)\n"
+                + "Initial JIT delay: \(initialDelayMs) ms\n"
+                + "Post-Start delay: \(postLaunchDelayMs) ms\n"
+                + "Return delay: \(returnDelayMs) ms\n"
+                + "Second script: \(secondScriptName)"
+        )
+
+        twoPassBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "NeoStation.RPCS3TwoPassLaunch"
+        ) { [weak self] in
+            guard let self = self else { return }
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: "STATE: TWO_PASS_BACKGROUND_EXPIRED"
+            )
+            self.cancelTwoPassSequence(reason: "BACKGROUND_EXPIRED")
+        }
+
+        UIApplication.shared.open(firstPreflightURL, options: [:]) { [weak self] opened in
+            guard let self = self else {
+                result(false)
+                return
+            }
+            guard opened else {
+                Self.writeLaunchDebug(
+                    fileName: debugFileName,
+                    replace: false,
+                    message: "STATE: FIRST_PREFLIGHT_OPEN_FAILED"
+                )
+                self.cancelTwoPassSequence(reason: "FIRST_PREFLIGHT_OPEN_FAILED")
+                result(false)
+                return
+            }
+
+            Self.writeLaunchDebug(
+                fileName: debugFileName,
+                replace: false,
+                message: "STATE: FIRST_PREFLIGHT_OPENED"
+            )
+            self.scheduleTwoPassWork(afterMilliseconds: initialDelayMs) { [weak self] in
+                guard let self = self else { return }
+                Self.writeLaunchDebug(
+                    fileName: debugFileName,
+                    replace: false,
+                    message: "STATE: RPCS3_LAUNCH_ATTEMPT"
+                )
+                UIApplication.shared.open(launchURL, options: [:]) { [weak self] launched in
+                    guard let self = self else { return }
+                    Self.writeLaunchDebug(
+                        fileName: debugFileName,
+                        replace: false,
+                        message: launched
+                            ? "STATE: RPCS3_LAUNCH_OPENED\nACTION: PRESS_START_NOW"
+                            : "STATE: RPCS3_LAUNCH_FAILED"
+                    )
+                    guard launched else {
+                        self.cancelTwoPassSequence(reason: "RPCS3_LAUNCH_FAILED")
+                        return
+                    }
+
+                    self.scheduleTwoPassWork(afterMilliseconds: postLaunchDelayMs) { [weak self] in
+                        guard let self = self else { return }
+                        Self.writeLaunchDebug(
+                            fileName: debugFileName,
+                            replace: false,
+                            message: "STATE: SECOND_PREFLIGHT_ATTEMPT"
+                        )
+                        UIApplication.shared.open(secondPreflightURL, options: [:]) { [weak self] secondOpened in
+                            guard let self = self else { return }
+                            Self.writeLaunchDebug(
+                                fileName: debugFileName,
+                                replace: false,
+                                message: secondOpened
+                                    ? "STATE: SECOND_PREFLIGHT_OPENED"
+                                    : "STATE: SECOND_PREFLIGHT_FAILED"
+                            )
+                            guard secondOpened else {
+                                self.cancelTwoPassSequence(reason: "SECOND_PREFLIGHT_FAILED")
+                                return
+                            }
+
+                            self.scheduleTwoPassWork(afterMilliseconds: returnDelayMs) { [weak self] in
+                                guard let self = self else { return }
+                                Self.writeLaunchDebug(
+                                    fileName: debugFileName,
+                                    replace: false,
+                                    message: "STATE: RPCS3_RETURN_ATTEMPT"
+                                )
+                                UIApplication.shared.open(launchURL, options: [:]) { [weak self] returned in
+                                    guard let self = self else { return }
+                                    Self.writeLaunchDebug(
+                                        fileName: debugFileName,
+                                        replace: false,
+                                        message: returned
+                                            ? "STATE: TWO_PASS_COMPLETED"
+                                            : "STATE: RPCS3_RETURN_FAILED"
+                                    )
+                                    self.finishTwoPassSequence()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            result(true)
+        }
+    }
+
+    private func scheduleTwoPassWork(
+        afterMilliseconds delayMs: Int,
+        action: @escaping () -> Void
+    ) {
+        twoPassWorkItem?.cancel()
+        let item = DispatchWorkItem(block: action)
+        twoPassWorkItem = item
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + (Double(delayMs) / 1000.0),
+            execute: item
+        )
+    }
+
+    private func cancelTwoPassSequence(reason: String) {
+        if let fileName = twoPassDebugFileName {
+            Self.writeLaunchDebug(
+                fileName: fileName,
+                replace: false,
+                message: "STATE: TWO_PASS_CANCELLED\nReason: \(reason)"
+            )
+        }
+        twoPassWorkItem?.cancel()
+        twoPassWorkItem = nil
+        finishTwoPassSequence()
+    }
+
+    private func finishTwoPassSequence() {
+        twoPassWorkItem?.cancel()
+        twoPassWorkItem = nil
+        if twoPassBackgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(twoPassBackgroundTask)
+            twoPassBackgroundTask = .invalid
+        }
+        twoPassDebugFileName = nil
     }
 
     /// Returns the suffix SideStore/AltStore appended to NeoStation's original

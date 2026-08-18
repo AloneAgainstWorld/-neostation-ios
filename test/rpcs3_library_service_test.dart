@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neostation/services/rpcs3_library_service.dart';
+import 'package:neostation/services/rpcs3_title_catalog_service.dart';
 import 'package:path/path.dart' as path;
 
 void main() {
@@ -75,9 +76,8 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
           'APP_VER': '01.00',
         }),
       );
-      await File(
-        path.join(hddGame.path, 'ICON0.PNG'),
-      ).writeAsBytes(const <int>[0x89, 0x50, 0x4e, 0x47]);
+      await File(path.join(hddGame.path, 'ICON0.PNG'))
+          .writeAsBytes(const <int>[0x89, 0x50, 0x4e, 0x47]);
 
       final extractedMetadata = Directory(
         path.join(
@@ -104,9 +104,8 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
       await discImages.create(recursive: true);
       final iso = File(path.join(discImages.path, 'ISO Only Game.iso'));
       await iso.writeAsBytes(const <int>[]);
-      await File(
-        path.join(dataRoot.path, 'games.yml'),
-      ).writeAsString('BLUS99999: "${iso.path}"\n');
+      await File(path.join(dataRoot.path, 'games.yml'))
+          .writeAsString('BLUS99999: "${iso.path}"\n');
 
       final games = await Rpcs3LibraryService.discoverLibrary(dataRoot.path);
       final byId = <String, Rpcs3LibraryGame>{
@@ -122,6 +121,40 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
       expect(byId['BLES54321']!.title, 'Extracted Disc Game');
       expect(byId['BLUS99999']!.title, 'ISO Only Game');
       expect(byId['BLUS99999']!.sourceKind, 'games.yml');
+    });
+    test('ignores stale games.yml registrations whose target is gone', () async {
+      final temp = await Directory.systemTemp.createTemp('rpcs3-stale-yml');
+      addTearDown(() => temp.delete(recursive: true));
+      final dataRoot = Directory(path.join(temp.path, 'Data'));
+      await dataRoot.create(recursive: true);
+      await File(path.join(dataRoot.path, 'games.yml')).writeAsString(
+        'BLES01484: "${path.join(dataRoot.path, 'games', 'DiscImages', 'deleted.iso')}"\n',
+      );
+
+      final games = await Rpcs3LibraryService.discoverLibrary(dataRoot.path);
+      expect(games.where((game) => game.titleId == 'BLES01484'), isEmpty);
+    });
+
+    test('normalizes GameDB serial keys and applies fallback titles', () async {
+      final catalog = Rpcs3TitleCatalogService.parseCatalogForTesting(
+        '{"BLES-00412":"The Lord of the Rings: Conquest"}',
+      );
+      expect(catalog['BLES00412'], 'The Lord of the Rings: Conquest');
+
+      final enriched = await Rpcs3LibraryService.applyTitleCatalogForTesting(
+        const <Rpcs3LibraryGame>[
+          Rpcs3LibraryGame(
+            titleId: 'BLES00412',
+            title: 'BLES00412',
+            version: '',
+            category: '',
+            sourcePath: '/tmp/game.iso',
+            sourceKind: 'games.yml',
+          ),
+        ],
+        catalog,
+      );
+      expect(enriched.single.title, 'The Lord of the Rings: Conquest');
     });
   });
 }
@@ -143,9 +176,8 @@ Uint8List _buildSfo(Map<String, Object> values) {
 
     if (item.value is int) {
       final valueBytes = Uint8List(4);
-      ByteData.sublistView(
-        valueBytes,
-      ).setUint32(0, item.value as int, Endian.little);
+      ByteData.sublistView(valueBytes)
+          .setUint32(0, item.value as int, Endian.little);
       data.add(valueBytes);
       entries.add(
         _SfoEntry(
