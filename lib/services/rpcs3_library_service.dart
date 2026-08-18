@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -12,6 +13,7 @@ import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/config_service.dart';
 import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/rpcs3_title_catalog_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -36,6 +38,26 @@ class Rpcs3LibraryGame {
   final String sourcePath;
   final String sourceKind;
   final String? iconPath;
+
+  Rpcs3LibraryGame copyWith({
+    String? titleId,
+    String? title,
+    String? version,
+    String? category,
+    String? sourcePath,
+    String? sourceKind,
+    String? iconPath,
+  }) {
+    return Rpcs3LibraryGame(
+      titleId: titleId ?? this.titleId,
+      title: title ?? this.title,
+      version: version ?? this.version,
+      category: category ?? this.category,
+      sourcePath: sourcePath ?? this.sourcePath,
+      sourceKind: sourceKind ?? this.sourceKind,
+      iconPath: iconPath ?? this.iconPath,
+    );
+  }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'titleId': titleId,
@@ -155,19 +177,59 @@ class Rpcs3LibraryService {
     required SqliteDatabaseProvider databaseProvider,
   }) async {
     await loadCachedLibrary();
+    if (!Platform.isIOS) return;
+
+    final dataRoot = await _resolveLinkedDataRoot();
+    if (dataRoot != null) {
+      try {
+        final discovered = await discoverLibrary(dataRoot);
+        final games = await _applyTitleFallbacks(
+          discovered,
+          allowNetwork: false,
+        );
+        final result = await _importIntoNeoStation(games);
+        await _replaceCache(games);
+        await _writeDebugFile(dataRoot: dataRoot, games: games, result: result);
+        await databaseProvider.loadGamesForSystem('ps3');
+        await configProvider.refreshDetectedSystems();
+        _log.i(
+          'Rpcs3LibraryService: reconciled ${games.length} live PS3 game(s) '
+          'after database initialization; removed ${result.removedRows} stale '
+          'row(s).',
+        );
+
+        // Keep startup fast by using the disk/seed title catalog first. A
+        // background refresh can enrich unresolved serials without delaying
+        // the first usable frame.
+        unawaited(
+          _refreshCatalogAfterStartup(
+            dataRoot: dataRoot,
+            games: games,
+            configProvider: configProvider,
+            databaseProvider: databaseProvider,
+          ),
+        );
+        return;
+      } catch (error) {
+        _log.w(
+          'Rpcs3LibraryService: live startup reconciliation failed; '
+          'falling back to cache: $error',
+        );
+      }
+    }
+
     final cache = _cache;
     if (!_syncCompleted || cache == null || cache.isEmpty) return;
-
     try {
       await _importIntoNeoStation(cache.values.toList());
       await databaseProvider.loadGamesForSystem('ps3');
       await configProvider.refreshDetectedSystems();
       _log.i(
         'Rpcs3LibraryService: restored ${cache.length} cached PS3 game(s) '
-        'after database initialization.',
+        'because the linked Data folder was unavailable.',
       );
-    } catch (e) {
-      _log.e('Rpcs3LibraryService: startup restore failed: $e');
+    } catch (error) {
+      _log.e('Rpcs3LibraryService: startup cache restore failed: $error');
     }
   }
 
@@ -194,31 +256,15 @@ class Rpcs3LibraryService {
 
   /// Reads the currently linked RPCS3 Data directory and imports its PS3 rows.
   static Future<Rpcs3SyncResult> syncLinkedLibrary() async {
-    var dataRoot = linkedDataPath;
-    if (dataRoot == null && Platform.isIOS) {
-      final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
-        key: bookmarkKey,
-      );
-      if (selected != null) {
-        dataRoot = await _normalizeDataRoot(selected);
-        _linkedDataPath = dataRoot;
-      }
-    }
-
+    final dataRoot = await _resolveLinkedDataRoot();
     if (dataRoot == null) {
       throw StateError('RPCS3 Data folder is not linked.');
     }
 
-    final games = await discoverLibrary(dataRoot);
+    final discovered = await discoverLibrary(dataRoot);
+    final games = await _applyTitleFallbacks(discovered, allowNetwork: true);
     final importResult = await _importIntoNeoStation(games);
-
-    final cache = <String, Rpcs3LibraryGame>{};
-    for (final game in games) {
-      cache[game.titleId.toLowerCase()] = game;
-    }
-    _cache = cache;
-    _syncCompleted = true;
-    await _persistCache();
+    await _replaceCache(games);
 
     await _writeDebugFile(
       dataRoot: dataRoot,
@@ -231,7 +277,8 @@ class Rpcs3LibraryService {
       'Rpcs3LibraryService: discovered ${games.length} games; '
       '${importResult.virtualRows} virtual rows, '
       '${importResult.physicalRows} physical rows, '
-      '${importResult.artworkFiles} artwork files',
+      '${importResult.artworkFiles} artwork files, '
+      '${importResult.removedRows} stale rows removed',
     );
 
     return importResult;
@@ -335,7 +382,17 @@ class Rpcs3LibraryService {
           continue;
         }
 
-        final rawSource = resolvedPath ?? entry.value;
+        // `games.yml` can retain registrations after their ISO/folder was
+        // deleted. Do not resurrect those stale records in NeoStation.
+        if (resolvedPath == null) {
+          _log.i(
+            'Rpcs3LibraryService: ignored stale games.yml entry '
+            '$titleId -> ${entry.value}',
+          );
+          continue;
+        }
+
+        final rawSource = resolvedPath;
         final fileName = path.basename(rawSource);
         final fallbackTitle = path.basenameWithoutExtension(fileName).trim();
         final iconPath = await _findCachedIcon(root.path, titleId);
@@ -357,6 +414,120 @@ class Rpcs3LibraryService {
     final games = byTitleId.values.toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return games;
+  }
+
+  static Future<String?> _resolveLinkedDataRoot() async {
+    final current = linkedDataPath;
+    if (current != null) return current;
+    if (!Platform.isIOS) return null;
+
+    try {
+      final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      if (selected == null) return null;
+      final normalized = await _normalizeDataRoot(selected);
+      _linkedDataPath = normalized;
+      return normalized;
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: linked Data folder resolve failed: $error');
+      return null;
+    }
+  }
+
+  static Future<void> _replaceCache(List<Rpcs3LibraryGame> games) async {
+    _cache = <String, Rpcs3LibraryGame>{
+      for (final game in games) game.titleId.toLowerCase(): game,
+    };
+    _syncCompleted = true;
+    await _persistCache();
+  }
+
+  static Future<List<Rpcs3LibraryGame>> _applyTitleFallbacks(
+    List<Rpcs3LibraryGame> games, {
+    required bool allowNetwork,
+  }) async {
+    if (!games.any(_needsCatalogTitle)) return games;
+
+    final catalog = await Rpcs3TitleCatalogService.loadTitles(
+      allowNetwork: allowNetwork,
+    );
+    return <Rpcs3LibraryGame>[
+      for (final game in games)
+        if (_needsCatalogTitle(game))
+          game.copyWith(
+            title:
+                Rpcs3TitleCatalogService.resolveFromCatalogForTesting(
+                  game.titleId,
+                  catalog,
+                ) ??
+                game.title,
+          )
+        else
+          game,
+    ];
+  }
+
+  static bool _needsCatalogTitle(Rpcs3LibraryGame game) {
+    final title = game.title.trim();
+    if (title.isEmpty) return true;
+    return Rpcs3TitleCatalogService.normalizeTitleId(title) ==
+        Rpcs3TitleCatalogService.normalizeTitleId(game.titleId);
+  }
+
+  @visibleForTesting
+  static Future<List<Rpcs3LibraryGame>> applyTitleCatalogForTesting(
+    List<Rpcs3LibraryGame> games,
+    Map<String, String> catalog,
+  ) async {
+    return <Rpcs3LibraryGame>[
+      for (final game in games)
+        if (_needsCatalogTitle(game))
+          game.copyWith(
+            title:
+                Rpcs3TitleCatalogService.resolveFromCatalogForTesting(
+                  game.titleId,
+                  catalog,
+                ) ??
+                game.title,
+          )
+        else
+          game,
+    ];
+  }
+
+  static Future<void> _refreshCatalogAfterStartup({
+    required String dataRoot,
+    required List<Rpcs3LibraryGame> games,
+    required SqliteConfigProvider configProvider,
+    required SqliteDatabaseProvider databaseProvider,
+  }) async {
+    try {
+      final enriched = await _applyTitleFallbacks(games, allowNetwork: true);
+      var changed = enriched.length != games.length;
+      if (!changed) {
+        for (var index = 0; index < games.length; index++) {
+          if (games[index].title != enriched[index].title) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) return;
+
+      final result = await _importIntoNeoStation(enriched);
+      await _replaceCache(enriched);
+      await _writeDebugFile(
+        dataRoot: dataRoot,
+        games: enriched,
+        result: result,
+      );
+      await databaseProvider.loadGamesForSystem('ps3');
+      await configProvider.refreshDetectedSystems();
+      _log.i('Rpcs3LibraryService: applied background PS3 title enrichment.');
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: background title enrichment failed: $error');
+    }
   }
 
   static Future<String?> _normalizeDataRoot(String selectedPath) async {
@@ -1001,9 +1172,8 @@ class Rpcs3LibraryService {
         }
         if (hasExisting) continue;
 
-        await File(
-          path.join(directory.path, '$mediaKey.$extension'),
-        ).writeAsBytes(bytes, flush: true);
+        await File(path.join(directory.path, '$mediaKey.$extension'))
+            .writeAsBytes(bytes, flush: true);
         written++;
       }
     }

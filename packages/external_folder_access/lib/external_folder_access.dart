@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 /// Thin Dart wrapper around the native iOS folder-bookmark plugin.
@@ -203,6 +204,40 @@ class ExternalFolderAccess {
         'delayMs': warmupDelay.inMilliseconds,
         'scriptName': scriptName,
         if (scriptDataBase64Url != null) 'scriptData': scriptDataBase64Url,
+        'debugFileName': debugFileName,
+      });
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Runs a two-pass StikDebug sequence for an emulator that exposes neither
+  /// a game deeplink nor a way to bypass its native startup gate.
+  ///
+  /// Pass one runs StikDebug's Universal script and foregrounds the target app.
+  /// After [postLaunchDelay], pass two reattaches with a caller-provided script
+  /// (for RPCS3, a fingerprinted direct Title-ID boot call), then returns to the
+  /// target app after [returnDelay]. The native layer keeps the sequence alive
+  /// with a bounded UIApplication background task and writes every transition
+  /// to [debugFileName].
+  static Future<bool?> openAppWithTwoPassJit({
+    required String targetBaseBundleId,
+    required String secondScriptName,
+    required String secondScriptDataBase64Url,
+    Duration initialWarmupDelay = const Duration(seconds: 11),
+    Duration postLaunchDelay = const Duration(seconds: 10),
+    Duration returnDelay = const Duration(seconds: 6),
+    String debugFileName = 'jit_two_pass_debug.txt',
+  }) async {
+    if (!Platform.isIOS) return null;
+    try {
+      return await _channel.invokeMethod<bool>('openAppWithTwoPassJit', {
+        'targetBaseBundleId': targetBaseBundleId,
+        'initialDelayMs': initialWarmupDelay.inMilliseconds,
+        'postLaunchDelayMs': postLaunchDelay.inMilliseconds,
+        'returnDelayMs': returnDelay.inMilliseconds,
+        'secondScriptName': secondScriptName,
+        'secondScriptData': secondScriptDataBase64Url,
         'debugFileName': debugFileName,
       });
     } on PlatformException {

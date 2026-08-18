@@ -24,7 +24,7 @@ NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://githu
 - **RetroArch** library linking/synchronization and direct game launching through deeplinks.
 - **MeloNX** library synchronization, media association, direct launching and JIT-oriented launch flows.
 - **ARMSX2** library synchronization, direct launching and JIT-oriented launch flows.
-- **RPCS3 iOS** persistent Data-folder library import, Title-ID ScreenScraper lookup, validated image/video downloads and experimental StikDebug-assisted title launch after RPCS3’s Start gate for the fingerprinted RPCS3 iOS 0.1 (1) build.
+- **RPCS3 iOS** live Data-folder reconciliation, stale-entry removal, Title-ID/PS3-catalog name fallback, validated ScreenScraper media and an experimental two-pass StikDebug title launch for the fingerprinted RPCS3 iOS 0.1 (1) build.
 - Installed-emulator detection in NeoStation settings.
 - iOS-specific document, media and external-folder handling.
 - **Custom main-menu backgrounds** using PNG, JPG/JPEG, WebP, GIF, MP4, M4V or MOV files.

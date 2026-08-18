@@ -8,12 +8,11 @@ import 'package:neostation/services/logger_service.dart';
 /// Experimental RPCS3 iOS launcher for the exact RPCS3 build inspected by the
 /// NeoStation project.
 ///
-/// RPCS3 currently has no public game deeplink. This launcher therefore asks
-/// StikDebug to run a derivative of its Universal script. The script remains
-/// attached across RPCS3's native Start gate, waits for the fingerprinted core
-/// to load, then calls `rpcs3_ios_boot_game(title_id)`, restores the stopped
-/// thread's register state and detaches. The user may still need to press Start,
-/// but no second game selection should be required.
+/// RPCS3 currently has no public game deeplink. NeoStation therefore runs a
+/// bounded two-pass StikDebug sequence: Universal JIT first, RPCS3's native
+/// Start gate, then a second fingerprinted attachment that calls
+/// `rpcs3_ios_boot_game(title_id)` and returns to RPCS3. The user still presses
+/// Start, but should not have to select the game a second time.
 ///
 /// The UUID/offset guard makes the experiment fail closed when RPCS3 changes.
 abstract final class Rpcs3LaunchService {
@@ -59,11 +58,13 @@ abstract final class Rpcs3LaunchService {
           .encode(utf8.encode(script))
           .replaceAll('=', '');
 
-      final opened = await ExternalFolderAccess.openAppAfterJitPreflight(
+      final opened = await ExternalFolderAccess.openAppWithTwoPassJit(
         targetBaseBundleId: targetBundleId,
-        warmupDelay: const Duration(seconds: 14),
-        scriptName: 'neostation-rpcs3.js',
-        scriptDataBase64Url: scriptData,
+        initialWarmupDelay: const Duration(seconds: 11),
+        postLaunchDelay: const Duration(seconds: 10),
+        returnDelay: const Duration(seconds: 6),
+        secondScriptName: 'neostation-rpcs3-direct.js',
+        secondScriptDataBase64Url: scriptData,
         debugFileName: 'rpcs3_launch_debug.txt',
       );
       return opened == true;

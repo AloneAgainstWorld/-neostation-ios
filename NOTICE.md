@@ -71,6 +71,12 @@ This project includes or depends on third-party software, including:
   derivative adds a version-fingerprinted RPCS3 title boot call. Preserve the
   StikDebug copyright/license and this notice when redistributing that file.
 
+- GameDB-PS3 title catalog (runtime cached lookup)
+  NeoStation may download `PS3.titles.json` from the GPL-3.0 GameDB-PS3
+  project to resolve PS3 serial numbers when local metadata and ScreenScraper
+  do not provide a usable title. Preserve the GameDB-PS3 license/attribution
+  when redistributing a cached or bundled copy of that data.
+
 Additional Flutter/Dart dependencies and emulator-related integrations may be
 governed by their own licenses or terms. Preserve all required third-party
 notices when redistribution requires it.
