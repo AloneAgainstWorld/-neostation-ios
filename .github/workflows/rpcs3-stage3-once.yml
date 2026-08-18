@@ -39,6 +39,26 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Show failing patch context
+        run: |
+          python3 - <<'PY'
+          import base64
+          import re
+          import zlib
+          from pathlib import Path
+
+          wrapper = Path('.github/scripts/apply_rpcs3_stage3.py').read_text(encoding='utf-8')
+          match = re.search(r"b64decode\('([^']+)'\)", wrapper)
+          if not match:
+              raise SystemExit('Compressed patch payload not found')
+          source = zlib.decompress(base64.b64decode(match.group(1))).decode('utf-8')
+          needle = 'manual RPCS3 serial request'
+          index = source.find(needle)
+          if index < 0:
+              raise SystemExit(f'Patch label not found: {needle}')
+          print(source[max(0, index - 2500):index + 2500])
+          PY
+
       - name: Apply RPCS3 persistence, scraping and launch patches
         run: python3 .github/scripts/apply_rpcs3_stage3.py
 
