@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neostation/models/database_game_model.dart';
 import 'package:neostation/models/game_model.dart';
-import 'package:neostation/services/rpcs3_launch_service.dart';
+import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 
 void main() {
   test('existing synthetic RPCS3 metadata resolves to PARAM.SFO title', () {
@@ -22,41 +22,31 @@ void main() {
     expect(resolved.hasMeaningfulScrapedName, isFalse);
   });
 
-  test(
-    'RPCS3 protocol is immediate and records real return/state diagnostics',
-    () {
-      final service = File(
-        'lib/services/rpcs3_launch_service.dart',
-      ).readAsStringSync();
-      final script = File(
-        'assets/data/rpcs3_stikdebug_launch.js',
-      ).readAsStringSync();
-      expect(service, contains('openJitRequest'));
-      expect(service, isNot(contains('warmupDelay:')));
-      expect(script, contains('NEOSTATION_RPC_STATE_BEFORE'));
-      expect(script, contains('NEOSTATION_RPC_BOOT_RESULT'));
-      expect(script, contains('NEOSTATION_RPC_LAST_ERROR'));
-      expect(script, contains('NEOSTATION_RPC_PROGRESS_AFTER'));
-      expect(script, contains('p0;thread:'));
-    },
-  );
-
-  test('generated script contains the inspected RPCS3 0.2 function map', () {
-    final template = File(
-      'assets/data/rpcs3_stikdebug_launch.js',
+  test('RPCS3 launch uses only the stable Universal JIT handoff', () {
+    final service = File(
+      'lib/services/rpcs3_launch_service.dart',
     ).readAsStringSync();
-    final script = Rpcs3LaunchService.buildScriptForTesting(
-      template,
-      'BLES00412',
-      displayTitle: 'The Lord of the Rings: Conquest™',
-      sourcePath: '/Data/games/discImgs/BLES00412',
-      sourceKind: 'disc-image',
-      sessionId: 'session-1',
+    expect(service, contains('openJitRequest'));
+    expect(service, contains("scriptName: 'universal.js'"));
+    expect(service, isNot(contains('rpcs3_stikdebug_launch.js')));
+    expect(service, isNot(contains('bootGameOffset')));
+    expect(service, isNot(contains('expectedCoreUuid')));
+    expect(service, isNot(contains('SECOND_PASS')));
+  });
+
+  test('RPCS3 Shortcut setup has a stable helper name', () {
+    expect(
+      IosShortcutJitLaunchService.rpcs3ShortcutName,
+      'NeoStation+RPCS3+Start',
     );
-    expect(script, contains('223884'));
-    expect(script, contains('223996'));
-    expect(script, contains('227968'));
-    expect(script, contains('229172'));
-    expect(script, isNot(contains('__NEOSTATION_')));
+    final shortcutService = File(
+      'lib/services/ios_shortcut_jit_launch_service.dart',
+    ).readAsStringSync();
+    expect(shortcutService, contains('shortcuts://create-shortcut'));
+    expect(shortcutService, contains('openRpcs3ShortcutInstaller'));
+  });
+
+  test('obsolete RPCS3 direct injection asset is removed', () {
+    expect(File('assets/data/rpcs3_stikdebug_launch.js').existsSync(), isFalse);
   });
 }
