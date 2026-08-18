@@ -1,0 +1,93 @@
+name: Validate RPCS3 Stage 6 once
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate:
+    name: Apply, analyze and test Stage 6
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v7
+        with:
+          ref: fix/rpcs3-stage6-20260818
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply Stage 6 patch
+        run: python3 tools/rpcs3_stage6_patch.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/main.dart \
+            lib/services/rpcs3_library_service.dart \
+            lib/services/rpcs3_launch_service.dart \
+            lib/services/screenscraper_service.dart \
+            test/rpcs3_stage6_test.dart
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify implementation markers
+        run: |
+          set -euo pipefail
+          grep -Fq "version: 0.9.9+135" pubspec.yaml
+          grep -Fq "rpcs3_startup_debug.txt" lib/services/rpcs3_library_service.dart
+          grep -Fq "CACHE_FALLBACK" lib/services/rpcs3_library_service.dart
+          grep -Fq "DELAYED_LIVE_RECONCILE" lib/services/rpcs3_library_service.dart
+          grep -Fq "Rpcs3TitleCatalogService.resolveTitle" lib/services/screenscraper_service.dart
+          grep -Fq "shouldContinuePendingForTesting" lib/services/rpcs3_launch_service.dart
+          grep -Fq "openAppAfterJitPreflight" lib/services/rpcs3_launch_service.dart
+          grep -Fq "Rpcs3LaunchService.initialize" lib/main.dart
+          grep -Fq "refreshedBookmark" packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift
+
+      - name: Check direct RPCS3 JavaScript syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('assets/data/rpcs3_stikdebug_launch.js').read_text(encoding='utf-8')
+          source = source.replace('__NEOSTATION_TITLE_ID_JSON__', '"BLES00412"')
+          source = source.replace('__NEOSTATION_CORE_UUID_JSON__', '"CFE15492-152B-331E-8395-9A3CF9AC8A9F"')
+          source = source.replace('__NEOSTATION_BOOT_OFFSET_HEX__', '2fa18')
+          Path('/tmp/rpcs3_stage6.js').write_text(source, encoding='utf-8')
+          PY
+          node --check /tmp/rpcs3_stage6.js
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run dedicated RPCS3 tests
+        run: flutter test test/rpcs3_library_service_test.dart test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart
+
+      - name: Run full Flutter test suite
+        run: flutter test
+
+      - name: Commit validated Stage 6 and remove temporary automation
+        run: |
+          set -euo pipefail
+          git checkout -- pubspec.lock analysis_options.yaml || true
+          git checkout -- packages/flutter_7zip/analysis_options.yaml || true
+          git checkout -- packages/gamepads/analysis_options.yaml || true
+          rm -f .github/workflows/validate-rpcs3-stage6-once.yml
+          rm -f tools/rpcs3_stage6_patch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ios): make RPCS3 recovery and second pass deterministic"
+          git push origin HEAD:fix/rpcs3-stage6-20260818
