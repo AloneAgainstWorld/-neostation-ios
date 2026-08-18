@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/rpcs3_title_catalog_service.dart';
 
 import '../repositories/scraper_repository.dart';
 import 'screenscraper/region_config.dart';
@@ -706,6 +707,14 @@ class ScreenScraperService {
       final lowerRomPath = romPath.toLowerCase();
       final isMeloNxVirtual = lowerRomPath.startsWith('melonx://');
       final isRpcs3Virtual = lowerRomPath.startsWith('rpcs3-library://');
+      var effectiveGameName = gameName;
+      if (isRpcs3Virtual &&
+          !shouldRetryRpcs3ByNameForTesting(effectiveGameName, serialNumber) &&
+          (serialNumber?.trim().isNotEmpty ?? false)) {
+        effectiveGameName =
+            await Rpcs3TitleCatalogService.resolveTitle(serialNumber!) ??
+            effectiveGameName;
+      }
 
       Map<String, dynamic>? gameInfoResult;
       int attempts = 0;
@@ -718,7 +727,7 @@ class ScreenScraperService {
           maxDailyRequests: 0,
           gameName:
               (systemFolder == 'android' || isMeloNxVirtual || isRpcs3Virtual)
-              ? gameName
+              ? effectiveGameName
               : null,
           serialNumber: isRpcs3Virtual ? serialNumber : null,
         );
@@ -728,13 +737,13 @@ class ScreenScraperService {
 
       if ((gameInfoResult == null || gameInfoResult['gameInfo'] == null) &&
           isRpcs3Virtual &&
-          shouldRetryRpcs3ByNameForTesting(gameName, serialNumber)) {
+          shouldRetryRpcs3ByNameForTesting(effectiveGameName, serialNumber)) {
         gameInfoResult = await fetchGameInfo(
           screenScraperSystemId.toString(),
           romName,
           appSystemId: appSystemId,
           maxDailyRequests: 0,
-          gameName: gameName,
+          gameName: effectiveGameName,
           serialNumber: null,
         );
       }
@@ -1150,10 +1159,18 @@ class ScreenScraperService {
       final lowerRomPath = romPath.toLowerCase();
       final isMeloNxVirtual = lowerRomPath.startsWith('melonx://');
       final isRpcs3Virtual = lowerRomPath.startsWith('rpcs3-library://');
+      var effectiveTitleName = titleName;
+      if (isRpcs3Virtual &&
+          !shouldRetryRpcs3ByNameForTesting(effectiveTitleName, titleId) &&
+          (titleId?.isNotEmpty ?? false)) {
+        effectiveTitleName =
+            await Rpcs3TitleCatalogService.resolveTitle(titleId!) ??
+            effectiveTitleName;
+      }
       final displayName =
           (isMeloNxVirtual || isRpcs3Virtual) &&
-              (titleName?.trim().isNotEmpty ?? false)
-          ? titleName!.trim()
+              (effectiveTitleName?.trim().isNotEmpty ?? false)
+          ? effectiveTitleName!.trim()
           : filename;
 
       scrapingProvider.updateThreadProgress(
@@ -1177,7 +1194,7 @@ class ScreenScraperService {
         maxDailyRequests: maxDailyRequests,
         gameName:
             (systemFolder == 'android' || isMeloNxVirtual || isRpcs3Virtual)
-            ? titleName
+            ? effectiveTitleName
             : null,
         serialNumber: isRpcs3Virtual ? titleId : null,
       );
@@ -1186,13 +1203,13 @@ class ScreenScraperService {
 
       if (gameInfo == null &&
           isRpcs3Virtual &&
-          shouldRetryRpcs3ByNameForTesting(titleName, titleId)) {
+          shouldRetryRpcs3ByNameForTesting(effectiveTitleName, titleId)) {
         final nameResult = await fetchGameInfo(
           screenscraperSystemId.toString(),
           filename,
           appSystemId: appSystemId,
           maxDailyRequests: maxDailyRequests,
-          gameName: titleName,
+          gameName: effectiveTitleName,
           serialNumber: null,
         );
         gameInfo = nameResult?['gameInfo'];

@@ -237,6 +237,28 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
                 )
                 return
             }
+
+            // Sideload updates/re-signing can make an otherwise resolvable
+            // bookmark stale. Refresh it immediately while the security scope
+            // is active so subsequent cold launches keep the same folder grant.
+            if isStale {
+                do {
+                    let refreshedBookmark = try url.bookmarkData(
+                        options: [],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                    UserDefaults.standard.set(
+                        refreshedBookmark,
+                        forKey: Self.bookmarkDefaultsKey(for: key)
+                    )
+                } catch {
+                    // The currently resolved URL is still usable for this
+                    // process. Keep it rather than failing the whole launch;
+                    // the next relink can replace the bookmark if necessary.
+                    print("ExternalFolderAccess: failed refreshing stale bookmark for \(key): \(error)")
+                }
+            }
             result(url.path)
         } catch {
             result(
