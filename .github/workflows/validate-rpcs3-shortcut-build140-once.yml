@@ -54,7 +54,8 @@ jobs:
           grep -R "openJitRequest" lib/services/rpcs3_launch_service.dart
           ! grep -R "supportedCoreFunctions" lib/services/rpcs3_launch_service.dart
           ! grep -R "SECOND_PASS" lib/services/rpcs3_launch_service.dart
-          grep -R "Personal Automation" lib/services/ios_shortcut_jit_launch_service.dart
+          grep -R "isRpcs3AutomationConfigured" lib/services/ios_shortcut_jit_launch_service.dart
+          grep -R "shortcuts://" lib/services/ios_shortcut_jit_launch_service.dart
           grep -R "Set Switch Control Switch State" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
 
       - name: Flutter analyze
