@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -65,7 +64,7 @@ void main() {
       for (final status in ['NOMEDIA', 'CRCOK', 'MD5OK', 'SHA1OK']) {
         expect(
           ScreenscraperMediaDownloader.isValidMediaPayload(
-            utf8.encode(status),
+            status.codeUnits,
             mediaType: 'video',
           ),
           isFalse,
@@ -106,21 +105,14 @@ void main() {
       );
     });
 
-    test('RPCS3 direct script is fingerprinted and state-aware', () {
-      final template = File('assets/data/rpcs3_stikdebug_launch.js')
+    test('RPCS3 launcher uses stable Universal JIT only', () {
+      final service = File('lib/services/rpcs3_launch_service.dart')
           .readAsStringSync();
-      final script = Rpcs3LaunchService.buildScriptForTesting(
-        template,
-        'bles00412',
-      );
-      expect(script, contains('"BLES00412"'));
-      expect(script, contains('5C4D64FFB79930AD879C13009838F136'));
-      expect(script, contains('221732'));
-      expect(script, contains('CFE15492152B331E83959A3CF9AC8A9F'));
-      expect(script, contains('NEOSTATION_RPC_STATE_BEFORE'));
-      expect(script, contains('NEOSTATION_RPC_BOOT_RESULT'));
-      expect(script, contains('NEOSTATION_RPC_LAST_ERROR'));
-      expect(script, isNot(contains('__NEOSTATION_')));
+      expect(service, contains('openJitRequest'));
+      expect(service, contains("scriptName: 'universal.js'"));
+      expect(service, isNot(contains('supportedCoreFunctions')));
+      expect(service, isNot(contains('SECOND_PASS')));
+      expect(File('assets/data/rpcs3_stikdebug_launch.js').existsSync(), isFalse);
     });
 
     test('invalid RPCS3 title IDs are rejected', () {
