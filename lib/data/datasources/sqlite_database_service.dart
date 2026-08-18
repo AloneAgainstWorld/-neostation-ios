@@ -5,12 +5,16 @@ import '../../utils/switch_title_extractor.dart';
 import 'sqlite_service.dart';
 import 'sqlite_config_service.dart';
 import '../../utils/vita_title_extractor.dart';
+
 import 'package:neostation/services/android_service.dart';
 import 'package:neostation/services/saf_directory_service.dart';
 import 'package:neostation/services/logger_service.dart';
+
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:path/path.dart' as path;
+import 'package:flutter/foundation.dart';
 
 /// Summary report of a ROM scanning operation for a specific system.
 class ScanSummary {
@@ -742,6 +746,19 @@ class SqliteDatabaseService {
   /// anyway, so the diff is free. On error the known-path set comes back empty,
   /// which degrades to the old behaviour (upsert everything) rather than
   /// silently skipping inserts.
+  /// Returns whether [romPath] belongs to an external emulator library.
+  ///
+  /// These rows intentionally use launch/synchronization URIs instead of local
+  /// files. A physical ROM scan must never delete them; their owning emulator
+  /// service removes stale rows during its own synchronization pass.
+  @visibleForTesting
+  static bool isPersistentExternalLibraryPath(String romPath) {
+    final lowerPath = romPath.toLowerCase();
+    return lowerPath.startsWith('armsx2://') ||
+        lowerPath.startsWith('melonx://') ||
+        lowerPath.startsWith('rpcs3-library://');
+  }
+
   static Future<({int removed, Set<String> knownPaths})>
   _cleanupOrphanedRomsOptimized(
     String systemId,
@@ -767,9 +784,7 @@ class SqliteDatabaseService {
         // scanner can rediscover, so a normal rescan must not prune them as
         // "missing". Each emulator library service removes its own stale
         // virtual rows whenever a fresh export is received.
-        final lowerPath = path.toLowerCase();
-        if (lowerPath.startsWith('armsx2://') ||
-            lowerPath.startsWith('melonx://')) {
+        if (isPersistentExternalLibraryPath(path)) {
           knownPaths.add(path);
           continue;
         }
@@ -1252,9 +1267,9 @@ class SqliteDatabaseService {
   }) async {
     final entries = <RomEntry>[];
     try {
-      final entities = await Directory(
-        pathStr,
-      ).list(recursive: recursive, followLinks: false).toList();
+      final entities = await Directory(pathStr)
+          .list(recursive: recursive, followLinks: false)
+          .toList();
       for (final entity in entities) {
         if (await _shouldSkipStandardEntity(
           entity,

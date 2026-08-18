@@ -9,10 +9,11 @@ import 'package:neostation/services/logger_service.dart';
 /// NeoStation project.
 ///
 /// RPCS3 currently has no public game deeplink. This launcher therefore asks
-/// StikDebug to run a derivative of its Universal script. At RPCS3's normal JIT
-/// detach breakpoint, the script verifies the loaded core UUID, calls the
-/// exported `rpcs3_ios_boot_game(title_id)` function, restores the stopped
-/// thread's register state, detaches, and then StikDebug foregrounds RPCS3.
+/// StikDebug to run a derivative of its Universal script. The script remains
+/// attached across RPCS3's native Start gate, waits for the fingerprinted core
+/// to load, then calls `rpcs3_ios_boot_game(title_id)`, restores the stopped
+/// thread's register state and detaches. The user may still need to press Start,
+/// but no second game selection should be required.
 ///
 /// The UUID/offset guard makes the experiment fail closed when RPCS3 changes.
 abstract final class Rpcs3LaunchService {

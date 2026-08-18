@@ -1,17 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/logger_service.dart';
+
 import '../repositories/scraper_repository.dart';
 import 'screenscraper/region_config.dart';
 import 'screenscraper/rom_hasher.dart';
 import 'screenscraper/media_resolver.dart';
 import 'screenscraper/screenscraper_client.dart';
 import 'screenscraper/media_downloader.dart';
-import 'screenscraper/melonx_media_fallback.dart';
+import 'screenscraper/game_id_media_fallback.dart';
 import 'screenscraper/screenscraper_exceptions.dart';
 import '../providers/scraping_provider.dart';
 import '../l10n/app_locale.dart';
@@ -391,9 +393,8 @@ class ScreenScraperService {
         queryParameters['md5'] = md5;
       }
 
-      final url = Uri.parse(
-        '$_baseUrl/jeuInfos.php',
-      ).replace(queryParameters: queryParameters);
+      final url = Uri.parse('$_baseUrl/jeuInfos.php')
+          .replace(queryParameters: queryParameters);
 
       final response = await ScreenscraperClient.httpGetWithRetry(
         url,
@@ -595,6 +596,68 @@ class ScreenScraperService {
     }
   }
 
+  static Future<Set<String>> _ensureVirtualMediaByGameId({
+    required bool isMeloNxVirtual,
+    required bool isRpcs3Virtual,
+    required Map<String, dynamic> gameInfo,
+    required int screenScraperSystemId,
+    required String systemFolder,
+    required String romName,
+    required String appSystemId,
+    required List<String> allowedMediaTypes,
+    required Map<String, dynamic> downloadResult,
+    required List<dynamic> sourceMedias,
+    int? maxDailyRequests,
+  }) async {
+    final successfulTypes = <String>{
+      ...(downloadResult['downloadedTypes'] as List<dynamic>? ?? const []).map(
+        (value) => value.toString(),
+      ),
+      ...(downloadResult['existingTypes'] as List<dynamic>? ?? const []).map(
+        (value) => value.toString(),
+      ),
+    };
+    if (!isMeloNxVirtual && !isRpcs3Virtual) return successfulTypes;
+
+    final credentials = await getSavedCredentials();
+    final gameId = gameInfo['id']?.toString() ?? '';
+    if (credentials == null || gameId.isEmpty) return successfulTypes;
+
+    final softname = await ScreenscraperClient.getSoftname();
+    final fallbackResult =
+        await ScreenscraperGameIdMediaFallback.ensureMediaByGameId(
+          gameId: gameId,
+          systemId: screenScraperSystemId.toString(),
+          systemFolder: systemFolder,
+          romName: romName,
+          appSystemId: appSystemId,
+          devId: _devId,
+          devPassword: _devPassword,
+          softname: softname,
+          username: credentials['username']?.toString() ?? '',
+          password: credentials['password']?.toString() ?? '',
+          allowedMediaTypes: allowedMediaTypes,
+          alreadyDownloadedTypes: successfulTypes.toList(),
+          sourceMedias: sourceMedias,
+          debugFileName: isRpcs3Virtual
+              ? 'rpcs3_scraper_media_debug.txt'
+              : 'melonx_scraper_media_debug.txt',
+          maxDailyRequests: maxDailyRequests,
+        );
+    return (fallbackResult['successfulTypes'] as List<dynamic>? ?? const [])
+        .map((value) => value.toString())
+        .toSet();
+  }
+
+  static bool _hasUsefulVirtualMedia(
+    List<String> allowedMediaTypes,
+    Set<String> successfulTypes,
+  ) {
+    const visualTypes = {'fanart', 'ss', 'wheel', 'box2D', 'video'};
+    final requested = allowedMediaTypes.where(visualTypes.contains).toSet();
+    return requested.isEmpty || requested.any(successfulTypes.contains);
+  }
+
   /// Scrapes a single game by its filename and updates its local state.
   static Future<Map<String, dynamic>> scrapeSingleGame({
     required String appSystemId,
@@ -697,50 +760,24 @@ class ScreenScraperService {
           );
 
       var mediaSuccess = downloadResult['success'] == true;
-      if (isMeloNxVirtual) {
-        final credentials = await getSavedCredentials();
-        final gameId = gameInfo['id']?.toString() ?? '';
-        if (credentials != null && gameId.isNotEmpty) {
-          final softname = await ScreenscraperClient.getSoftname();
-          final fallbackResult =
-              await ScreenscraperMeloNxMediaFallback.ensureMediaByGameId(
-                gameId: gameId,
-                systemId: screenScraperSystemId.toString(),
-                systemFolder: systemFolder,
-                romName: romName,
-                appSystemId: appSystemId,
-                devId: _devId,
-                devPassword: _devPassword,
-                softname: softname,
-                username: credentials['username']?.toString() ?? '',
-                password: credentials['password']?.toString() ?? '',
-                allowedMediaTypes: allowedMediaTypes,
-                alreadyDownloadedTypes: [
-                  ...(downloadResult['downloadedTypes'] as List<dynamic>? ??
-                          const [])
-                      .map((e) => e.toString()),
-                  ...(downloadResult['existingTypes'] as List<dynamic>? ??
-                          const [])
-                      .map((e) => e.toString()),
-                ],
-                sourceMedias: medias,
-                maxDailyRequests: null,
-              );
-
-          final successfulTypes =
-              (fallbackResult['successfulTypes'] as List<dynamic>? ?? const [])
-                  .map((e) => e.toString())
-                  .toSet();
-          final requestedImageTypes = allowedMediaTypes
-              .where(
-                (type) =>
-                    const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
-              )
-              .toSet();
-          mediaSuccess =
-              requestedImageTypes.isEmpty ||
-              requestedImageTypes.any(successfulTypes.contains);
-        }
+      if (isMeloNxVirtual || isRpcs3Virtual) {
+        final successfulTypes = await _ensureVirtualMediaByGameId(
+          isMeloNxVirtual: isMeloNxVirtual,
+          isRpcs3Virtual: isRpcs3Virtual,
+          gameInfo: gameInfo,
+          screenScraperSystemId: screenScraperSystemId,
+          systemFolder: systemFolder,
+          romName: romName,
+          appSystemId: appSystemId,
+          allowedMediaTypes: allowedMediaTypes,
+          downloadResult: downloadResult,
+          sourceMedias: medias,
+          maxDailyRequests: null,
+        );
+        mediaSuccess = _hasUsefulVirtualMedia(
+          allowedMediaTypes,
+          successfulTypes,
+        );
       }
 
       return {
@@ -1196,48 +1233,24 @@ class ScreenScraperService {
           }
 
           var mediaSucceeded = res['success'] == true;
-          if (isMeloNxVirtual) {
-            final credentials = await getSavedCredentials();
-            final gameId = gameInfo['id']?.toString() ?? '';
-            if (credentials != null && gameId.isNotEmpty) {
-              final softname = await ScreenscraperClient.getSoftname();
-              final fallbackResult =
-                  await ScreenscraperMeloNxMediaFallback.ensureMediaByGameId(
-                    gameId: gameId,
-                    systemId: screenscraperSystemId.toString(),
-                    systemFolder: systemFolder,
-                    romName: filename,
-                    appSystemId: appSystemId,
-                    devId: _devId,
-                    devPassword: _devPassword,
-                    softname: softname,
-                    username: credentials['username']?.toString() ?? '',
-                    password: credentials['password']?.toString() ?? '',
-                    allowedMediaTypes: allowedTypes,
-                    alreadyDownloadedTypes: [
-                      ...(res['downloadedTypes'] as List<dynamic>? ?? const [])
-                          .map((e) => e.toString()),
-                      ...(res['existingTypes'] as List<dynamic>? ?? const [])
-                          .map((e) => e.toString()),
-                    ],
-                    sourceMedias: sourceMedias,
-                    maxDailyRequests: maxDailyRequests,
-                  );
-              final successfulTypes =
-                  (fallbackResult['successfulTypes'] as List<dynamic>? ??
-                          const [])
-                      .map((e) => e.toString())
-                      .toSet();
-              final requestedImageTypes = allowedTypes
-                  .where(
-                    (type) =>
-                        const ['fanart', 'ss', 'wheel', 'box2D'].contains(type),
-                  )
-                  .toSet();
-              mediaSucceeded =
-                  requestedImageTypes.isEmpty ||
-                  requestedImageTypes.any(successfulTypes.contains);
-            }
+          if (isMeloNxVirtual || isRpcs3Virtual) {
+            final successfulTypes = await _ensureVirtualMediaByGameId(
+              isMeloNxVirtual: isMeloNxVirtual,
+              isRpcs3Virtual: isRpcs3Virtual,
+              gameInfo: Map<String, dynamic>.from(gameInfo as Map),
+              screenScraperSystemId: screenscraperSystemId,
+              systemFolder: systemFolder,
+              romName: filename,
+              appSystemId: appSystemId,
+              allowedMediaTypes: allowedTypes,
+              downloadResult: res,
+              sourceMedias: sourceMedias,
+              maxDailyRequests: maxDailyRequests,
+            );
+            mediaSucceeded = _hasUsefulVirtualMedia(
+              allowedTypes,
+              successfulTypes,
+            );
           }
 
           if (mediaSucceeded) {

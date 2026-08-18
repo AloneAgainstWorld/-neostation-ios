@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
@@ -32,6 +33,7 @@ import 'package:neostation/widgets/tv_directory_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:neostation/utils/adaptive_scroll.dart';
+
 import 'settings_title.dart';
 import 'widgets/settings_section_header.dart';
 import 'widgets/settings_action_button.dart';
@@ -938,14 +940,17 @@ class DirectoriesSettingsContentState
                 SizedBox(width: 10.r),
                 Text(
                   name,
-                  style: TextStyle(fontSize: 16.r, fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontSize: 16.r,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
             SizedBox(height: 8.r),
             Text(
               statusText,
-              style: TextStyle(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 13.r,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
