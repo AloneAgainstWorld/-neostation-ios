@@ -35,10 +35,36 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           path = Path('tools/apply_stage7.py')
           text = path.read_text(encoding='utf-8')
-          text = text.replace("log.i('NeoStation starting...');", "log.i('Starting NeoStation...');")
-          path.write_text(text, encoding='utf-8')
+          old = '''replace_once(
+              'lib/main.dart',
+              """  final log = LoggerService.instance;
+            log.i('NeoStation starting...');
+
+            if (Platform.isIOS) {
+          """,
+              """  final log = LoggerService.instance;
+            log.i('NeoStation starting...');
+
+            await AudioPolicyService().initialize();
+
+            if (Platform.isIOS) {
+          """,
+          )'''
+          # The source has unrelated storage initialization between the startup
+          # log and the iOS block. Patch only the stable log statement.
+          new = '''replace_once(
+              'lib/main.dart',
+              "  log.i('Starting NeoStation...');\\n",
+              "  log.i('Starting NeoStation...');\\n\\n  await AudioPolicyService().initialize();\\n",
+          )'''
+          if old not in text:
+              old = old.replace('NeoStation starting...', 'Starting NeoStation...')
+          if old not in text:
+              raise SystemExit('Stage 7 main patch block was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
 
       - name: Apply Stage 7 source patch
@@ -51,42 +77,19 @@ jobs:
 
           stage3 = Path('test/rpcs3_stage3_test.dart')
           text = stage3.read_text(encoding='utf-8')
-          old = """    test('RPCS3 direct script is fingerprinted and title-specific', () {
-                final template = File('assets/data/rpcs3_stikdebug_launch.js')
-                    .readAsStringSync();
-                final script = Rpcs3LaunchService.buildScriptForTesting(
-                  template,
-                  'bles00412',
-                );
-                expect(script, contains('\\\"BLES00412\\\"'));
-                expect(script, contains('5C4D64FFB79930AD879C13009838F136'));
-                expect(script, contains('221732'));
-                expect(script, contains('CFE15492152B331E83959A3CF9AC8A9F'));
-                expect(script, contains('NEOSTATION_RPC_DIRECT_CORE_NOT_READY'));
-                expect(script, contains('NEOSTATION_RPC_DIRECT_BOOT_COMPLETED'));
-                expect(script, isNot(contains('__NEOSTATION_')));
-              });
-          """
-          new = """    test('RPCS3 direct script is fingerprinted and state-aware', () {
-                final template = File('assets/data/rpcs3_stikdebug_launch.js')
-                    .readAsStringSync();
-                final script = Rpcs3LaunchService.buildScriptForTesting(
-                  template,
-                  'bles00412',
-                );
-                expect(script, contains('\\\"BLES00412\\\"'));
-                expect(script, contains('5C4D64FFB79930AD879C13009838F136'));
-                expect(script, contains('221732'));
-                expect(script, contains('CFE15492152B331E83959A3CF9AC8A9F'));
-                expect(script, contains('NEOSTATION_RPC_STATE_BEFORE'));
-                expect(script, contains('NEOSTATION_RPC_BOOT_RESULT'));
-                expect(script, contains('NEOSTATION_RPC_LAST_ERROR'));
-                expect(script, isNot(contains('__NEOSTATION_')));
-              });
-          """
-          if old not in text:
-              raise SystemExit('Stage 3 launch-test marker missing')
-          stage3.write_text(text.replace(old, new, 1), encoding='utf-8')
+          text = text.replace(
+              "test('RPCS3 direct script is fingerprinted and title-specific'",
+              "test('RPCS3 direct script is fingerprinted and state-aware'",
+          )
+          text = text.replace(
+              "expect(script, contains('NEOSTATION_RPC_DIRECT_CORE_NOT_READY'));",
+              "expect(script, contains('NEOSTATION_RPC_STATE_BEFORE'));",
+          )
+          text = text.replace(
+              "expect(script, contains('NEOSTATION_RPC_DIRECT_BOOT_COMPLETED'));",
+              "expect(script, contains('NEOSTATION_RPC_BOOT_RESULT'));\n      expect(script, contains('NEOSTATION_RPC_LAST_ERROR'));",
+          )
+          stage3.write_text(text, encoding='utf-8')
 
           stage6 = Path('test/rpcs3_stage6_test.dart')
           text = stage6.read_text(encoding='utf-8')
@@ -99,19 +102,12 @@ jobs:
               "now: started.add(const Duration(seconds: 3)),\n          startedAt: started,\n          launchWasBackgrounded: true,\n        ),\n        isTrue,",
               1,
           )
-          old_template = """        const template =
-                    'title=__NEOSTATION_TITLE_ID_JSON__ '
-                    'uuid=__NEOSTATION_CORE_UUID_JSON__ '
-                    'offset=__NEOSTATION_BOOT_OFFSET_HEX__';
-                final rendered = Rpcs3LaunchService.buildScriptForTesting(
-                  template,
-                  'bles00412',
-                );
-                expect(rendered, contains(jsonEncode('BLES00412')));
-                expect(rendered, contains(Rpcs3LaunchService.expectedCoreUuid));
-                expect(rendered, isNot(contains('__NEOSTATION_')));
-          """
-          new_template = """        const template =
+          start = text.index("    test(\n      'direct-launch template still receives exact title and fingerprint'")
+          end = text.index("    );\n  });", start) + len("    );\n")
+          replacement = '''    test(
+              'direct-launch template receives exact request and function map',
+              () {
+                const template =
                     'request=__NEOSTATION_REQUEST_JSON__ '
                     'cores=__NEOSTATION_SUPPORTED_CORES_JSON__';
                 final rendered = Rpcs3LaunchService.buildScriptForTesting(
@@ -121,10 +117,11 @@ jobs:
                 expect(rendered, contains(jsonEncode('BLES00412')));
                 expect(rendered, contains('5C4D64FFB79930AD879C13009838F136'));
                 expect(rendered, isNot(contains('__NEOSTATION_')));
-          """
-          if old_template not in text:
-              raise SystemExit('Stage 6 template marker missing')
-          stage6.write_text(text.replace(old_template, new_template, 1), encoding='utf-8')
+              },
+            );
+          '''
+          text = text[:start] + replacement + text[end:]
+          stage6.write_text(text, encoding='utf-8')
           PY
 
       - name: Format changed Dart sources
@@ -182,6 +179,7 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
+
           source = Path('assets/data/rpcs3_stikdebug_launch.js').read_text(encoding='utf-8')
           source = source.replace('__NEOSTATION_REQUEST_JSON__', json.dumps({
               'titleId': 'BLES00412',
