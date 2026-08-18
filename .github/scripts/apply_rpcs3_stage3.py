@@ -11,6 +11,12 @@ SCRIPT_PATH = Path('.github/scripts/apply_rpcs3_stage3.py')
 
 
 def _load_previous_wrapper() -> str:
+    # actions/checkout uses a depth-1 clone. Deepen the branch so this wrapper
+    # can recover the original compressed generator from its previous commit.
+    subprocess.run(
+        ['git', 'fetch', '--deepen=50', 'origin', 'feature/rpcs3-stage3'],
+        check=True,
+    )
     commits = subprocess.check_output(
         ['git', 'log', '--format=%H', '--', str(SCRIPT_PATH)],
         text=True,
