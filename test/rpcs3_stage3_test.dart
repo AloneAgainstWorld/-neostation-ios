@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neostation/models/database_game_model.dart';
+import 'package:neostation/models/game_model.dart';
 import 'package:neostation/services/rpcs3_launch_service.dart';
 import 'package:neostation/services/screenscraper_service.dart';
 
@@ -36,6 +38,35 @@ void main() {
     test('invalid RPCS3 title IDs are rejected', () {
       expect(Rpcs3LaunchService.normalizeTitleId('../bad'), isNull);
       expect(Rpcs3LaunchService.normalizeTitleId('BLES00113'), 'BLES00113');
+    });
+
+    test('scraped RPCS3 name replaces the raw Title ID', () {
+      final game = GameModel.fromDatabaseModel(
+        DatabaseGameModel(
+          filename: 'BLES00113',
+          romPath: 'rpcs3-library://game?title-id=BLES00113',
+          titleId: 'BLES00113',
+          titleName: 'BLES00113',
+          screenscraperRealName: 'LittleBigPlanet',
+        ),
+      );
+
+      expect(game.name, 'LittleBigPlanet');
+      expect(game.realname, 'LittleBigPlanet');
+      expect(game.titleId, 'BLES00113');
+    });
+
+    test('regular games keep their internal-title precedence', () {
+      final game = GameModel.fromDatabaseModel(
+        DatabaseGameModel(
+          filename: 'game.iso',
+          romPath: '/roms/ps3/game.iso',
+          titleName: 'Internal Header Title',
+          screenscraperRealName: 'Scraped Name',
+        ),
+      );
+
+      expect(game.name, 'Internal Header Title');
     });
   });
 }
