@@ -53,7 +53,7 @@ In **Shortcuts > Automation**:
 3. Choose **Is Opened / Est ouverte**.
 4. Set it to **Run Immediately / Exécuter immédiatement** when that option is available.
 5. Add **Run Shortcut / Exécuter le raccourci** -> `NeoStation+RPCS3+Start`.
-6. Make sure the automation itself is enabled.
+6. Make sure the automation itself is enabled, and keep it enabled for this launch mode.
 
 The automation may be named something like `RPCS3 Auto Start`; its display name is not used by NeoStation. The exact Shortcut name `NeoStation+RPCS3+Start` is the important part.
 
