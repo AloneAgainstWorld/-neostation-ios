@@ -28,7 +28,7 @@ jobs:
           ref: fix/audio-rpcs3-video-stage7-20260818
           fetch-depth: 0
 
-      - name: Remove fixed preview debounce and keep generation cancellation
+      - name: Finalize generation-safe previews and RPCS3 display priority
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -103,6 +103,46 @@ jobs:
           """
           part = part[:start] + replacement + part[end:]
           part_path.write_text(part, encoding='utf-8')
+
+          game_list_path = Path('lib/services/game/game_list_service.dart')
+          game_list = game_list_path.read_text(encoding='utf-8')
+          anchor = """    final filename = dbGame.filename;
+              final resolvedNames = GameModel.resolveDatabaseNamesForDisplay(dbGame);
+              final scraped = _hasScreenscraperRealName(dbGame);
+              final coalesced = resolvedNames.displayName;
+          """
+          replacement_anchor = """    final filename = dbGame.filename;
+              final isRpcs3Virtual = dbGame.romPath.toLowerCase().startsWith(
+                'rpcs3-library://',
+              );
+              final resolvedNames = GameModel.resolveDatabaseNamesForDisplay(dbGame);
+              final scraped = _hasScreenscraperRealName(dbGame);
+              final coalesced = resolvedNames.displayName;
+          """
+          if replacement_anchor not in game_list:
+              if anchor not in game_list:
+                  raise SystemExit('GameList RPCS3 name-resolution anchor missing')
+              game_list = game_list.replace(anchor, replacement_anchor, 1)
+          function_start = game_list.find(
+              'static ({String name, String realName, bool showRomFileNameSubtitle})',
+          )
+          function_end = game_list.find(
+              '  /// Retrieves a list of games',
+              function_start,
+          )
+          if function_start < 0 or function_end < 0:
+              raise SystemExit('GameList display resolver bounds missing')
+          resolver = game_list[function_start:function_end]
+          resolver, count = re.subn(
+              r'if \(preferFileName\) \{',
+              'if (preferFileName && !isRpcs3Virtual) {',
+              resolver,
+              count=1,
+          )
+          if count != 1 and 'preferFileName && !isRpcs3Virtual' not in resolver:
+              raise SystemExit('Could not protect RPCS3 titles from prefer-file-name')
+          game_list = game_list[:function_start] + resolver + game_list[function_end:]
+          game_list_path.write_text(game_list, encoding='utf-8')
           PY
 
       - name: Set up Flutter
@@ -147,7 +187,8 @@ jobs:
               'active SFX handles': ('lib/services/sfx_service.dart', '_activeHandles'),
               'home music policy': ('lib/services/home_music_service.dart', 'AudioPolicyService'),
               'music player policy': ('lib/services/music_player_service.dart', 'AudioPolicyService'),
-              'canonical game conversion': ('lib/services/game/game_list_service.dart', 'GameModel.fromDatabaseModel'),
+              'shared RPCS3 name resolver': ('lib/services/game/game_list_service.dart', 'resolveDatabaseNamesForDisplay'),
+              'RPCS3 filename-priority guard': ('lib/services/game/game_list_service.dart', 'preferFileName && !isRpcs3Virtual'),
               'RPCS3 metadata repair': ('lib/services/rpcs3_library_service.dart', '_repairPersistedRpcs3Names'),
               'foreground JIT script': ('lib/services/rpcs3_launch_service.dart', 'openJitScriptOnly'),
               'native foreground preflight': ('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift', 'launchAfterPreflight'),
