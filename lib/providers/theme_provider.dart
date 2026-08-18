@@ -1,12 +1,13 @@
 import 'dart:io';
 
-import 'package:neostation/services/logger_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:neostation/themes/app_themes.dart';
-import 'package:neostation/services/custom_theme_service.dart';
-import 'package:neostation/services/startup_theme_cache.dart';
 import 'package:neostation/repositories/config_repository.dart';
 import 'package:neostation/services/config_service.dart';
+import 'package:neostation/services/custom_theme_service.dart';
+import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/startup_theme_cache.dart';
+import 'package:neostation/themes/app_themes.dart';
 import 'package:neostation/utils/image_utils.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +21,7 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
   static final _log = LoggerService.instance;
   static const String _customBackgroundPreferenceKey =
       'neostation_custom_background_path';
+  static const String _customBackgroundDirectoryName = 'custom_background';
 
   ThemeData _currentTheme =
       (WidgetsBinding.instance.platformDispatcher.platformBrightness ==
@@ -137,18 +139,162 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  Future<Directory> _customBackgroundDirectory() async {
+    final userDataPath = await ConfigService.getUserDataPath();
+    final directory = Directory(
+      path.join(userDataPath, _customBackgroundDirectoryName),
+    );
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  /// Resolves the selected custom background against the *current* user-data
+  /// root rather than trusting an old absolute sandbox path.
+  ///
+  /// iOS can change the app-container UUID when an IPA is updated/re-signed.
+  /// The Documents contents survive, but an absolute path stored by the old
+  /// build then points at the previous container. Menu music already recovers
+  /// by rediscovering its app-owned file; custom backgrounds now do the same.
+  static Future<File?> _resolvePersistedCustomBackground({
+    required Directory targetDirectory,
+    String? savedPreference,
+  }) async {
+    await targetDirectory.create(recursive: true);
+
+    final candidates = <File>[];
+    final seen = <String>{};
+
+    void addCandidate(File file) {
+      final normalized = path.normalize(file.absolute.path);
+      if (seen.add(normalized)) candidates.add(file);
+    }
+
+    final saved = savedPreference?.trim() ?? '';
+    if (saved.isNotEmpty) {
+      // Build 133 and older stored an absolute path. New builds store only the
+      // app-owned basename so a changed iOS container root cannot invalidate it.
+      if (path.isAbsolute(saved)) addCandidate(File(saved));
+      addCandidate(File(path.join(targetDirectory.path, path.basename(saved))));
+    }
+
+    final discovered = <File>[];
+    try {
+      await for (final entity in targetDirectory.list(followLinks: false)) {
+        if (entity is File && ImageUtils.isSupportedBackground(entity.path)) {
+          discovered.add(entity);
+        }
+      }
+    } catch (_) {}
+
+    discovered.sort((a, b) {
+      final aName = path.basename(a.path).toLowerCase();
+      final bName = path.basename(b.path).toLowerCase();
+      final aCanonical = aName.startsWith('background.') ? 0 : 1;
+      final bCanonical = bName.startsWith('background.') ? 0 : 1;
+      if (aCanonical != bCanonical) return aCanonical.compareTo(bCanonical);
+      return aName.compareTo(bName);
+    });
+    for (final file in discovered) {
+      addCandidate(file);
+    }
+
+    for (final candidate in candidates) {
+      if (!await candidate.exists() ||
+          !ImageUtils.isSupportedBackground(candidate.path)) {
+        continue;
+      }
+
+      final currentDirectory = path.normalize(targetDirectory.absolute.path);
+      final candidateDirectory = path.normalize(candidate.parent.absolute.path);
+      if (path.equals(currentDirectory, candidateDirectory)) {
+        return candidate;
+      }
+
+      // Migrate a valid legacy/background file from another app-owned location
+      // into the canonical user-data directory without deleting the source.
+      final extension = path.extension(candidate.path).toLowerCase();
+      final destination = File(
+        path.join(targetDirectory.path, 'background$extension'),
+      );
+      final temporary = File(
+        path.join(targetDirectory.path, 'background.importing$extension'),
+      );
+      try {
+        if (await temporary.exists()) await temporary.delete();
+        await candidate.copy(temporary.path);
+        await _removeOtherBackgroundFiles(
+          targetDirectory,
+          exceptPaths: <String>[temporary.path],
+        );
+        if (await destination.exists()) await destination.delete();
+        await temporary.rename(destination.path);
+        return destination;
+      } catch (_) {
+        try {
+          if (await temporary.exists()) await temporary.delete();
+        } catch (_) {}
+      }
+    }
+
+    return null;
+  }
+
+  @visibleForTesting
+  static Future<String?> resolvePersistedCustomBackgroundForTesting({
+    required String userDataPath,
+    String? savedPreference,
+  }) async {
+    final resolved = await _resolvePersistedCustomBackground(
+      targetDirectory: Directory(
+        path.join(userDataPath, _customBackgroundDirectoryName),
+      ),
+      savedPreference: savedPreference,
+    );
+    return resolved?.path;
+  }
+
+  static Future<void> _removeOtherBackgroundFiles(
+    Directory directory, {
+    Iterable<String> exceptPaths = const <String>[],
+  }) async {
+    final excluded = exceptPaths
+        .map((value) => path.normalize(File(value).absolute.path))
+        .toSet();
+    try {
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final normalized = path.normalize(entity.absolute.path);
+        if (excluded.contains(normalized)) continue;
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadCustomBackground() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final savedPath = prefs.getString(_customBackgroundPreferenceKey);
-      if (savedPath == null || savedPath.isEmpty) return;
+      final savedPreference = prefs.getString(_customBackgroundPreferenceKey);
+      final targetDirectory = await _customBackgroundDirectory();
+      final resolved = await _resolvePersistedCustomBackground(
+        targetDirectory: targetDirectory,
+        savedPreference: savedPreference,
+      );
 
-      final file = File(savedPath);
-      if (await file.exists() && ImageUtils.isSupportedBackground(savedPath)) {
-        _customBackgroundPath = savedPath;
-      } else {
+      if (resolved == null) {
+        _customBackgroundPath = null;
         await prefs.remove(_customBackgroundPreferenceKey);
+        return;
       }
+
+      _customBackgroundPath = resolved.path;
+      // Store a container-independent value from now on. The actual absolute
+      // path is rebuilt from ConfigService.getUserDataPath() at every startup.
+      await prefs.setString(
+        _customBackgroundPreferenceKey,
+        path.basename(resolved.path),
+      );
     } catch (e) {
       _log.e('Error loading custom background: $e');
     }
@@ -228,33 +374,42 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
       throw const FormatException('Unsupported custom background format');
     }
 
-    final userDataPath = await ConfigService.getUserDataPath();
-    final targetDir = Directory(path.join(userDataPath, 'custom_background'));
-    await targetDir.create(recursive: true);
-
+    final targetDir = await _customBackgroundDirectory();
     final extension = path.extension(sourceFile.path).toLowerCase();
-    final targetPath = path.join(targetDir.path, 'background$extension');
+    final destination = File(path.join(targetDir.path, 'background$extension'));
+    final temporary = File(
+      path.join(targetDir.path, 'background.importing$extension'),
+    );
     final normalizedSource = path.normalize(sourceFile.absolute.path);
-    final normalizedTarget = path.normalize(File(targetPath).absolute.path);
+    final normalizedDestination = path.normalize(destination.absolute.path);
 
-    await for (final entity in targetDir.list(followLinks: false)) {
-      if (entity is File &&
-          path.normalize(entity.absolute.path) != normalizedSource) {
-        try {
-          await entity.delete();
-        } catch (_) {}
-      }
+    if (!path.equals(normalizedSource, normalizedDestination)) {
+      if (await temporary.exists()) await temporary.delete();
+      await sourceFile.copy(temporary.path);
+
+      // Replace only after the complete copy exists, so a failed import never
+      // destroys the currently selected background.
+      await _removeOtherBackgroundFiles(
+        targetDir,
+        exceptPaths: <String>[temporary.path],
+      );
+      if (await destination.exists()) await destination.delete();
+      await temporary.rename(destination.path);
+    } else {
+      await _removeOtherBackgroundFiles(
+        targetDir,
+        exceptPaths: <String>[destination.path],
+      );
     }
 
-    if (normalizedSource != normalizedTarget) {
-      await sourceFile.copy(targetPath);
-    }
-
-    _customBackgroundPath = targetPath;
+    _customBackgroundPath = destination.path;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_customBackgroundPreferenceKey, targetPath);
+    await prefs.setString(
+      _customBackgroundPreferenceKey,
+      path.basename(destination.path),
+    );
     notifyListeners();
-    return targetPath;
+    return destination.path;
   }
 
   Future<void> clearCustomBackground() async {
@@ -263,6 +418,11 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_customBackgroundPreferenceKey);
+
+    try {
+      final targetDir = await _customBackgroundDirectory();
+      await _removeOtherBackgroundFiles(targetDir);
+    } catch (_) {}
 
     if (oldPath != null && oldPath.isNotEmpty) {
       try {
