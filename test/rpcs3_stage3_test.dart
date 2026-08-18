@@ -105,15 +105,16 @@ void main() {
       );
     });
 
-    test('RPCS3 launcher uses Universal JIT plus direct Shortcut handoff', () {
+    test('RPCS3 launcher foregrounds RPCS3 after Universal JIT', () {
       final service = File(
         'lib/services/rpcs3_launch_service.dart',
       ).readAsStringSync();
-      expect(service, contains('openUrlAfterJitPreflight'));
+      expect(service, contains('openAppAfterJitPreflight'));
       expect(service, contains("scriptName: 'universal.js'"));
-      expect(service, contains('rpcs3ShortcutName'));
-      expect(service, contains('buildRunUri'));
-      expect(service, contains('_shortcutWarmupDelay'));
+      expect(service, contains('_rpcs3WarmupDelay'));
+      expect(service, contains('rpcs3_automation_launch_debug.txt'));
+      expect(service, isNot(contains('buildRunUri')));
+      expect(service, isNot(contains('rpcs3ShortcutName')));
       expect(service, isNot(contains('openJitRequest')));
       expect(service, isNot(contains('supportedCoreFunctions')));
       expect(service, isNot(contains('SECOND_PASS')));

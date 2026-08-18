@@ -29,9 +29,10 @@ class IosShortcutJitLaunchService {
   ///
   /// The Switch Control set, switch and gesture are device-local accessibility
   /// configuration, so NeoStation cannot pre-create those pieces. The user
-  /// creates the `NeoStation+RPCS3+Start` helper once, then NeoStation invokes
-  /// that exact Shortcut directly from the RPCS3 launch path after the JIT
-  /// warm-up. A separate Personal Automation is therefore not required.
+  /// creates the `NeoStation+RPCS3+Start` helper once and binds it to a Personal
+  /// Automation triggered when RPCS3 opens. NeoStation's RPCS3 launch path
+  /// foregrounds RPCS3 after JIT; the automation then runs the helper while
+  /// RPCS3 is already the active app.
   static const String _rpcs3ShortcutInstallUrl = '';
 
   static bool get hasMeloNXShortcutInstaller =>
@@ -81,8 +82,8 @@ class IosShortcutJitLaunchService {
   ///
   /// Until a portable, device-independent Switch Control binding exists,
   /// this opens a blank Shortcut editor. The user creates the small
-  /// `NeoStation+RPCS3+Start` helper and the required device-local Switch
-  /// Control configuration. NeoStation calls the helper itself during launch.
+  /// `NeoStation+RPCS3+Start` helper, the required device-local Switch Control
+  /// configuration, and a Personal Automation for the RPCS3 app-open event.
   static Future<bool> openRpcs3ShortcutInstaller() async {
     if (!Platform.isIOS) return false;
 
