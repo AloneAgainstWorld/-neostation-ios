@@ -10,7 +10,7 @@ if call not in text:
         raise SystemExit('RPCS3 artwork marker not found')
     text = text.replace(call_marker, call + call_marker, 1)
 
-helper = r'''  static Future<void> _repairPersistedRpcs3Names(
+helper = r"""  static Future<void> _repairPersistedRpcs3Names(
     List<Rpcs3LibraryGame> games,
     String systemId,
   ) async {
@@ -153,7 +153,7 @@ helper = r'''  static Future<void> _repairPersistedRpcs3Names(
     }
   }
 
-'''
+"""
 helper_marker = '  static Future<int> _writeArtwork(\n'
 if '_repairPersistedRpcs3Names(' not in text[text.find(call_marker):]:
     if helper_marker not in text:
