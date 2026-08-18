@@ -9,25 +9,39 @@ import 'package:flutter/widgets.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Experimental RPCS3 iOS launcher for the exact RPCS3 build inspected by the
-/// NeoStation project.
+/// Experimental RPCS3 iOS launcher for the exact inspected RPCS3 builds.
 ///
-/// iOS suspends long timers once NeoStation leaves the foreground, so the old
-/// timed two-pass sequence could never reliably reach its second StikDebug
-/// request. Stage 6 makes the handoff deterministic:
+/// Supported core fingerprints:
+///
+/// - RPCS3 iOS 0.1 (1): CFE15492-152B-331E-8395-9A3CF9AC8A9F,
+///   `rpcs3_ios_boot_game` at 0x2FA18.
+/// - RPCS3 iOS 0.2 (1): 5C4D64FF-B799-30AD-879C-13009838F136,
+///   `rpcs3_ios_boot_game` at 0x36224.
+///
+/// iOS suspends long timers once NeoStation leaves the foreground, so the
+/// handoff uses a real lifecycle event:
 ///
 /// 1. NeoStation enables Universal JIT and opens RPCS3.
 /// 2. The user presses RPCS3's native Start button.
 /// 3. The user returns once to NeoStation.
-/// 4. NeoStation's real `resumed` lifecycle event immediately launches the
-///    fingerprinted direct-title StikDebug pass and then returns to RPCS3.
-///
-/// This intentionally adds one app-switch while proving the private boot call
-/// reliably before a future Shortcut is allowed to automate the same resume.
+/// 4. NeoStation's `resumed` event launches the fingerprinted direct-title
+///    StikDebug pass and returns to RPCS3.
 abstract final class Rpcs3LaunchService {
   static const String targetBundleId = 'com.xitrix.RPCS3';
-  static const String expectedCoreUuid = 'CFE15492-152B-331E-8395-9A3CF9AC8A9F';
-  static const int bootGameOffset = 0x2fa18;
+
+  /// UUID -> exported `rpcs3_ios_boot_game` offset from the dylib load address.
+  static const Map<String, int> supportedCoreBootOffsets = <String, int>{
+    'CFE15492152B331E83959A3CF9AC8A9F': 0x2fa18,
+    '5C4D64FFB79930AD879C13009838F136': 0x36224,
+  };
+
+  static const String currentCoreUuid = '5C4D64FF-B799-30AD-879C-13009838F136';
+  static const int currentBootGameOffset = 0x36224;
+
+  // Compatibility aliases retained for existing diagnostics/tests.
+  static const String expectedCoreUuid = currentCoreUuid;
+  static const int bootGameOffset = currentBootGameOffset;
+
   static const String _assetPath = 'assets/data/rpcs3_stikdebug_launch.js';
   static const String _pendingTitleKey = 'rpcs3_pending_launch_title';
   static const String _pendingStartedKey = 'rpcs3_pending_launch_started_ms';
@@ -61,12 +75,16 @@ abstract final class Rpcs3LaunchService {
     return template
         .replaceAll('__NEOSTATION_TITLE_ID_JSON__', jsonEncode(normalized))
         .replaceAll(
+          '__NEOSTATION_SUPPORTED_CORES_JSON__',
+          jsonEncode(supportedCoreBootOffsets),
+        )
+        .replaceAll(
           '__NEOSTATION_CORE_UUID_JSON__',
-          jsonEncode(expectedCoreUuid),
+          jsonEncode(currentCoreUuid),
         )
         .replaceAll(
           '__NEOSTATION_BOOT_OFFSET_HEX__',
-          bootGameOffset.toRadixString(16),
+          currentBootGameOffset.toRadixString(16),
         );
   }
 
@@ -100,8 +118,6 @@ abstract final class Rpcs3LaunchService {
         extra: 'Return to NeoStation once after pressing Start in RPCS3.',
       );
 
-      // This first-pass path is already proven on-device: StikDebug Universal
-      // prepares JIT, and the native helper opens RPCS3 after the warm-up.
       final opened = await ExternalFolderAccess.openAppAfterJitPreflight(
         targetBaseBundleId: targetBundleId,
         warmupDelay: const Duration(seconds: 11),
@@ -171,9 +187,6 @@ abstract final class Rpcs3LaunchService {
         extra: 'NeoStation resumed after RPCS3 Start.',
       );
 
-      // One short background return is much more reliable than the old chain
-      // of 10+10+6 second timers. The second StikDebug request is initiated
-      // while NeoStation is actually foregrounded.
       final opened = await ExternalFolderAccess.openAppAfterJitPreflight(
         targetBaseBundleId: targetBundleId,
         warmupDelay: const Duration(seconds: 5),
@@ -228,17 +241,11 @@ abstract final class Rpcs3LaunchService {
     String? titleId,
     String? extra,
   }) async {
-    try {
-      final directory = await Directory.systemTemp.createTemp();
-      // The native JIT helper writes the detailed user-visible file in
-      // Documents. Dart logging here deliberately stays lightweight.
-      await directory.delete(recursive: true);
-      _log.i(
-        'RPCS3 launch state: $state'
-        '${titleId == null ? '' : ' title=$titleId'}'
-        '${extra == null ? '' : ' $extra'}',
-      );
-    } catch (_) {}
+    _log.i(
+      'RPCS3 launch state: $state'
+      '${titleId == null ? '' : ' title=$titleId'}'
+      '${extra == null ? '' : ' $extra'}',
+    );
   }
 }
 

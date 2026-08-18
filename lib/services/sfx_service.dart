@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:external_folder_access/external_folder_access.dart';
 import 'package:neostation/services/logger_service.dart';
@@ -88,9 +89,8 @@ class SfxService {
         // directory isn't fully ready before the first loadAsset() call.
         try {
           final tempDir = await getTemporaryDirectory();
-          await Directory(
-            '${tempDir.path}/SoLoudLoader-Temp-Files',
-          ).create(recursive: true);
+          await Directory('${tempDir.path}/SoLoudLoader-Temp-Files')
+              .create(recursive: true);
         } catch (_) {}
         await SoLoud.instance.init();
       }
@@ -99,7 +99,7 @@ class SfxService {
       // ignores the hardware Silent switch. Re-apply NeoStation's intended
       // non-primary/ambient category after engine initialization so UI
       // navigation sounds follow the iPhone Ring/Silent setting.
-      await ExternalFolderAccess.configureAudioSessionForSilentMode();
+      await _restoreSilentModeAudioSession();
 
       final allPaths = [..._navSounds, _enterSound, _backSound];
       for (final path in allPaths) {
@@ -129,6 +129,8 @@ class SfxService {
         }
       }
 
+      // Asset loading can make the backend reactivate a non-ambient category.
+      await _restoreSilentModeAudioSession();
       _isInitialized = true;
       _log.i(
         '[SfxService] Ready. ${_sources.length}/${allPaths.length} sounds loaded.',
@@ -250,9 +252,20 @@ class SfxService {
       return;
     }
     try {
+      // Another shared-engine client may have changed AVAudioSession since SFX
+      // initialization. Reassert `.ambient` immediately before every UI sound.
+      await _restoreSilentModeAudioSession();
       SoLoud.instance.play(source, volume: _volume);
     } catch (e) {
       _log.w('[SfxService] Playback error for $path: $e');
+    }
+  }
+
+  Future<void> _restoreSilentModeAudioSession() async {
+    try {
+      await ExternalFolderAccess.configureAudioSessionForSilentMode();
+    } catch (error) {
+      _log.w('[SfxService] Could not restore iOS silent-mode session: $error');
     }
   }
 

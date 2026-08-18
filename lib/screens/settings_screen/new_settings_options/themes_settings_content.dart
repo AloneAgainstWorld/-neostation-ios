@@ -22,6 +22,7 @@ import 'package:neostation/utils/image_utils.dart';
 import 'package:neostation/responsive.dart';
 import 'package:neostation/utils/gamepad_nav.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+
 import 'settings_title.dart';
 
 /// A specialized content panel for selecting application color themes and a
@@ -53,8 +54,11 @@ class ThemesSettingsContentState extends State<ThemesSettingsContent> {
   void initState() {
     super.initState();
     _initializeKeys();
-    HomeMusicService().addListener(_onHomeMusicChanged);
-    HomeMusicService().init().then((_) {
+    final homeMusic = HomeMusicService();
+    homeMusic.addListener(_onHomeMusicChanged);
+    // Theme is never the Systems main menu. Set the visibility state before
+    // initialization so entering this panel cannot restart menu music.
+    homeMusic.setMainMenuActive(false).then((_) {
       if (mounted) setState(() {});
     });
   }
@@ -557,14 +561,18 @@ class _CustomBackgroundCard extends StatelessWidget {
                         Symbols.wallpaper_rounded,
                         color: isFocused
                             ? accent
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                            : theme.colorScheme.onSurface.withValues(
+                                alpha: 0.55,
+                              ),
                         size: 34.r,
                       ),
                     )
                   else if (ImageUtils.isAnimatedBackground(backgroundPath))
                     ShaderGifWidget(
                       imagePath: backgroundPath,
-                      key: ValueKey('custom_background_preview_$backgroundPath'),
+                      key: ValueKey(
+                        'custom_background_preview_$backgroundPath',
+                      ),
                       fit: BoxFit.cover,
                     )
                   else
@@ -574,7 +582,9 @@ class _CustomBackgroundCard extends StatelessWidget {
                       errorBuilder: (_, __, ___) => Center(
                         child: Icon(
                           Symbols.broken_image_rounded,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.4,
+                          ),
                           size: 30.r,
                         ),
                       ),
@@ -582,10 +592,7 @@ class _CustomBackgroundCard extends StatelessWidget {
                   Positioned.fill(
                     child: Material(
                       color: Colors.transparent,
-                      child: InkWell(
-                        canRequestFocus: false,
-                        onTap: onTap,
-                      ),
+                      child: InkWell(canRequestFocus: false, onTap: onTap),
                     ),
                   ),
                   if (onDelete != null)
@@ -715,7 +722,9 @@ class _HomeMusicCard extends StatelessWidget {
                               : Icons.music_note_rounded,
                           color: isFocused
                               ? accent
-                              : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                              : theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.55,
+                                ),
                           size: 40.r,
                         ),
                         if (hasMusic) ...[
@@ -726,7 +735,9 @@ class _HomeMusicCard extends StatelessWidget {
                                 : Icons.pause_rounded,
                             color: enabled
                                 ? accent
-                                : theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                                : theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.45,
+                                  ),
                             size: 18.r,
                           ),
                         ],
@@ -736,10 +747,7 @@ class _HomeMusicCard extends StatelessWidget {
                   Positioned.fill(
                     child: Material(
                       color: Colors.transparent,
-                      child: InkWell(
-                        canRequestFocus: false,
-                        onTap: onTap,
-                      ),
+                      child: InkWell(canRequestFocus: false, onTap: onTap),
                     ),
                   ),
                   if (onDelete != null)
@@ -822,4 +830,3 @@ class _HomeMusicCard extends StatelessWidget {
     );
   }
 }
-

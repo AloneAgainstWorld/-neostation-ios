@@ -58,7 +58,7 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
       );
     });
 
-    test('discovers HDD, extracted and games.yml ISO entries', () async {
+    test('uses physical folders and ignores cross-linked games.yml history', () async {
       final temp = await Directory.systemTemp.createTemp('rpcs3-library-test');
       addTearDown(() => temp.delete(recursive: true));
       final dataRoot = Directory(path.join(temp.path, 'Data'));
@@ -76,8 +76,6 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
           'APP_VER': '01.00',
         }),
       );
-      await File(path.join(hddGame.path, 'ICON0.PNG'))
-          .writeAsBytes(const <int>[0x89, 0x50, 0x4e, 0x47]);
 
       final extractedMetadata = Directory(
         path.join(
@@ -98,14 +96,38 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
         }),
       );
 
-      final discImages = Directory(
-        path.join(dataRoot.path, 'games', 'DiscImages'),
+      final realDiscMetadata = Directory(
+        path.join(
+          dataRoot.path,
+          'games',
+          'DiscImages',
+          'BLES00540',
+          'PS3_GAME',
+        ),
       );
-      await discImages.create(recursive: true);
-      final iso = File(path.join(discImages.path, 'ISO Only Game.iso'));
-      await iso.writeAsBytes(const <int>[]);
-      await File(path.join(dataRoot.path, 'games.yml'))
-          .writeAsString('BLUS99999: "${iso.path}"\n');
+      await realDiscMetadata.create(recursive: true);
+      await File(path.join(realDiscMetadata.path, 'PARAM.SFO')).writeAsBytes(
+        _buildSfo(<String, Object>{
+          'TITLE_ID': 'BLES00540',
+          'TITLE': 'Dynasty Warriors 6 Empires',
+          'CATEGORY': 'DG',
+          'APP_VER': '01.00',
+        }),
+      );
+      await File(path.join(realDiscMetadata.parent.path, 'disc.iso'))
+          .writeAsBytes(const <int>[]);
+
+      final fallbackFolder = Directory(
+        path.join(dataRoot.path, 'games', 'DiscImages', 'BLES77777'),
+      );
+      await fallbackFolder.create(recursive: true);
+
+      // Historical corruption observed on-device: deleted BLES01484 points to
+      // the still-existing BLES00540 ISO. The physical folder must win and the
+      // stale ID must never be recreated.
+      await File(path.join(dataRoot.path, 'games.yml')).writeAsString(
+        'BLES01484: "${path.join(realDiscMetadata.parent.path, 'disc.iso')}"\n',
+      );
 
       final games = await Rpcs3LibraryService.discoverLibrary(dataRoot.path);
       final byId = <String, Rpcs3LibraryGame>{
@@ -114,14 +136,18 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
 
       expect(
         byId.keys,
-        containsAll(<String>['NPUB12345', 'BLES54321', 'BLUS99999']),
+        containsAll(<String>[
+          'NPUB12345',
+          'BLES54321',
+          'BLES00540',
+          'BLES77777',
+        ]),
       );
-      expect(byId['NPUB12345']!.title, 'Installed HDD Game');
-      expect(byId['NPUB12345']!.iconPath, isNotNull);
-      expect(byId['BLES54321']!.title, 'Extracted Disc Game');
-      expect(byId['BLUS99999']!.title, 'ISO Only Game');
-      expect(byId['BLUS99999']!.sourceKind, 'games.yml');
+      expect(byId.containsKey('BLES01484'), isFalse);
+      expect(byId['BLES00540']!.title, 'Dynasty Warriors 6 Empires');
+      expect(byId['BLES77777']!.sourceKind, 'disc-image-folder');
     });
+
     test('ignores stale games.yml registrations whose target is gone', () async {
       final temp = await Directory.systemTemp.createTemp('rpcs3-stale-yml');
       addTearDown(() => temp.delete(recursive: true));
