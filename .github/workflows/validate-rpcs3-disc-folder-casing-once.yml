@@ -40,21 +40,19 @@ jobs:
 
           library_path = Path('lib/services/rpcs3_library_service.dart')
           text = library_path.read_text(encoding='utf-8')
-          old_loop = """    for (final discDirectoryName in const <String>['DiscImages', 'DiscImgs']) {
-              await scan(
-                path.join('games', discDirectoryName),
-                sourceKind: 'disc-image',
-                maxDepth: 5,
-                hddRules: false,
-              );
-              await _addDiscImageFolderFallbacks(
-                dataRoot: root.path,
-                directoryName: discDirectoryName,
-                target: byTitleId,
-              );
-            }
-          """
-          new_loop = """    final discDirectoryNames = await _discoverDiscImageDirectoryNames(
+          loop_start_marker = (
+              "    for (final discDirectoryName in const <String>"
+              "['DiscImages', 'DiscImgs']) {"
+          )
+          comment_marker = "\n\n    // Do not create entries from games.yml."
+          if '_discoverDiscImageDirectoryNames(' not in text:
+              start = text.find(loop_start_marker)
+              if start < 0:
+                  raise SystemExit('RPCS3 disc-folder loop start missing')
+              end = text.find(comment_marker, start)
+              if end < 0:
+                  raise SystemExit('RPCS3 disc-folder loop end missing')
+              new_loop = """    final discDirectoryNames = await _discoverDiscImageDirectoryNames(
               root.path,
             );
             for (final discDirectoryName in discDirectoryNames) {
@@ -71,13 +69,9 @@ jobs:
               );
             }
           """
-          if new_loop not in text:
-              if old_loop not in text:
-                  raise SystemExit('RPCS3 disc-folder loop marker missing')
-              text = text.replace(old_loop, new_loop, 1)
+              text = text[:start] + new_loop + text[end:]
 
-          helper_marker = """  static Future<void> _addDiscImageFolderFallbacks({
-          """
+          helper_marker = "  static Future<void> _addDiscImageFolderFallbacks({\n"
           helper = """  static Future<List<String>> _discoverDiscImageDirectoryNames(
             String dataRoot,
           ) async {
