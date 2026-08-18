@@ -70,7 +70,7 @@ jobs:
       - name: Apply Stage 7 source patch
         run: python3 tools/apply_stage7.py
 
-      - name: Adapt patch to current video state and regression tests
+      - name: Adapt patch to current source and regression tests
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -89,6 +89,17 @@ jobs:
                   1,
               )
               host.write_text(host_text, encoding='utf-8')
+
+          # setEnabled(false) is used by widget tests without loading the native
+          # SoLoud library. Check the empty handle list before touching the FFI
+          # singleton so the no-audio path remains platform independent.
+          sfx = Path('lib/services/sfx_service.dart')
+          sfx_text = sfx.read_text(encoding='utf-8')
+          old_guard = 'if (!SoLoud.instance.isInitialized || _activeHandles.isEmpty) {'
+          new_guard = 'if (_activeHandles.isEmpty || !SoLoud.instance.isInitialized) {'
+          if old_guard not in sfx_text:
+              raise SystemExit('SFX active-handle guard missing')
+          sfx.write_text(sfx_text.replace(old_guard, new_guard, 1), encoding='utf-8')
 
           stage3 = Path('test/rpcs3_stage3_test.dart')
           text = stage3.read_text(encoding='utf-8')
