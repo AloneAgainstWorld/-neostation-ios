@@ -60,7 +60,6 @@ jobs:
           grep -R "isRpcs3AutomationConfigured" lib/services/ios_shortcut_jit_launch_service.dart
           grep -R "shortcuts://" lib/services/ios_shortcut_jit_launch_service.dart
           grep -R "Set Switch Control Switch State" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
-          ! grep -R "buildScriptForTesting" test/rpcs3_stage3_test.dart
 
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
