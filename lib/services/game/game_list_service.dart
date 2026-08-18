@@ -1,5 +1,6 @@
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/logger_service.dart';
+
 import '../../models/game_model.dart';
 import '../../models/database_game_model.dart';
 import '../../models/system_model.dart';
@@ -26,8 +27,8 @@ class GameListService {
   static final RegExp _whitespaceRegex = RegExp(r'\s+');
 
   static bool _hasScreenscraperRealName(DatabaseGameModel dbGame) {
-    final t = dbGame.screenscraperRealName?.trim();
-    return t != null && t.isNotEmpty;
+    return GameModel.resolveDatabaseNamesForDisplay(dbGame)
+        .hasMeaningfulScrapedName;
   }
 
   /// Sanitizes a filename for display in the UI based on user preferences.
@@ -73,7 +74,8 @@ class GameListService {
 
   /// Resolves the optimal display name for a game considering scraped metadata
   /// and user-defined naming conventions.
-  static ({String name, bool showRomFileNameSubtitle}) _resolveListDisplayName({
+  static ({String name, String realName, bool showRomFileNameSubtitle})
+  _resolveListDisplayName({
     required DatabaseGameModel dbGame,
     required bool preferFileName,
     required bool hideExtension,
@@ -82,8 +84,9 @@ class GameListService {
     required Set<String> validExtensionsSet,
   }) {
     final filename = dbGame.filename;
+    final resolvedNames = GameModel.resolveDatabaseNamesForDisplay(dbGame);
     final scraped = _hasScreenscraperRealName(dbGame);
-    final coalesced = dbGame.realName ?? dbGame.titleName ?? filename;
+    final coalesced = resolvedNames.displayName;
 
     if (preferFileName) {
       return (
@@ -94,17 +97,23 @@ class GameListService {
           hideParentheses: hideParentheses,
           hideBrackets: hideBrackets,
         ),
+        realName: resolvedNames.realName,
         showRomFileNameSubtitle: false,
       );
     }
     if (scraped) {
       return (
         name: _formatListNameFromScrapedTitle(coalesced),
+        realName: resolvedNames.realName,
         showRomFileNameSubtitle: true,
       );
     }
     if (coalesced != filename) {
-      return (name: coalesced, showRomFileNameSubtitle: false);
+      return (
+        name: coalesced,
+        realName: resolvedNames.realName,
+        showRomFileNameSubtitle: false,
+      );
     }
     return (
       name: _formatListNameFromFilename(
@@ -114,6 +123,7 @@ class GameListService {
         hideParentheses: hideParentheses,
         hideBrackets: hideBrackets,
       ),
+      realName: resolvedNames.realName,
       showRomFileNameSubtitle: false,
     );
   }
@@ -170,7 +180,7 @@ class GameListService {
 
           return GameModel(
             romname: dbGame.filename,
-            realname: dbGame.realName ?? dbGame.filename,
+            realname: resolved.realName,
             name: resolved.name,
             showRomFileNameSubtitle: resolved.showRomFileNameSubtitle,
             descriptions: dbGame.descriptions,
@@ -228,7 +238,7 @@ class GameListService {
 
         return GameModel(
           romname: dbGame.filename,
-          realname: dbGame.realName ?? dbGame.filename,
+          realname: resolved.realName,
           name: resolved.name,
           showRomFileNameSubtitle: resolved.showRomFileNameSubtitle,
           descriptions: dbGame.descriptions,
@@ -296,7 +306,7 @@ class GameListService {
 
       return GameModel(
         romname: dbGame.filename,
-        realname: dbGame.realName ?? dbGame.filename,
+        realname: resolved.realName,
         name: resolved.name,
         showRomFileNameSubtitle: resolved.showRomFileNameSubtitle,
         descriptions: dbGame.descriptions,
@@ -357,7 +367,7 @@ class GameListService {
 
       return GameModel(
         romname: dbGame.filename,
-        realname: dbGame.realName ?? dbGame.filename,
+        realname: resolved.realName,
         name: resolved.name,
         showRomFileNameSubtitle: resolved.showRomFileNameSubtitle,
         descriptions: dbGame.descriptions,

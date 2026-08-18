@@ -55,6 +55,8 @@ import 'package:neostation/services/rpcs3_launch_service.dart';
 import 'package:neostation/data/datasources/sqlite_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/audio_policy_service.dart';
+
 // Politica personalizada para deshabilitar navegacion por teclado
 class NoFocusTraversalPolicy extends FocusTraversalPolicy {
   @override
@@ -271,6 +273,8 @@ void main() async {
   final log = LoggerService.instance;
   await log.init();
   log.i('Starting NeoStation...');
+
+  await AudioPolicyService().initialize();
 
   // Resolve the user-data location before anything reads it, so the cold-boot
   // wait happens once (behind the loading screen) rather than once per caller.

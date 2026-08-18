@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/l10n/rpcs3_library_locale.dart';
@@ -15,6 +16,7 @@ import 'package:neostation/services/melonx_library_service.dart';
 import 'package:neostation/services/rpcs3_library_service.dart';
 import 'package:neostation/services/rpcs3_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
+
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
 import '../../models/emulator_model.dart';
@@ -165,7 +167,13 @@ class GameLaunchService {
             'ios_rpcs3_stikdebug',
           );
           await FavoritesService.recordGamePlayed(game);
-          final launched = await Rpcs3LaunchService.launchTitle(titleId);
+          final linkedGame = Rpcs3LibraryService.cachedGameForTitleId(titleId);
+          final launched = await Rpcs3LaunchService.launchTitle(
+            titleId,
+            displayTitle: game.name,
+            sourcePath: linkedGame?.sourcePath,
+            sourceKind: linkedGame?.sourceKind,
+          );
           if (launched) return GameLaunchResult.success();
           if (!context.mounted) return GameLaunchResult.failure('', '');
           return GameLaunchResult.failure(
@@ -445,20 +453,22 @@ class GameLaunchService {
                 system,
               );
 
-              final result = await platform
-                  .invokeMethod('launchGenericIntent', {
-                    'package': packageName,
-                    'activity': activityName,
-                    'action': action,
-                    'category': category,
-                    'data': data,
-                    'type': type,
-                    'extras': extrasList,
-                    'activity_flags': launchCmd['activity_flags'] != null
-                        ? List<String>.from(launchCmd['activity_flags'] as List)
-                        : <String>[],
-                    'keep_saf_uri': launchCmd['keep_saf_uri'] == true,
-                  });
+              final result = await platform.invokeMethod(
+                'launchGenericIntent',
+                {
+                  'package': packageName,
+                  'activity': activityName,
+                  'action': action,
+                  'category': category,
+                  'data': data,
+                  'type': type,
+                  'extras': extrasList,
+                  'activity_flags': launchCmd['activity_flags'] != null
+                      ? List<String>.from(launchCmd['activity_flags'] as List)
+                      : <String>[],
+                  'keep_saf_uri': launchCmd['keep_saf_uri'] == true,
+                },
+              );
 
               if (result == true) {
                 GameSessionManager.registerGameLaunch(system, game);
@@ -1735,9 +1745,8 @@ class GameLaunchService {
 
       // Nothing exists yet; hand back the most likely location so the caller's
       // "cores directory not found" message names somewhere actionable.
-      return LinuxEmulatorDiscovery.retroArchCoresDirCandidates(
-        retroArch.path,
-      ).first;
+      return LinuxEmulatorDiscovery.retroArchCoresDirCandidates(retroArch.path)
+          .first;
     } else if (Platform.isMacOS) {
       final homeDir = ConfigService.getRealHomePath();
       return path.join(homeDir, 'Library/Application Support/RetroArch/cores');

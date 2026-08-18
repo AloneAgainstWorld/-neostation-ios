@@ -10,7 +10,8 @@ void main() {
     final initialization = homeMusic.indexOf('if (!_initialized)', assignment);
     expect(assignment, greaterThanOrEqualTo(0));
     expect(initialization, greaterThan(assignment));
-    expect(homeMusic, contains('await _restoreSilentModeAudioSession();'));
+    expect(homeMusic, contains('AudioPolicyService'));
+    expect(homeMusic, contains('ensureSilentCompatibleSession'));
 
     final themeSettings = File(
       'lib/screens/settings_screen/new_settings_options/themes_settings_content.dart',
@@ -18,6 +19,7 @@ void main() {
     expect(themeSettings, contains('homeMusic.setMainMenuActive(false)'));
 
     final sfx = File('lib/services/sfx_service.dart').readAsStringSync();
-    expect(sfx, contains('await _restoreSilentModeAudioSession();'));
+    expect(sfx, contains('AudioPolicyService'));
+    expect(sfx, contains('stopAllSounds'));
   });
 }

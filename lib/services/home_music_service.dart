@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:external_folder_access/external_folder_access.dart';
+import 'package:neostation/services/audio_policy_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -343,16 +343,10 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _restoreSilentModeAudioSession() async {
-    try {
-      await ExternalFolderAccess.configureAudioSessionForSilentMode();
-    } catch (error) {
-      _log.w('[HomeMusic] Could not restore iOS silent-mode session: $error');
-    }
-  }
-
-  Future<void> _restoreSilentModeAndSync() async {
-    await _restoreSilentModeAudioSession();
+  Future<void> _resumeWithAudioPolicy() async {
+    await AudioPolicyService().ensureSilentCompatibleSession(
+      reason: 'home-music-resumed',
+    );
     await _syncPlayback();
   }
 
@@ -366,14 +360,16 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
       // SFX owns the shared engine's normal initialization path and is already
       // concurrency-safe, so using it here avoids two callers racing SoLoud.
       await SfxService().init();
-      await _restoreSilentModeAudioSession();
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'home-music-engine-ready',
+      );
       if (!_shouldPlay || _musicPath == null) return;
 
       final source = await SoLoud.instance.loadFile(_musicPath!);
       // SoLoud may reactivate its own iOS category while loading/starting a
       // streamed file. Re-apply `.ambient` after each operation so the hardware
       // Ring/Silent switch remains authoritative, including inside Theme.
-      await _restoreSilentModeAudioSession();
+      await AudioPolicyService().prepareForPlayback('home-music');
       if (!_shouldPlay) {
         await SoLoud.instance.disposeSource(source);
         return;
@@ -381,7 +377,7 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
 
       _source = source;
       _handle = SoLoud.instance.play(source, volume: _volume, looping: true);
-      await _restoreSilentModeAudioSession();
+      await AudioPolicyService().afterPlaybackStarted('home-music');
       _log.i('[HomeMusic] Main-menu music started.');
     } catch (e) {
       _source = null;
@@ -417,7 +413,7 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appActive = true;
-      unawaited(_restoreSilentModeAndSync());
+      unawaited(_resumeWithAudioPolicy());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {

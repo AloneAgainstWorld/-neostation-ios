@@ -13,43 +13,20 @@ part of '../my_games_list.dart';
 extension _SecondaryDisplay on _SystemGamesListState {
   /// Hard reset of the video preview system.
   void _resetVideoState() {
-    _videoTimer?.cancel();
-    _videoTimer = null;
-
-    if (_videoController != null) {
-      final controller = _videoController!;
-      _videoController = null;
-      try {
-        controller.dispose();
-      } catch (e) {
-        _SystemGamesListState._log.w(
-          'Error disposing video controller in reset: $e',
-        );
-      }
-    }
-
-    if (mounted) {
-      rebuild(() {
-        _showVideo = false;
-        _isVideoLoading = false;
-      });
-    }
+    _invalidateVideoPreview(updateDucking: false);
   }
 
   /// Graceful termination of video resources with state synchronization.
   void _stopVideoAndCleanup() {
+    _invalidateVideoPreview(updateDucking: true);
+  }
+
+  void _invalidateVideoPreview({required bool updateDucking}) {
+    _videoGeneration++;
     _videoTimer?.cancel();
     _videoTimer = null;
-
-    if (_videoController != null) {
-      final controller = _videoController!;
-      _videoController = null;
-      try {
-        controller.dispose();
-      } catch (e) {
-        _SystemGamesListState._log.w('Error disposing video controller: $e');
-      }
-    }
+    final controller = _videoController;
+    _videoController = null;
 
     if (mounted) {
       rebuild(() {
@@ -57,7 +34,58 @@ extension _SecondaryDisplay on _SystemGamesListState {
         _isVideoLoading = false;
       });
     }
-    _updateMusicDucking();
+
+    if (controller != null) {
+      _videoTransition = _videoTransition
+          .catchError((Object _) {})
+          .then(
+            (_) => _disposeVideoController(controller, reason: 'invalidate'),
+          );
+    }
+    if (updateDucking) _updateMusicDucking();
+  }
+
+  Future<void> _disposeVideoController(
+    VideoPlayerController controller, {
+    required String reason,
+  }) async {
+    try {
+      if (controller.value.isInitialized) {
+        await controller.setVolume(0.0);
+        await controller.pause();
+      }
+    } catch (error) {
+      _SystemGamesListState._log.w('Video stop failed ($reason): $error');
+    }
+    try {
+      await controller.dispose();
+    } catch (error) {
+      _SystemGamesListState._log.w('Video dispose failed ($reason): $error');
+    }
+  }
+
+  Future<void> _fadeVideoVolume(
+    VideoPlayerController controller, {
+    required int generation,
+    required double target,
+  }) async {
+    if (target <= 0) {
+      await controller.setVolume(0.0);
+      return;
+    }
+    // Readiness and cancellation are handled above. This short ramp only
+    // removes the initial audio edge/click after the first decoded frame.
+    const steps = 4;
+    for (var step = 1; step <= steps; step++) {
+      if (!mounted ||
+          generation != _videoGeneration ||
+          _videoController != controller)
+        return;
+      await controller.setVolume(target * step / steps);
+      if (step < steps) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+    }
   }
 
   /// Orchestrates background tasks triggered by game selection changes.
@@ -333,8 +361,7 @@ extension _SecondaryDisplay on _SystemGamesListState {
               game.systemFolderName != null
           ? game.systemFolderName!
           : widget.system.id;
-      final path =
-          'assets/images/logos/$sysId.webp'; // Correcting to logo fallback for grid consistency.
+      final path = 'assets/images/logos/$sysId.webp'; // Correcting to logo fallback for grid consistency.
       imageProvider = AssetImage(path);
       imagePath = path;
     }
@@ -350,11 +377,13 @@ extension _SecondaryDisplay on _SystemGamesListState {
     _videoTimer?.cancel();
     if (!mounted || _isGameLaunching) return;
 
+    final generation = _videoGeneration;
+    final scheduledGame = _selectedGame;
     _videoTimer = Timer(_SystemGamesListState._videoDelay, () async {
-      if (!mounted) return;
-      if (mounted && _selectedGame != null) {
+      if (!mounted || generation != _videoGeneration) return;
+      if (scheduledGame != null && _selectedGame == scheduledGame) {
         // Always attempt secondary display video update.
-        await _updateSecondaryDisplayVideo(_selectedGame!);
+        await _updateSecondaryDisplayVideo(scheduledGame);
         if (!mounted) return;
 
         // Primary display video is conditional based on user preference for 'Game Info'.
@@ -363,121 +392,110 @@ extension _SecondaryDisplay on _SystemGamesListState {
             .config
             .showGameInfo;
         if (showGameInfo) {
-          await _initializeVideo(_selectedGame!);
+          await _initializeVideo(scheduledGame, generation: generation);
         }
       }
     });
   }
 
-  /// Initializes the video player for the primary UI, including volume and loop management.
-  Future<void> _initializeVideo(GameModel game) async {
-    if (!mounted ||
-        _selectedGame == null ||
-        _selectedGame != game ||
-        _isVideoLoading) {
+  /// Initializes one preview generation. Controller destruction/creation is
+  /// serialized so two AVPlayers can never own audio output at the same time.
+  Future<void> _initializeVideo(
+    GameModel game, {
+    required int generation,
+  }) async {
+    if (!mounted || generation != _videoGeneration || _selectedGame != game) {
       return;
     }
-
-    final showGameInfo = context
-        .read<SqliteConfigProvider>()
-        .config
-        .showGameInfo;
-    if (!showGameInfo) {
-      return;
-    }
-
-    if (_isGameLaunching) {
-      return;
-    }
+    final config = context.read<SqliteConfigProvider>().config;
+    if (!config.showGameInfo || _isGameLaunching) return;
 
     rebuild(() => _isVideoLoading = true);
-
     final videoPath = _getVideoPath(game);
-    final file = File(videoPath);
-    final fileExists = _fileProvider.isInitialized
+    final exists = _fileProvider.isInitialized
         ? await _fileProvider.fileExists(videoPath)
-        : file.existsSync();
-
-    if (!mounted || _selectedGame != game) {
-      if (mounted) {
-        rebuild(() {
-          _isVideoLoading = false;
-        });
-      }
+        : File(videoPath).existsSync();
+    if (!mounted || generation != _videoGeneration || _selectedGame != game) {
+      return;
+    }
+    if (!exists) {
+      rebuild(() {
+        _showVideo = false;
+        _isVideoLoading = false;
+      });
       return;
     }
 
-    if (!fileExists) {
-      if (mounted) {
-        rebuild(() {
-          _showVideo = false;
-          _isVideoLoading = false;
-        });
+    final transition = _videoTransition.catchError((Object _) {}).then((
+      _,
+    ) async {
+      if (!mounted || generation != _videoGeneration || _selectedGame != game) {
+        return;
       }
-      return;
-    }
-
-    try {
-      if (!mounted || _selectedGame != game) {
+      final old = _videoController;
+      _videoController = null;
+      if (old != null) {
+        await _disposeVideoController(old, reason: 'replacement');
+      }
+      if (!mounted || generation != _videoGeneration || _selectedGame != game) {
         return;
       }
 
-      // CRITICAL: Ensure previously active controllers are disposed to prevent resource leaks.
-      if (_videoController != null) {
-        try {
-          _videoController!.pause();
-          _videoController!.dispose();
-        } catch (e) {
-          _SystemGamesListState._log.w('Error disposing old controller: $e');
-        }
-        _videoController = null;
-      }
-
-      final mainController = VideoPlayerController.file(
-        file,
+      final controller = VideoPlayerController.file(
+        File(videoPath),
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
+      try {
+        await controller.initialize();
+        await AudioPolicyService().ensureSilentCompatibleSession(
+          reason: 'game-preview-video-initialized',
+        );
+        if (!mounted ||
+            generation != _videoGeneration ||
+            _selectedGame != game) {
+          await _disposeVideoController(controller, reason: 'stale-initialize');
+          return;
+        }
 
-      await mainController.initialize();
+        await controller.setVolume(0.0);
+        await controller.setLooping(true);
+        await controller.play();
+        await AudioPolicyService().afterPlaybackStarted('game-preview-video');
+        if (!mounted ||
+            generation != _videoGeneration ||
+            _selectedGame != game) {
+          await _disposeVideoController(controller, reason: 'stale-play');
+          return;
+        }
 
-      if (mounted && _selectedGame == game && _selectedGame != null) {
+        _videoController = controller;
         rebuild(() {
-          _videoController = mainController;
           _showVideo = true;
           _isVideoLoading = false;
         });
-
-        // Guard each await: navigation can dispose _videoController between calls.
-        final videoSoundEnabled = context
-            .read<SqliteConfigProvider>()
-            .config
-            .videoSound;
-        await mainController.setVolume(videoSoundEnabled ? 1.0 : 0.0);
-        if (!mounted || _videoController != mainController) return;
-        await mainController.setLooping(true);
-        if (!mounted || _videoController != mainController) return;
-        await mainController.play();
-        if (!mounted || _videoController != mainController) return;
-
+        await _fadeVideoVolume(
+          controller,
+          generation: generation,
+          target: config.videoSound ? 1.0 : 0.0,
+        );
         _updateMusicDucking();
-      } else {
-        mainController.dispose();
-        if (mounted) {
+      } catch (error) {
+        await _disposeVideoController(controller, reason: 'initialize-error');
+        if (mounted && generation == _videoGeneration) {
           rebuild(() {
+            _showVideo = false;
             _isVideoLoading = false;
           });
         }
+        _SystemGamesListState._log.e(
+          'Error initializing video generation $generation: $error',
+        );
       }
-    } catch (error) {
-      _SystemGamesListState._log.e(
-        'Error initializing video in LIST view: $error',
-      );
-      if (mounted) {
-        rebuild(() {
-          _showVideo = false;
-          _isVideoLoading = false;
-        });
-      }
+    });
+    _videoTransition = transition;
+    await transition;
+    if (mounted && generation == _videoGeneration && !_showVideo) {
+      rebuild(() => _isVideoLoading = false);
     }
   }
 

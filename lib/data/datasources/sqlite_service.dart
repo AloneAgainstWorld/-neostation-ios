@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'; // Required for rootBundle
 import 'package:path/path.dart' as path; // Required for path operations
 import 'package:sqlite3/sqlite3.dart' as sqlite; // sqlite3 usage
+
 import '../../services/android_service.dart';
 
 import '../../models/system_model.dart';
@@ -740,9 +742,8 @@ class SqliteService {
             final args = platformData['launch_arguments'].toString();
 
             // Extract package and activity from "-n package/activity"
-            final componentMatch = RegExp(
-              r'-n\s+([^\s/]+)/([^\s]+)',
-            ).firstMatch(args);
+            final componentMatch = RegExp(r'-n\s+([^\s/]+)/([^\s]+)')
+                .firstMatch(args);
             if (componentMatch != null) {
               packageName ??= componentMatch.group(1);
               var activity = componentMatch.group(2)!;
@@ -797,9 +798,8 @@ class SqliteService {
           }
           final args = platformData['args'];
           if (args != null) {
-            final match = RegExp(
-              r'-L\s+(?:cores\\|cores/)?([\w_\-\.]+)',
-            ).firstMatch(args);
+            final match = RegExp(r'-L\s+(?:cores\\|cores/)?([\w_\-\.]+)')
+                .firstMatch(args);
             if (match != null) {
               coreFilename = match.group(1);
             }
@@ -812,9 +812,8 @@ class SqliteService {
           }
           final args = platformData['args'];
           if (args != null) {
-            final match = RegExp(
-              r'-L\s+(?:cores\\|cores/)?([\w_\-\.]+)',
-            ).firstMatch(args);
+            final match = RegExp(r'-L\s+(?:cores\\|cores/)?([\w_\-\.]+)')
+                .firstMatch(args);
             if (match != null) {
               coreFilename = match.group(1);
             }
@@ -894,8 +893,7 @@ class SqliteService {
           final existingByName = await txn.query(
             'app_emulators',
             columns: ['unique_identifier'],
-            where:
-                'system_id = ? AND os_id = ? AND name = ? AND unique_identifier IS NULL',
+            where: 'system_id = ? AND os_id = ? AND name = ? AND unique_identifier IS NULL',
             whereArgs: [systemId, osId, dbName],
           );
 
@@ -918,8 +916,7 @@ class SqliteService {
             await txn.update(
               'app_emulators',
               updateData,
-              where:
-                  'system_id = ? AND os_id = ? AND name = ? AND unique_identifier IS NULL',
+              where: 'system_id = ? AND os_id = ? AND name = ? AND unique_identifier IS NULL',
               whereArgs: [systemId, osId, dbName],
             );
             processedUniqueIds.add(emuDef.uniqueId);
@@ -4062,13 +4059,13 @@ class SqliteService {
         ur.app_emulator_unique_id as emulator_name,
         s.id as system_id, s.real_name as system_real_name, s.folder_name as system_folder_name,
         s.short_name as system_short_name,
-        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.title_name END, ur.filename) as game_display_name,
+        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.title_name END, ur.filename) as game_display_name,
         usm.real_name as ss_real_name,
         COALESCE(usm.description_en, CASE WHEN s.folder_name IN ('android') THEN ur.description END) as description,
         usm.description_en, usm.description_es, usm.description_fr, usm.description_de, usm.description_it, usm.description_pt,
         usm.rating,
         COALESCE(usm.release_date, CASE WHEN s.folder_name IN ('android') THEN ur.year END) as year,
-        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.developer END) as developer,
+        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.developer END) as developer,
         COALESCE(usm.publisher, CASE WHEN s.folder_name IN ('android') THEN ur.publisher END) as publisher,
         COALESCE(usm.genre, CASE WHEN s.folder_name IN ('android') THEN ur.genre END) as genre,
         COALESCE(usm.players, CASE WHEN s.folder_name IN ('android') THEN ur.players END) as players,
@@ -4105,13 +4102,13 @@ class SqliteService {
         ur.app_emulator_unique_id as emulator_name,
         s.id as system_id, s.real_name as system_real_name, s.folder_name as system_folder_name,
         s.short_name as system_short_name,
-        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.title_name END, ur.filename) as game_display_name,
+        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.title_name END, ur.filename) as game_display_name,
         usm.real_name as ss_real_name,
         COALESCE(usm.description_en, CASE WHEN s.folder_name IN ('android') THEN ur.description END) as description,
         usm.description_en, usm.description_es, usm.description_fr, usm.description_de, usm.description_it, usm.description_pt,
         usm.rating,
         COALESCE(usm.release_date, CASE WHEN s.folder_name IN ('android') THEN ur.year END) as year,
-        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.developer END) as developer,
+        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.developer END) as developer,
         COALESCE(usm.publisher, CASE WHEN s.folder_name IN ('android') THEN ur.publisher END) as publisher,
         COALESCE(usm.genre, CASE WHEN s.folder_name IN ('android') THEN ur.genre END) as genre,
         COALESCE(usm.players, CASE WHEN s.folder_name IN ('android') THEN ur.players END        ) as players,
@@ -4137,13 +4134,13 @@ class SqliteService {
         ur.app_emulator_unique_id as emulator_name,
         s.id as system_id, s.real_name as system_real_name, s.folder_name as system_folder_name,
         s.short_name as system_short_name,
-        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.title_name END, ur.filename) as game_display_name,
+        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.title_name END, ur.filename) as game_display_name,
         usm.real_name as ss_real_name,
         COALESCE(usm.description_en, CASE WHEN s.folder_name IN ('android') THEN ur.description END) as description,
         usm.description_en, usm.description_es, usm.description_fr, usm.description_de, usm.description_it, usm.description_pt,
         usm.rating,
         COALESCE(usm.release_date, CASE WHEN s.folder_name IN ('android') THEN ur.year END) as year,
-        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.developer END) as developer,
+        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.developer END) as developer,
         COALESCE(usm.publisher, CASE WHEN s.folder_name IN ('android') THEN ur.publisher END) as publisher,
         COALESCE(usm.genre, CASE WHEN s.folder_name IN ('android') THEN ur.genre END) as genre,
         COALESCE(usm.players, CASE WHEN s.folder_name IN ('android') THEN ur.players END        ) as players,
@@ -4173,13 +4170,13 @@ class SqliteService {
         ur.app_emulator_unique_id as emulator_name,
         s.id as system_id, s.real_name as system_real_name, s.folder_name as system_folder_name,
         s.short_name as system_short_name,
-        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.title_name END, ur.filename) as game_display_name,
+        COALESCE(usm.real_name, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.title_name END, ur.filename) as game_display_name,
         usm.real_name as ss_real_name,
         COALESCE(usm.description_en, CASE WHEN s.folder_name IN ('android') THEN ur.description END) as description,
         usm.description_en, usm.description_es, usm.description_fr, usm.description_de, usm.description_it, usm.description_pt,
         usm.rating,
         COALESCE(usm.release_date, CASE WHEN s.folder_name IN ('android') THEN ur.year END) as year,
-        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' THEN ur.developer END) as developer,
+        COALESCE(usm.developer, CASE WHEN s.folder_name IN ('android') OR LOWER(ur.rom_path) LIKE 'melonx://%' OR LOWER(ur.rom_path) LIKE 'rpcs3-library://%' THEN ur.developer END) as developer,
         COALESCE(usm.publisher, CASE WHEN s.folder_name IN ('android') THEN ur.publisher END) as publisher,
         COALESCE(usm.genre, CASE WHEN s.folder_name IN ('android') THEN ur.genre END) as genre,
         COALESCE(usm.players, CASE WHEN s.folder_name IN ('android') THEN ur.players END        ) as players,

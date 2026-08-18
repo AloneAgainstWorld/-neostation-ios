@@ -106,7 +106,7 @@ void main() {
       );
     });
 
-    test('RPCS3 direct script is fingerprinted and title-specific', () {
+    test('RPCS3 direct script is fingerprinted and state-aware', () {
       final template = File('assets/data/rpcs3_stikdebug_launch.js')
           .readAsStringSync();
       final script = Rpcs3LaunchService.buildScriptForTesting(
@@ -117,8 +117,9 @@ void main() {
       expect(script, contains('5C4D64FFB79930AD879C13009838F136'));
       expect(script, contains('221732'));
       expect(script, contains('CFE15492152B331E83959A3CF9AC8A9F'));
-      expect(script, contains('NEOSTATION_RPC_DIRECT_CORE_NOT_READY'));
-      expect(script, contains('NEOSTATION_RPC_DIRECT_BOOT_COMPLETED'));
+      expect(script, contains('NEOSTATION_RPC_STATE_BEFORE'));
+      expect(script, contains('NEOSTATION_RPC_BOOT_RESULT'));
+      expect(script, contains('NEOSTATION_RPC_LAST_ERROR'));
       expect(script, isNot(contains('__NEOSTATION_')));
     });
 

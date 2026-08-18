@@ -144,6 +144,12 @@ class Rpcs3LibraryService {
   static bool get hasSyncedLibrary => _syncCompleted;
   static int get syncedGameCount => _cache?.length ?? 0;
 
+  static Rpcs3LibraryGame? cachedGameForTitleId(String? titleId) {
+    final normalized = titleId?.trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) return null;
+    return _cache?[normalized];
+  }
+
   static bool isVirtualLibraryPath(String romPath) {
     final uri = Uri.tryParse(romPath);
     return uri != null &&
@@ -1181,7 +1187,10 @@ class Rpcs3LibraryService {
                 title_id = CASE
                   WHEN title_id IS NULL OR title_id = '' THEN ? ELSE title_id END,
                 title_name = CASE
-                  WHEN title_name IS NULL OR title_name = '' THEN ? ELSE title_name END,
+                  WHEN title_name IS NULL OR title_name = ''
+                    OR UPPER(TRIM(title_name)) = UPPER(TRIM(COALESCE(title_id, '')))
+                    OR UPPER(TRIM(title_name)) = UPPER(TRIM(filename))
+                  THEN ? ELSE title_name END,
                 updated_at = datetime('now')
               WHERE rom_path = ?
               ''',
@@ -1225,6 +1234,29 @@ class Rpcs3LibraryService {
             virtualPath,
             game.titleId,
             game.title,
+          ],
+        );
+
+        await txn.rawUpdate(
+          '''
+          UPDATE user_screenscraper_metadata
+          SET real_name = NULL
+          WHERE app_system_id = ?
+            AND filename IN (?, ?)
+            AND real_name IS NOT NULL
+            AND (
+              UPPER(TRIM(real_name)) = UPPER(TRIM(?))
+              OR UPPER(TRIM(real_name)) = UPPER(TRIM(?))
+              OR UPPER(TRIM(real_name)) = UPPER(TRIM(?))
+            )
+          ''',
+          <Object?>[
+            systemId,
+            syntheticFilename,
+            '${game.titleId}.rpcs3',
+            game.titleId,
+            syntheticFilename,
+            '${game.titleId}.rpcs3',
           ],
         );
 

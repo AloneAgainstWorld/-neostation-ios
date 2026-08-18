@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:video_player/video_player.dart';
+
 import '../../utils/image_utils.dart';
+
+import '../../services/audio_policy_service.dart';
 
 /// Renders animated background media from the local filesystem.
 ///
@@ -96,13 +100,21 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
 
     try {
       await controller.initialize();
-      if (!mounted || _videoController != controller || widget.imagePath != path) {
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'custom-background-video-initialized',
+      );
+      if (!mounted ||
+          _videoController != controller ||
+          widget.imagePath != path) {
         await controller.dispose();
         return;
       }
       await controller.setLooping(true);
       await controller.setVolume(0.0);
       await controller.play();
+      await AudioPolicyService().afterPlaybackStarted(
+        'custom-background-video',
+      );
       if (mounted && _videoController == controller) {
         setState(() => _videoReady = true);
       }

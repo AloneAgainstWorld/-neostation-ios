@@ -36,49 +36,48 @@ void main() {
       );
     });
 
-    test('resume pass only arms after a real background interval', () {
-      final started = DateTime.utc(2026, 8, 18, 12);
-      expect(
-        Rpcs3LaunchService.shouldContinuePendingForTesting(
-          now: started.add(const Duration(seconds: 3)),
-          startedAt: started,
-          launchWasBackgrounded: true,
-        ),
-        isFalse,
-      );
-      expect(
-        Rpcs3LaunchService.shouldContinuePendingForTesting(
-          now: started.add(const Duration(seconds: 12)),
-          startedAt: started,
-          launchWasBackgrounded: true,
-        ),
-        isTrue,
-      );
-      expect(
-        Rpcs3LaunchService.shouldContinuePendingForTesting(
-          now: started.add(const Duration(seconds: 12)),
-          startedAt: started,
-          launchWasBackgrounded: false,
-        ),
-        isFalse,
-      );
-    });
-
     test(
-      'direct-launch template still receives exact title and fingerprint',
+      'resume pass arms from a real background transition without a timer',
       () {
-        const template =
-            'title=__NEOSTATION_TITLE_ID_JSON__ '
-            'uuid=__NEOSTATION_CORE_UUID_JSON__ '
-            'offset=__NEOSTATION_BOOT_OFFSET_HEX__';
-        final rendered = Rpcs3LaunchService.buildScriptForTesting(
-          template,
-          'bles00412',
+        final started = DateTime.utc(2026, 8, 18, 12);
+        expect(
+          Rpcs3LaunchService.shouldContinuePendingForTesting(
+            now: started.add(const Duration(seconds: 3)),
+            startedAt: started,
+            launchWasBackgrounded: true,
+          ),
+          isTrue,
         );
-        expect(rendered, contains(jsonEncode('BLES00412')));
-        expect(rendered, contains(Rpcs3LaunchService.expectedCoreUuid));
-        expect(rendered, isNot(contains('__NEOSTATION_')));
+        expect(
+          Rpcs3LaunchService.shouldContinuePendingForTesting(
+            now: started.add(const Duration(seconds: 12)),
+            startedAt: started,
+            launchWasBackgrounded: true,
+          ),
+          isTrue,
+        );
+        expect(
+          Rpcs3LaunchService.shouldContinuePendingForTesting(
+            now: started.add(const Duration(seconds: 12)),
+            startedAt: started,
+            launchWasBackgrounded: false,
+          ),
+          isFalse,
+        );
       },
     );
+
+    test('direct-launch template receives exact request and function map', () {
+      const template =
+          'request=__NEOSTATION_REQUEST_JSON__ '
+          'cores=__NEOSTATION_SUPPORTED_CORES_JSON__';
+      final rendered = Rpcs3LaunchService.buildScriptForTesting(
+        template,
+        'bles00412',
+      );
+      expect(rendered, contains(jsonEncode('BLES00412')));
+      expect(rendered, contains('5C4D64FFB79930AD879C13009838F136'));
+      expect(rendered, isNot(contains('__NEOSTATION_')));
+    });
   });
 }
