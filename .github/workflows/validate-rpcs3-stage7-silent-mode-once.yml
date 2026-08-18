@@ -34,7 +34,24 @@ jobs:
           cache: true
 
       - name: Apply Stage 7 patch
-        run: python3 tools/rpcs3_stage7_patch.py
+        run: |
+          python3 tools/rpcs3_stage7_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          file = Path('lib/services/rpcs3_launch_service.dart')
+          text = file.read_text(encoding='utf-8')
+          marker = "  static const int currentBootGameOffset = 0x36224;\n"
+          replacement = marker + (
+              "\n  // Compatibility aliases retained for existing diagnostics/tests.\n"
+              "  static const String expectedCoreUuid = currentCoreUuid;\n"
+              "  static const int bootGameOffset = currentBootGameOffset;\n"
+          )
+          if 'static const String expectedCoreUuid = currentCoreUuid;' not in text:
+              if marker not in text:
+                  raise SystemExit('RPCS3 compatibility alias marker missing')
+              text = text.replace(marker, replacement, 1)
+          file.write_text(text, encoding='utf-8')
+          PY
 
       - name: Format changed Dart files
         run: |
@@ -59,6 +76,7 @@ jobs:
           grep -Fq "version: 0.9.9+136" pubspec.yaml
           grep -Fq "5C4D64FFB79930AD879C13009838F136" lib/services/rpcs3_launch_service.dart
           grep -Fq "0x36224" lib/services/rpcs3_launch_service.dart
+          grep -Fq "static const String expectedCoreUuid = currentCoreUuid" lib/services/rpcs3_launch_service.dart
           grep -Fq "__NEOSTATION_SUPPORTED_CORES_JSON__" assets/data/rpcs3_stikdebug_launch.js
           grep -Fq "disc-image-folder" lib/services/rpcs3_library_service.dart
           grep -Fq "Do not create entries from games.yml" lib/services/rpcs3_library_service.dart
