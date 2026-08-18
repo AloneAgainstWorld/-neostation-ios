@@ -1,0 +1,117 @@
+name: Apply and validate RPCS3 stage 3
+
+on:
+  push:
+    branches:
+      - feature/rpcs3-stage3
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: rpcs3-stage3
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Apply, analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: feature/rpcs3-stage3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Apply RPCS3 persistence, scraping and launch patches
+        run: python3 .github/scripts/apply_rpcs3_stage3.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/main.dart \
+            lib/data/datasources/sqlite_service.dart \
+            lib/models/game_model.dart \
+            lib/repositories/scraper_repository.dart \
+            lib/services/screenscraper_service.dart \
+            lib/services/rpcs3_library_service.dart \
+            lib/services/rpcs3_launch_service.dart \
+            lib/services/game/game_launch_service.dart \
+            lib/l10n/rpcs3_library_locale.dart \
+            lib/screens/game_screen/my_games_list.dart \
+            lib/screens/game_screen/game_details_card/game_details_card_list.dart \
+            lib/screens/game_screen/game_settings_dialog/game_settings_scrapping_tab.dart \
+            lib/screens/game_screen/game_settings_dialog/game_settings_manual_tab.dart \
+            packages/external_folder_access/lib/external_folder_access.dart \
+            test/rpcs3_stage3_test.dart
+
+      - name: Verify integration source
+        run: |
+          set -euo pipefail
+          grep -Fq "version: 0.9.9+131" pubspec.yaml
+          grep -Fq "restoreAfterDatabaseReady" lib/services/rpcs3_library_service.dart
+          grep -Fq "virtualDetections" lib/data/datasources/sqlite_service.dart
+          grep -Fq "serialnum" lib/services/screenscraper_service.dart
+          grep -Fq "serialNumber: game.titleId" lib/screens/game_screen/my_games_list.dart
+          grep -Fq "openAppAfterJitPreflight" packages/external_folder_access/lib/external_folder_access.dart
+          grep -Fq "openTargetApp" packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift
+          grep -Fq "Rpcs3LaunchService.launchTitle" lib/services/game/game_launch_service.dart
+          grep -Fq "CFE15492-152B-331E-8395-9A3CF9AC8A9F" lib/services/rpcs3_launch_service.dart
+          grep -Fq "NEOSTATION_RPC_BOOT_REQUEST" assets/data/rpcs3_stikdebug_launch.js
+          grep -Fq "final syntheticFilename = game.titleId" lib/services/rpcs3_library_service.dart
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run RPCS3 stage 3 tests
+        run: flutter test test/rpcs3_library_service_test.dart test/rpcs3_stage3_test.dart
+
+      - name: Run full Flutter test suite
+        run: flutter test
+
+      - name: Commit validated implementation and remove temporary automation
+        run: |
+          set -euo pipefail
+          git checkout -- pubspec.lock analysis_options.yaml || true
+          git checkout -- packages/flutter_7zip/analysis_options.yaml || true
+          git checkout -- packages/gamepads/analysis_options.yaml || true
+          rm -f .github/scripts/apply_rpcs3_stage3.py
+          rm -f .github/workflows/rpcs3-stage3-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            README.md NOTICE.md pubspec.yaml \
+            assets/data/rpcs3_stikdebug_launch.js \
+            lib/main.dart \
+            lib/data/datasources/sqlite_service.dart \
+            lib/models/game_model.dart \
+            lib/repositories/scraper_repository.dart \
+            lib/services/screenscraper_service.dart \
+            lib/services/rpcs3_library_service.dart \
+            lib/services/rpcs3_launch_service.dart \
+            lib/services/game/game_launch_service.dart \
+            lib/l10n/rpcs3_library_locale.dart \
+            lib/screens/game_screen/my_games_list.dart \
+            lib/screens/game_screen/game_details_card/game_details_card_list.dart \
+            lib/screens/game_screen/game_settings_dialog/game_settings_scrapping_tab.dart \
+            lib/screens/game_screen/game_settings_dialog/game_settings_manual_tab.dart \
+            packages/external_folder_access/lib/external_folder_access.dart \
+            packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift \
+            test/rpcs3_stage3_test.dart \
+            .github/scripts/apply_rpcs3_stage3.py \
+            .github/workflows/rpcs3-stage3-once.yml
+          git commit -m "feat(ios): persist scrape and launch RPCS3 titles"
+          git push origin HEAD:feature/rpcs3-stage3
