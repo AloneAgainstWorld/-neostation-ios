@@ -42,58 +42,67 @@ void main() {
       expect(path.normalize(resolved!), path.normalize(currentBackground.path));
     });
 
-    test('resolves the new container-independent basename preference', () async {
-      final temp = await Directory.systemTemp.createTemp(
-        'neostation-background-relative-pref',
-      );
-      addTearDown(() => temp.delete(recursive: true));
+    test(
+      'resolves the new container-independent basename preference',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'neostation-background-relative-pref',
+        );
+        addTearDown(() => temp.delete(recursive: true));
 
-      final userData = Directory(path.join(temp.path, 'user-data'));
-      final backgroundDir = Directory(
-        path.join(userData.path, 'custom_background'),
-      );
-      await backgroundDir.create(recursive: true);
-      final currentBackground = File(
-        path.join(backgroundDir.path, 'background.mp4'),
-      );
-      await currentBackground.writeAsBytes(const <int>[5, 6, 7, 8]);
+        final userData = Directory(path.join(temp.path, 'user-data'));
+        final backgroundDir = Directory(
+          path.join(userData.path, 'custom_background'),
+        );
+        await backgroundDir.create(recursive: true);
+        final currentBackground = File(
+          path.join(backgroundDir.path, 'background.mp4'),
+        );
+        await currentBackground.writeAsBytes(const <int>[5, 6, 7, 8]);
 
-      final resolved =
-          await ThemeProvider.resolvePersistedCustomBackgroundForTesting(
-            userDataPath: userData.path,
-            savedPreference: 'background.mp4',
-          );
+        final resolved =
+            await ThemeProvider.resolvePersistedCustomBackgroundForTesting(
+              userDataPath: userData.path,
+              savedPreference: 'background.mp4',
+            );
 
-      expect(path.normalize(resolved!), path.normalize(currentBackground.path));
-    });
+        expect(
+          path.normalize(resolved!),
+          path.normalize(currentBackground.path),
+        );
+      },
+    );
 
-    test('migrates a still-readable legacy file into current user data', () async {
-      final temp = await Directory.systemTemp.createTemp(
-        'neostation-background-legacy-migrate',
-      );
-      addTearDown(() => temp.delete(recursive: true));
+    test(
+      'migrates a still-readable legacy file into current user data',
+      () async {
+        final temp = await Directory.systemTemp.createTemp(
+          'neostation-background-legacy-migrate',
+        );
+        addTearDown(() => temp.delete(recursive: true));
 
-      final legacyDir = Directory(path.join(temp.path, 'legacy-support'));
-      await legacyDir.create(recursive: true);
-      final legacy = File(path.join(legacyDir.path, 'wallpaper.jpg'));
-      await legacy.writeAsBytes(const <int>[9, 10, 11]);
+        final legacyDir = Directory(path.join(temp.path, 'legacy-support'));
+        await legacyDir.create(recursive: true);
+        final legacy = File(path.join(legacyDir.path, 'wallpaper.jpg'));
+        await legacy.writeAsBytes(const <int>[9, 10, 11]);
 
-      final userData = Directory(path.join(temp.path, 'current-user-data'));
-      final resolved =
-          await ThemeProvider.resolvePersistedCustomBackgroundForTesting(
-            userDataPath: userData.path,
-            savedPreference: legacy.path,
-          );
+        final userData = Directory(path.join(temp.path, 'current-user-data'));
+        final resolved =
+            await ThemeProvider.resolvePersistedCustomBackgroundForTesting(
+              userDataPath: userData.path,
+              savedPreference: legacy.path,
+            );
 
-      final expected = path.join(
-        userData.path,
-        'custom_background',
-        'background.jpg',
-      );
-      expect(path.normalize(resolved!), path.normalize(expected));
-      expect(await File(expected).readAsBytes(), const <int>[9, 10, 11]);
-      expect(await legacy.exists(), isTrue);
-    });
+        final expected = path.join(
+          userData.path,
+          'custom_background',
+          'background.jpg',
+        );
+        expect(path.normalize(resolved!), path.normalize(expected));
+        expect(await File(expected).readAsBytes(), const <int>[9, 10, 11]);
+        expect(await legacy.exists(), isTrue);
+      },
+    );
 
     test('does not reactivate an unsupported leftover file', () async {
       final temp = await Directory.systemTemp.createTemp(
@@ -106,9 +115,8 @@ void main() {
         path.join(userData.path, 'custom_background'),
       );
       await backgroundDir.create(recursive: true);
-      await File(
-        path.join(backgroundDir.path, 'background.txt'),
-      ).writeAsString('not a supported background');
+      await File(path.join(backgroundDir.path, 'background.txt'))
+          .writeAsString('not a supported background');
 
       final resolved =
           await ThemeProvider.resolvePersistedCustomBackgroundForTesting(
