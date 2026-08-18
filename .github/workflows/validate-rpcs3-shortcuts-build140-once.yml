@@ -28,6 +28,27 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Apply RPCS3 Shortcut settings integration
+        run: python3 tools/apply_rpcs3_shortcut_ui.py
+
+      - name: Format Build 140 source
+        run: dart format lib/services/rpcs3_launch_service.dart lib/services/ios_shortcut_jit_launch_service.dart lib/screens/settings_screen/new_settings_options/directories_settings_content.dart test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
+
+      - name: Commit deterministic source fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add lib/services/rpcs3_launch_service.dart \
+              lib/services/ios_shortcut_jit_launch_service.dart \
+              lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
+              test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
+            git commit -m "Finalize RPCS3 Shortcut launch integration"
+            git push origin HEAD:feature/rpcs3-shortcuts-switch-control-build140
+          fi
+
       - name: Verify RPCS3 stable-path markers
         shell: bash
         run: |
@@ -40,10 +61,12 @@ jobs:
           ! grep -q "SECOND_PASS" lib/services/rpcs3_launch_service.dart
           ! grep -q "WidgetsBindingObserver" lib/services/rpcs3_launch_service.dart
           grep -q "NeoStation+RPCS3+Start" lib/services/ios_shortcut_jit_launch_service.dart
+          grep -q "openRpcs3ShortcutInstaller" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
+          grep -q "onPressed: _configureRpcs3Launch" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
           grep -q "RPCS3" docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md
 
       - name: Check formatting
-        run: dart format --output=none --set-exit-if-changed lib/services/rpcs3_launch_service.dart lib/services/ios_shortcut_jit_launch_service.dart test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
+        run: dart format --output=none --set-exit-if-changed lib/services/rpcs3_launch_service.dart lib/services/ios_shortcut_jit_launch_service.dart lib/screens/settings_screen/new_settings_options/directories_settings_content.dart test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
