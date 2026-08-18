@@ -38,19 +38,27 @@ void main() {
     expect(service, isNot(contains('SECOND_PASS')));
   });
 
-  test('RPCS3 Shortcut setup has a stable helper name and run URL builder', () {
+  test('RPCS3 Shortcut setup has a stable helper name and run URL', () {
     expect(
       IosShortcutJitLaunchService.rpcs3ShortcutName,
       'NeoStation+RPCS3+Start',
     );
+
+    final uri = IosShortcutJitLaunchService.buildRunUri(
+      shortcutName: IosShortcutJitLaunchService.rpcs3ShortcutName,
+      input: 'BLES00412',
+    );
+    expect(uri.scheme, 'shortcuts');
+    expect(uri.host, 'run-shortcut');
+    expect(uri.queryParameters['name'], 'NeoStation+RPCS3+Start');
+    expect(uri.queryParameters['input'], 'text');
+    expect(uri.queryParameters['text'], 'BLES00412');
+
     final shortcutService = File(
       'lib/services/ios_shortcut_jit_launch_service.dart',
     ).readAsStringSync();
     expect(shortcutService, contains('shortcuts://create-shortcut'));
     expect(shortcutService, contains('openRpcs3ShortcutInstaller'));
-    expect(shortcutService, contains('buildRunUri'));
-    expect(shortcutService, contains("scheme: 'shortcuts'"));
-    expect(shortcutService, contains("host: 'run-shortcut'"));
   });
 
   test('RPCS3 Switch Control documentation describes direct handoff', () {
