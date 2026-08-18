@@ -22,15 +22,17 @@ void main() {
     expect(resolved.hasMeaningfulScrapedName, isFalse);
   });
 
-  test('RPCS3 launch schedules the Start Shortcut after Universal JIT', () {
+  test('RPCS3 launch foregrounds the app after Universal JIT', () {
     final service = File(
       'lib/services/rpcs3_launch_service.dart',
     ).readAsStringSync();
-    expect(service, contains('openUrlAfterJitPreflight'));
+    expect(service, contains('openAppAfterJitPreflight'));
     expect(service, contains("scriptName: 'universal.js'"));
-    expect(service, contains('rpcs3ShortcutName'));
-    expect(service, contains('buildRunUri'));
-    expect(service, contains('_shortcutWarmupDelay'));
+    expect(service, contains('_rpcs3WarmupDelay'));
+    expect(service, contains('rpcs3_automation_launch_debug.txt'));
+    expect(service, isNot(contains('buildRunUri')));
+    expect(service, isNot(contains('rpcs3ShortcutName')));
+    expect(service, isNot(contains('openUrlAfterJitPreflight('));
     expect(service, isNot(contains('openJitRequest')));
     expect(service, isNot(contains('rpcs3_stikdebug_launch.js')));
     expect(service, isNot(contains('bootGameOffset')));
@@ -38,30 +40,21 @@ void main() {
     expect(service, isNot(contains('SECOND_PASS')));
   });
 
-  test('RPCS3 Shortcut setup has a stable helper name and run URL', () {
+  test('RPCS3 Shortcut setup keeps the exact helper name', () {
     expect(
       IosShortcutJitLaunchService.rpcs3ShortcutName,
       'NeoStation+RPCS3+Start',
     );
-
-    final uri = IosShortcutJitLaunchService.buildRunUri(
-      shortcutName: IosShortcutJitLaunchService.rpcs3ShortcutName,
-      input: 'BLES00412',
-    );
-    expect(uri.scheme, 'shortcuts');
-    expect(uri.host, 'run-shortcut');
-    expect(uri.queryParameters['name'], 'NeoStation+RPCS3+Start');
-    expect(uri.queryParameters['input'], 'text');
-    expect(uri.queryParameters['text'], 'BLES00412');
 
     final shortcutService = File(
       'lib/services/ios_shortcut_jit_launch_service.dart',
     ).readAsStringSync();
     expect(shortcutService, contains('shortcuts://create-shortcut'));
     expect(shortcutService, contains('openRpcs3ShortcutInstaller'));
+    expect(shortcutService, contains('Personal Automation'));
   });
 
-  test('RPCS3 Switch Control documentation describes direct handoff', () {
+  test('RPCS3 Switch Control documentation requires app-open automation', () {
     final doc = File(
       'docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md',
     ).readAsStringSync();
@@ -69,7 +62,8 @@ void main() {
     expect(doc, contains('NeoStation RPCS3'));
     expect(doc, contains('Full Screen'));
     expect(doc, contains('Personal Automation'));
-    expect(doc, contains('not required'));
+    expect(doc, contains('Run Immediately'));
+    expect(doc, contains('Do **not** add **Open App -> RPCS3**'));
   });
 
   test('obsolete RPCS3 direct injection asset is removed', () {
