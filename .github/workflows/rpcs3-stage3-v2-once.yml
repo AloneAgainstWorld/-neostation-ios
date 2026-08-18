@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/rpcs3-stage3
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -150,6 +153,7 @@ jobs:
         run: flutter test
 
       - name: Commit final polish and remove temporary automation
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           git checkout -- pubspec.lock analysis_options.yaml || true
