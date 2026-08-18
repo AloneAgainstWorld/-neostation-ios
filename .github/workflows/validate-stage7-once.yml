@@ -70,10 +70,25 @@ jobs:
       - name: Apply Stage 7 source patch
         run: python3 tools/apply_stage7.py
 
-      - name: Migrate older RPCS3 regression expectations
+      - name: Adapt patch to current video state and RPCS3 tests
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
+          host = Path('lib/screens/game_screen/my_games_list.dart')
+          host_text = host.read_text(encoding='utf-8')
+          if 'int _videoGeneration = 0;' not in host_text:
+              marker = '  bool _isVideoLoading = false;\n'
+              if marker not in host_text:
+                  raise SystemExit('Primary video state marker missing')
+              host_text = host_text.replace(
+                  marker,
+                  marker +
+                  '  int _videoGeneration = 0;\n'
+                  '  Future<void> _videoTransition = Future<void>.value();\n',
+                  1,
+              )
+              host.write_text(host_text, encoding='utf-8')
 
           stage3 = Path('test/rpcs3_stage3_test.dart')
           text = stage3.read_text(encoding='utf-8')
@@ -91,8 +106,8 @@ jobs:
           stage6 = Path('test/rpcs3_stage6_test.dart')
           text = stage6.read_text(encoding='utf-8')
           text = text.replace(
-              "resume pass only arms after a real background interval",
-              "resume pass arms from a real background transition without a timer",
+              'resume pass only arms after a real background interval',
+              'resume pass arms from a real background transition without a timer',
           )
           text = text.replace(
               "now: started.add(const Duration(seconds: 3)),\n          startedAt: started,\n          launchWasBackgrounded: true,\n        ),\n        isFalse,",
