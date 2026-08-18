@@ -1,4 +1,4 @@
-name: Apply and validate RPCS3 stage 3 v2
+name: Validate final RPCS3 stage 3 polish
 
 on:
   push:
@@ -12,12 +12,12 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: rpcs3-stage3-v2
+  group: rpcs3-stage3-final
   cancel-in-progress: true
 
 jobs:
   validate:
-    name: Apply, analyze and test
+    name: Polish, analyze and test
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -36,116 +36,130 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Apply RPCS3 persistence, scraping and launch patches
+      - name: Prefer scraped names for RPCS3 virtual titles
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          file = Path('lib/services/screenscraper_service.dart')
-          text = file.read_text(encoding='utf-8')
-          start = text.find('  static Future<Map<String, dynamic>> downloadGameManual({')
-          end = text.find('\n  ///', start + 20)
-          if start < 0 or end < 0:
-              raise SystemExit('Could not isolate downloadGameManual')
-          section = text[start:end]
-          current = """          gameName: (systemFolder == 'android' || isMeloNxVirtual)
-              ? gameName
-              : null,
+          model_path = Path('lib/models/game_model.dart')
+          model = model_path.read_text(encoding='utf-8')
+          old_factory = """  factory GameModel.fromDatabaseModel(DatabaseGameModel db) {
+    return GameModel(
+      romname: db.romname,
+      realname: db.realName ?? db.filename,
+      name: db.titleName ?? db.realName ?? db.filename,
 """
-          expected = """          gameName: isMeloNxVirtual ? gameName : null,
-"""
-          if current not in section:
-              raise SystemExit('Current manual gameName marker not found')
-          section = section.replace(current, expected, 1)
-          file.write_text(text[:start] + section + text[end:], encoding='utf-8')
-          PY
+          new_factory = """  factory GameModel.fromDatabaseModel(DatabaseGameModel db) {
+    final scrapedName = db.screenscraperRealName?.trim();
+    final isRpcs3Virtual = db.romPath.toLowerCase().startsWith(
+      'rpcs3-library://',
+    );
+    final displayName =
+        isRpcs3Virtual && scrapedName != null && scrapedName.isNotEmpty
+        ? scrapedName
+        : db.titleName ?? db.realName ?? db.filename;
 
-          python3 .github/scripts/apply_rpcs3_stage3.py
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          file = Path('lib/services/screenscraper_service.dart')
-          text = file.read_text(encoding='utf-8')
-          start = text.find('  static Future<Map<String, dynamic>> downloadGameManual({')
-          end = text.find('\n  ///', start + 20)
-          if start < 0 or end < 0:
-              raise SystemExit('Could not isolate patched downloadGameManual')
-          section = text[start:end]
-          generated = """          gameName: (isMeloNxVirtual || isRpcs3Virtual) ? gameName : null,
-          serialNumber: isRpcs3Virtual ? serialNumber : null,
+    return GameModel(
+      romname: db.romname,
+      realname: db.realName ?? db.filename,
+      name: displayName,
 """
-          corrected = """          gameName:
-              (systemFolder == 'android' ||
-                  isMeloNxVirtual ||
-                  isRpcs3Virtual)
-              ? gameName
-              : null,
-          serialNumber: isRpcs3Virtual ? serialNumber : null,
-"""
-          if generated not in section:
-              raise SystemExit('Generated manual RPCS3 block not found')
-          section = section.replace(generated, corrected, 1)
-          file.write_text(text[:start] + section + text[end:], encoding='utf-8')
+          if new_factory not in model:
+              if old_factory not in model:
+                  raise SystemExit('GameModel database factory marker not found')
+              model = model.replace(old_factory, new_factory, 1)
+              model_path.write_text(model, encoding='utf-8')
+
+          test_path = Path('test/rpcs3_stage3_test.dart')
+          test = test_path.read_text(encoding='utf-8')
+          import_marker = "import 'package:flutter_test/flutter_test.dart';\n"
+          extra_imports = (
+              "import 'package:neostation/models/database_game_model.dart';\n"
+              "import 'package:neostation/models/game_model.dart';\n"
+          )
+          if extra_imports not in test:
+              if import_marker not in test:
+                  raise SystemExit('RPCS3 test import marker not found')
+              test = test.replace(import_marker, import_marker + extra_imports, 1)
+
+          test_name = "scraped RPCS3 name replaces the raw Title ID"
+          if test_name not in test:
+              insertion = r'''
+
+    test('scraped RPCS3 name replaces the raw Title ID', () {
+      final game = GameModel.fromDatabaseModel(
+        DatabaseGameModel(
+          filename: 'BLES00113',
+          romPath: 'rpcs3-library://game?title-id=BLES00113',
+          titleId: 'BLES00113',
+          titleName: 'BLES00113',
+          screenscraperRealName: 'LittleBigPlanet',
+        ),
+      );
+
+      expect(game.name, 'LittleBigPlanet');
+      expect(game.titleId, 'BLES00113');
+    });
+
+    test('regular games keep their existing internal-title precedence', () {
+      final game = GameModel.fromDatabaseModel(
+        DatabaseGameModel(
+          filename: 'game.iso',
+          romPath: '/roms/ps3/game.iso',
+          titleName: 'Internal Header Title',
+          screenscraperRealName: 'Scraped Name',
+        ),
+      );
+
+      expect(game.name, 'Internal Header Title');
+    });
+'''
+              closing = '\n  });\n}\n'
+              if not test.endswith(closing):
+                  raise SystemExit('RPCS3 test group closing marker not found')
+              test = test[:-len(closing)] + insertion + closing
+
+          test_path.write_text(test, encoding='utf-8')
           PY
 
       - name: Format changed Dart files
-        run: |
-          dart format \
-            lib/main.dart \
-            lib/data/datasources/sqlite_service.dart \
-            lib/models/game_model.dart \
-            lib/repositories/scraper_repository.dart \
-            lib/services/screenscraper_service.dart \
-            lib/services/rpcs3_library_service.dart \
-            lib/services/rpcs3_launch_service.dart \
-            lib/services/game/game_launch_service.dart \
-            lib/l10n/rpcs3_library_locale.dart \
-            lib/screens/game_screen/my_games_list.dart \
-            lib/screens/game_screen/game_details_card/game_details_card_list.dart \
-            lib/screens/game_screen/game_settings_dialog/game_settings_scrapping_tab.dart \
-            lib/screens/game_screen/game_settings_dialog/game_settings_manual_tab.dart \
-            packages/external_folder_access/lib/external_folder_access.dart \
-            test/rpcs3_stage3_test.dart
+        run: dart format lib/models/game_model.dart test/rpcs3_stage3_test.dart
 
-      - name: Verify integration source
+      - name: Verify final implementation
         run: |
           set -euo pipefail
           grep -Fq "version: 0.9.9+131" pubspec.yaml
           grep -Fq "restoreAfterDatabaseReady" lib/services/rpcs3_library_service.dart
           grep -Fq "virtualDetections" lib/data/datasources/sqlite_service.dart
           grep -Fq "serialnum" lib/services/screenscraper_service.dart
-          grep -Fq "serialNumber: game.titleId" lib/screens/game_screen/my_games_list.dart
+          grep -Fq "screenscraperRealName" lib/models/game_model.dart
+          grep -Fq "scraped RPCS3 name replaces the raw Title ID" test/rpcs3_stage3_test.dart
           grep -Fq "openAppAfterJitPreflight" packages/external_folder_access/lib/external_folder_access.dart
-          grep -Fq "openTargetApp" packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift
           grep -Fq "Rpcs3LaunchService.launchTitle" lib/services/game/game_launch_service.dart
           grep -Fq "CFE15492-152B-331E-8395-9A3CF9AC8A9F" lib/services/rpcs3_launch_service.dart
           grep -Fq "NEOSTATION_RPC_BOOT_REQUEST" assets/data/rpcs3_stikdebug_launch.js
-          grep -Fq "final syntheticFilename = game.titleId" lib/services/rpcs3_library_service.dart
 
       - name: Analyze Dart and Flutter code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Run RPCS3 stage 3 tests
+      - name: Run RPCS3 tests
         run: flutter test test/rpcs3_library_service_test.dart test/rpcs3_stage3_test.dart
 
       - name: Run full Flutter test suite
         run: flutter test
 
-      - name: Commit validated implementation and remove temporary automation
+      - name: Commit final polish and remove temporary automation
         run: |
           set -euo pipefail
           git checkout -- pubspec.lock analysis_options.yaml || true
           git checkout -- packages/flutter_7zip/analysis_options.yaml || true
           git checkout -- packages/gamepads/analysis_options.yaml || true
-          rm -f .github/scripts/apply_rpcs3_stage3.py
-          rm -f .github/workflows/rpcs3-stage3-once.yml
           rm -f .github/workflows/rpcs3-stage3-v2-once.yml
           rm -f _rpcs3_stage3_pr_marker
           rm -f .github/ISSUE_TEMPLATE/_noop_should_not_exist
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "feat(ios): persist scrape and launch RPCS3 titles"
+          git commit -m "fix(ios): display scraped RPCS3 game names"
           git push origin HEAD:feature/rpcs3-stage3
