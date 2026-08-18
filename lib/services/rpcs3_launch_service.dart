@@ -1,23 +1,21 @@
 import 'dart:io';
 
 import 'package:external_folder_access/external_folder_access.dart';
-import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
 
 /// Stable RPCS3 iOS launcher.
 ///
 /// NeoStation starts RPCS3's normal StikDebug Universal JIT flow, then the
-/// native iOS helper keeps a short background task alive and invokes the
-/// user-configured `NeoStation+RPCS3+Start` Shortcut after the JIT warm-up.
-/// The Shortcut owns the device-local Switch Control gesture that presses
-/// RPCS3's native Start/Commencer control.
+/// native iOS helper foregrounds RPCS3 itself after the JIT warm-up. Opening
+/// RPCS3 is the event used by the user's device-local Personal Automation,
+/// which runs `NeoStation+RPCS3+Start` while RPCS3 is already foregrounded.
 ///
-/// This keeps the RPCS3Core memory-injection / second-pass protocol retired
-/// while directly linking NeoStation to the Shortcut. A separate Personal
-/// Automation triggered by RPCS3 opening is no longer required.
+/// This avoids trying to open Apple's Shortcuts URL scheme from NeoStation's
+/// background execution window. It also keeps the retired RPCS3Core memory
+/// injection / second-pass protocol out of the stable launch path.
 abstract final class Rpcs3LaunchService {
   static const String targetBundleId = 'com.xitrix.RPCS3';
-  static const Duration _shortcutWarmupDelay = Duration(seconds: 8);
+  static const Duration _rpcs3WarmupDelay = Duration(seconds: 8);
 
   static final LoggerService _log = LoggerService.instance;
   static final RegExp _titleIdPattern = RegExp(r'^[A-Z0-9._-]{3,32}$');
@@ -32,13 +30,13 @@ abstract final class Rpcs3LaunchService {
   /// and no second-pass RPCS3Core injection anymore.
   static Future<void> initialize() async {}
 
-  /// Starts StikDebug with the normal Universal JIT request for RPCS3 and then
-  /// invokes `NeoStation+RPCS3+Start` through Apple's Shortcuts URL scheme.
+  /// Starts StikDebug with the normal Universal JIT request for RPCS3, waits
+  /// for the bounded warm-up window, then asks StikDebug to foreground RPCS3.
   ///
-  /// The native preflight helper schedules the Shortcut handoff rather than a
-  /// Dart timer so the handoff still has a chance to run after NeoStation has
-  /// moved to the background. The selected Title ID is passed as text input for
-  /// diagnostics/future Shortcut revisions; the current helper may ignore it.
+  /// The app-open transition is deliberately the final native handoff. The
+  /// user's iOS Personal Automation observes "RPCS3 is opened" and runs the
+  /// `NeoStation+RPCS3+Start` Shortcut from that event, so the Switch Control
+  /// gesture executes against RPCS3 instead of against the Shortcuts app.
   static Future<bool> launchTitle(
     String? rawTitleId, {
     String? displayTitle,
@@ -51,29 +49,23 @@ abstract final class Rpcs3LaunchService {
     if (titleId == null) return false;
 
     _log.i(
-      'RPCS3 Shortcut launch: titleId=$titleId '
+      'RPCS3 automation launch: titleId=$titleId '
       'title=${displayTitle?.trim() ?? ''} '
       'sourceKind=${sourceKind?.trim() ?? ''} '
       'sourcePath=${sourcePath?.trim() ?? ''}',
     );
 
-    final shortcutUri = IosShortcutJitLaunchService.buildRunUri(
-      shortcutName: IosShortcutJitLaunchService.rpcs3ShortcutName,
-      input: titleId,
-    );
-
     try {
-      final opened = await ExternalFolderAccess.openUrlAfterJitPreflight(
-        shortcutUri.toString(),
+      final opened = await ExternalFolderAccess.openAppAfterJitPreflight(
         targetBaseBundleId: targetBundleId,
-        warmupDelay: _shortcutWarmupDelay,
+        warmupDelay: _rpcs3WarmupDelay,
         scriptName: 'universal.js',
-        debugFileName: 'rpcs3_shortcut_launch_debug.txt',
+        debugFileName: 'rpcs3_automation_launch_debug.txt',
       );
       return opened == true;
     } catch (error, stack) {
       _log.e(
-        'Rpcs3LaunchService: JIT + Shortcut handoff failed for $titleId',
+        'Rpcs3LaunchService: JIT + RPCS3 foreground handoff failed for $titleId',
         error: error,
         stackTrace: stack,
       );
