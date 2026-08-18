@@ -194,8 +194,8 @@ jobs:
               'RPCS3 filename-priority guard': ('lib/services/game/game_list_service.dart', 'preferFileName && !isRpcs3Virtual'),
               'RPCS3 metadata repair': ('lib/services/rpcs3_library_service.dart', '_repairPersistedRpcs3Names'),
               'dynamic metadata schema repair': ('lib/services/rpcs3_library_service.dart', 'PRAGMA table_info(user_screenscraper_metadata)'),
-              'foreground JIT script': ('lib/services/rpcs3_launch_service.dart', 'openJitScriptOnly'),
-              'native foreground preflight': ('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift', 'launchAfterPreflight'),
+              'foreground JIT request': ('lib/services/rpcs3_launch_service.dart', 'openJitRequest'),
+              'native foreground JIT request': ('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift', 'private func openJitRequest'),
               'RPCS3 boot result log': ('assets/data/rpcs3_stikdebug_launch.js', 'NEOSTATION_RPC_BOOT_RESULT'),
               'video generation': ('lib/screens/game_screen/my_games_list.dart', '_videoGeneration'),
               'video transition queue': ('lib/screens/game_screen/my_games_list.dart', '_videoTransition'),
@@ -230,14 +230,16 @@ jobs:
               'CFE15492152B331E83959A3CF9AC8A9F': {'boot': 0x2FA18},
               '5C4D64FFB79930AD879C13009838F136': {
                   'boot': 0x36224,
-                  'state': 0x36A8C,
-                  'progress': 0x36AFC,
+                  'emulationState': 0x36A8C,
+                  'bootProgress': 0x36AFC,
+                  'globalState': 0x37A80,
+                  'lastError': 0x37F34,
               },
           }
           source = source.replace('__NEOSTATION_REQUEST_JSON__', json.dumps(request))
           source = source.replace('__NEOSTATION_TITLE_ID_JSON__', '"BLES00412"')
           source = source.replace('__NEOSTATION_SUPPORTED_FUNCTIONS_JSON__', json.dumps(functions))
-          source = source.replace('__NEOSTATION_SUPPORTED_CORES_JSON__', '{}')
+          source = source.replace('__NEOSTATION_SUPPORTED_CORES_JSON__', json.dumps(functions))
           source = source.replace('__NEOSTATION_CORE_UUID_JSON__', '""')
           source = source.replace('__NEOSTATION_BOOT_OFFSET_HEX__', '0')
           if '__NEOSTATION_' in source:
