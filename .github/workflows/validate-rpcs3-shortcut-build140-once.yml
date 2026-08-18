@@ -1,4 +1,4 @@
-name: Validate RPCS3 Shortcut Build 140 once
+name: Validate RPCS3 Automation Build 140 once
 
 on:
   pull_request:
@@ -19,41 +19,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Apply Build 140 migration
-        run: python3 tools/apply_build140.py
-
-      - name: Validate and sign RPCS3 Shortcut
-        shell: bash
-        run: |
-          set -euo pipefail
-          plutil -lint tools/rpcs3_shortcut_source.plist
-          mkdir -p assets/shortcuts .shortcut-sign
-          if ! command -v shortcuts >/dev/null 2>&1; then
-            echo 'Apple shortcuts CLI is unavailable on this runner.' >&2
-            exit 1
-          fi
-
-          SIGN_INPUT='.shortcut-sign/NeoStation-RPCS3-Start-sign-input.shortcut'
-          SIGN_OUTPUT='.shortcut-sign/NeoStation-RPCS3-Start-sign-output.shortcut'
-          FINAL='assets/shortcuts/NeoStation-RPCS3-Start.shortcut'
-          cp tools/rpcs3_shortcut_source.plist "$SIGN_INPUT"
-
-          set +e
-          shortcuts sign --mode anyone --input "$SIGN_INPUT" --output "$SIGN_OUTPUT"
-          SIGN_STATUS=$?
-          set -e
-          if [ "$SIGN_STATUS" -ne 0 ]; then
-            echo 'XML signing failed; retrying the same valid plist as binary1.'
-            rm -f "$SIGN_OUTPUT"
-            cp tools/rpcs3_shortcut_source.plist "$SIGN_INPUT"
-            plutil -convert binary1 "$SIGN_INPUT"
-            shortcuts sign --mode anyone --input "$SIGN_INPUT" --output "$SIGN_OUTPUT"
-          fi
-
-          mv "$SIGN_OUTPUT" "$FINAL"
-          rm -rf .shortcut-sign
-          test -s "$FINAL"
-          echo "Signed Shortcut bytes: $(stat -f%z "$FINAL")"
+      - name: Apply Build 140 device-local automation migration
+        run: python3 tools/apply_build140_v2.py
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -71,22 +38,24 @@ jobs:
             lib/services/ios_shortcut_jit_launch_service.dart \
             lib/services/game/game_launch_service.dart \
             lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
-            packages/external_folder_access/lib/external_folder_access.dart \
             test/rpcs3_stage6_test.dart \
             test/rpcs3_stage7_test.dart
 
-      - name: Verify Build 138 and 139 regressions remain intact
+      - name: Verify stable launch and Build 138/139 regressions
         shell: bash
         run: |
           set -euo pipefail
+          grep -R "version: 0.9.9+140" pubspec.yaml
           grep -R "Duration(seconds: 2)" lib/screens/game_screen/my_games_list.dart
           grep -R "paused: true" lib/services/sfx_service.dart
           grep -R "volume: 0.0" lib/services/sfx_service.dart
           test ! -e assets/data/rpcs3_stikdebug_launch.js
-          grep -R "buildJitRequestUrl" packages/external_folder_access/lib/external_folder_access.dart
-          grep -R "buildJitRequestUrl" packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift
-          grep -R "NeoStation - RPCS3 Start" lib/services/ios_shortcut_jit_launch_service.dart
-          grep -R "Set Switch Control Switch State" tools/rpcs3_shortcut_source.plist
+          grep -R "SINGLE_PASS_JIT" lib/services/rpcs3_launch_service.dart
+          grep -R "openJitRequest" lib/services/rpcs3_launch_service.dart
+          ! grep -R "supportedCoreFunctions" lib/services/rpcs3_launch_service.dart
+          ! grep -R "SECOND_PASS" lib/services/rpcs3_launch_service.dart
+          grep -R "Personal Automation" lib/services/ios_shortcut_jit_launch_service.dart
+          grep -R "Set Switch Control Switch State" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
 
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -107,11 +76,11 @@ jobs:
           set -euo pipefail
           git config user.name 'NeoStation CI'
           git config user.email 'actions@users.noreply.github.com'
-          git rm tools/apply_build140.py .github/workflows/validate-rpcs3-shortcut-build140-once.yml
+          git rm tools/apply_build140.py tools/apply_build140_v2.py .github/workflows/validate-rpcs3-shortcut-build140-once.yml
           git add -A
           if git diff --cached --quiet; then
             echo 'No changes to commit.'
             exit 1
           fi
-          git commit -m 'Implement RPCS3 Shortcut Switch Control launch'
+          git commit -m 'Replace RPCS3 private boot injection with device automation'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
