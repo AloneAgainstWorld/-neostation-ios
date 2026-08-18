@@ -63,7 +63,7 @@ jobs:
           grep -Fq "Rejected invalid ScreenScraper" lib/services/screenscraper/media_downloader.dart
           grep -Fq "mediaVideoJeu.php" lib/services/screenscraper/game_id_media_fallback.dart
           grep -Fq "rpcs3_scraper_media_debug.txt" lib/services/screenscraper_service.dart
-          grep -Fq "RPCS3 synchronisé — 2 jeux PS3." lib/l10n/rpcs3_library_locale.dart
+          grep -Fq 'RPCS3 synchronisé — $count jeux PS3.' lib/l10n/rpcs3_library_locale.dart
           grep -Fq "NEOSTATION_RPC_WAITING_FOR_START" assets/data/rpcs3_stikdebug_launch.js
           grep -Fq "NEOSTATION_RPC_BOOT_COMPLETED" assets/data/rpcs3_stikdebug_launch.js
           test ! -f lib/services/screenscraper/melonx_media_fallback.dart
