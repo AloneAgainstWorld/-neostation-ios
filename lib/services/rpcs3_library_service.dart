@@ -180,7 +180,10 @@ class Rpcs3LibraryService {
     if (!Platform.isIOS) return;
 
     final dataRoot = await _resolveLinkedDataRoot();
-    if (dataRoot != null) {
+    final dataRootReadable =
+        dataRoot != null && await _canReadDataRoot(dataRoot);
+
+    if (dataRootReadable) {
       try {
         final discovered = await discoverLibrary(dataRoot);
         final games = await _applyTitleFallbacks(
@@ -190,6 +193,13 @@ class Rpcs3LibraryService {
         final result = await _importIntoNeoStation(games);
         await _replaceCache(games);
         await _writeDebugFile(dataRoot: dataRoot, games: games, result: result);
+        await _writeStartupDebugFile(
+          mode: 'LIVE_RECONCILE',
+          dataRoot: dataRoot,
+          readable: true,
+          gameCount: games.length,
+          removedRows: result.removedRows,
+        );
         await databaseProvider.loadGamesForSystem('ps3');
         await configProvider.refreshDetectedSystems();
         _log.i(
@@ -198,9 +208,6 @@ class Rpcs3LibraryService {
           'row(s).',
         );
 
-        // Keep startup fast by using the disk/seed title catalog first. A
-        // background refresh can enrich unresolved serials without delaying
-        // the first usable frame.
         unawaited(
           _refreshCatalogAfterStartup(
             dataRoot: dataRoot,
@@ -215,18 +222,62 @@ class Rpcs3LibraryService {
           'Rpcs3LibraryService: live startup reconciliation failed; '
           'falling back to cache: $error',
         );
+        await _writeStartupDebugFile(
+          mode: 'LIVE_RECONCILE_FAILED',
+          dataRoot: dataRoot,
+          readable: true,
+          error: error.toString(),
+        );
       }
+    } else {
+      await _writeStartupDebugFile(
+        mode: 'BOOKMARK_UNAVAILABLE',
+        dataRoot: dataRoot,
+        readable: false,
+      );
     }
 
     final cache = _cache;
     if (!_syncCompleted || cache == null || cache.isEmpty) return;
     try {
-      await _importIntoNeoStation(cache.values.toList());
+      // Build 133 only enriched names on the live-folder path. When an IPA
+      // update invalidated the folder bookmark, the old cache therefore kept
+      // raw serials such as BLES00412 forever. Apply the disk/seed catalog to
+      // cached rows as well, independently of folder access.
+      final cachedGames = await _applyTitleFallbacks(
+        cache.values.toList(),
+        allowNetwork: false,
+      );
+      await _importIntoNeoStation(cachedGames);
+      await _replaceCache(cachedGames);
+      await _writeStartupDebugFile(
+        mode: 'CACHE_FALLBACK',
+        dataRoot: dataRoot,
+        readable: false,
+        gameCount: cachedGames.length,
+      );
       await databaseProvider.loadGamesForSystem('ps3');
       await configProvider.refreshDetectedSystems();
       _log.i(
-        'Rpcs3LibraryService: restored ${cache.length} cached PS3 game(s) '
+        'Rpcs3LibraryService: restored ${cachedGames.length} cached PS3 game(s) '
         'because the linked Data folder was unavailable.',
+      );
+
+      // Retry live access after the rest of the app has reached a stable
+      // foreground state. This catches security-scope timing issues without
+      // blocking startup and, when successful, removes stale rows immediately.
+      unawaited(
+        _retryLiveReconcileAfterStartup(
+          configProvider: configProvider,
+          databaseProvider: databaseProvider,
+        ),
+      );
+      unawaited(
+        _refreshCachedCatalogAfterStartup(
+          games: cachedGames,
+          configProvider: configProvider,
+          databaseProvider: databaseProvider,
+        ),
       );
     } catch (error) {
       _log.e('Rpcs3LibraryService: startup cache restore failed: $error');
@@ -528,6 +579,113 @@ class Rpcs3LibraryService {
     } catch (error) {
       _log.w('Rpcs3LibraryService: background title enrichment failed: $error');
     }
+  }
+
+  static Future<bool> _canReadDataRoot(String dataRoot) async {
+    try {
+      final directory = Directory(dataRoot);
+      if (!await directory.exists()) return false;
+      // Listing zero entries is still a successful access probe. The point is
+      // to distinguish an empty RPCS3 library from a sandbox/bookmark failure.
+      await directory.list(followLinks: false).take(1).toList();
+      return true;
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: Data-root read probe failed: $error');
+      return false;
+    }
+  }
+
+  static Future<void> _retryLiveReconcileAfterStartup({
+    required SqliteConfigProvider configProvider,
+    required SqliteDatabaseProvider databaseProvider,
+  }) async {
+    await Future<void>.delayed(const Duration(seconds: 3));
+    final dataRoot = await _resolveLinkedDataRoot();
+    if (dataRoot == null || !await _canReadDataRoot(dataRoot)) {
+      await _writeStartupDebugFile(
+        mode: 'DELAYED_RECONCILE_UNAVAILABLE',
+        dataRoot: dataRoot,
+        readable: false,
+      );
+      return;
+    }
+
+    try {
+      final discovered = await discoverLibrary(dataRoot);
+      final games = await _applyTitleFallbacks(discovered, allowNetwork: false);
+      final result = await _importIntoNeoStation(games);
+      await _replaceCache(games);
+      await _writeDebugFile(dataRoot: dataRoot, games: games, result: result);
+      await _writeStartupDebugFile(
+        mode: 'DELAYED_LIVE_RECONCILE',
+        dataRoot: dataRoot,
+        readable: true,
+        gameCount: games.length,
+        removedRows: result.removedRows,
+      );
+      await databaseProvider.loadGamesForSystem('ps3');
+      await configProvider.refreshDetectedSystems();
+    } catch (error) {
+      await _writeStartupDebugFile(
+        mode: 'DELAYED_RECONCILE_FAILED',
+        dataRoot: dataRoot,
+        readable: true,
+        error: error.toString(),
+      );
+    }
+  }
+
+  static Future<void> _refreshCachedCatalogAfterStartup({
+    required List<Rpcs3LibraryGame> games,
+    required SqliteConfigProvider configProvider,
+    required SqliteDatabaseProvider databaseProvider,
+  }) async {
+    try {
+      final enriched = await _applyTitleFallbacks(games, allowNetwork: true);
+      var changed = enriched.length != games.length;
+      if (!changed) {
+        for (var index = 0; index < games.length; index++) {
+          if (games[index].title != enriched[index].title) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) return;
+
+      await _importIntoNeoStation(enriched);
+      await _replaceCache(enriched);
+      await databaseProvider.loadGamesForSystem('ps3');
+      await configProvider.refreshDetectedSystems();
+      _log.i('Rpcs3LibraryService: enriched cached PS3 titles in background.');
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: cached title enrichment failed: $error');
+    }
+  }
+
+  static Future<void> _writeStartupDebugFile({
+    required String mode,
+    required String? dataRoot,
+    required bool readable,
+    int? gameCount,
+    int? removedRows,
+    String? error,
+  }) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final file = File(path.join(docs.path, 'rpcs3_startup_debug.txt'));
+      await file.writeAsString(
+        'Timestamp: ${DateTime.now().toIso8601String()}\n'
+        'Mode: $mode\n'
+        'Data root: ${dataRoot ?? '<none>'}\n'
+        'Readable: $readable\n'
+        'Cache count: ${_cache?.length ?? 0}\n'
+        'Game count: ${gameCount ?? -1}\n'
+        'Removed rows: ${removedRows ?? -1}\n'
+        'Error: ${error ?? '<none>'}\n',
+        flush: true,
+      );
+    } catch (_) {}
   }
 
   static Future<String?> _normalizeDataRoot(String selectedPath) async {
