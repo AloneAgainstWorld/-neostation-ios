@@ -43,9 +43,11 @@ void main() {
       final service = File(
         'lib/services/rpcs3_launch_service.dart',
       ).readAsStringSync();
-      expect(service, contains('openUrlAfterJitPreflight'));
+      expect(service, contains('openAppAfterJitPreflight'));
       expect(service, contains("scriptName: 'universal.js'"));
-      expect(service, contains('rpcs3ShortcutName'));
+      expect(service, contains('_rpcs3WarmupDelay'));
+      expect(service, isNot(contains('buildRunUri')));
+      expect(service, isNot(contains('rpcs3ShortcutName')));
       expect(service, isNot(contains('openJitRequest')));
       expect(service, isNot(contains('supportedCoreFunctions')));
       expect(service, isNot(contains('SECOND_PASS')));
