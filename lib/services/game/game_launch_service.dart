@@ -13,6 +13,7 @@ import 'package:neostation/services/retroarch_library_service.dart';
 import 'package:neostation/services/armsx2_library_service.dart';
 import 'package:neostation/services/melonx_library_service.dart';
 import 'package:neostation/services/rpcs3_library_service.dart';
+import 'package:neostation/services/rpcs3_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
 import '../../models/game_model.dart';
 import '../../models/system_model.dart';
@@ -147,10 +148,29 @@ class GameLaunchService {
       // This needs one extra tap the first few times; iOS promotes
       // frequently-used apps to the front of that list afterwards.
       if (Platform.isIOS) {
-        if (isRpcs3VirtualRom) {
+        final isPs3 = system.folderName.toLowerCase() == 'ps3';
+        if (isPs3 &&
+            (isRpcs3VirtualRom || (game.titleId?.trim().isNotEmpty ?? false))) {
+          final titleId = Rpcs3LaunchService.normalizeTitleId(game.titleId);
+          if (titleId == null) {
+            return GameLaunchResult.failure(
+              Rpcs3LibraryLocale.launchUnavailable(context),
+              game.romPath,
+            );
+          }
+
+          GameSessionManager.registerGameLaunch(
+            system,
+            game,
+            'ios_rpcs3_stikdebug',
+          );
+          await FavoritesService.recordGamePlayed(game);
+          final launched = await Rpcs3LaunchService.launchTitle(titleId);
+          if (launched) return GameLaunchResult.success();
+          if (!context.mounted) return GameLaunchResult.failure('', '');
           return GameLaunchResult.failure(
-            Rpcs3LibraryLocale.launchUnavailable(context),
-            game.romPath,
+            Rpcs3LibraryLocale.launchFailed(context),
+            titleId,
           );
         }
 

@@ -3047,6 +3047,23 @@ class SqliteService {
           .map((r) => r['actual_folder_name'] as String)
           .toSet();
 
+      // Preserve systems represented by external-library/deeplink rows. A
+      // normal filesystem scan cannot rediscover these rows, so deleting the
+      // detected-system table used to hide RPCS3/MeloNX/ARMSX2 until the user
+      // manually synchronized again.
+      final virtualDetections = await txn.rawQuery('''
+        SELECT DISTINCT
+          ur.app_system_id,
+          COALESCE(NULLIF(uds.actual_folder_name, ''), s.folder_name)
+            AS actual_folder_name,
+          COALESCE(uds.is_hidden, 0) AS is_hidden
+        FROM user_roms ur
+        INNER JOIN app_systems s ON s.id = ur.app_system_id
+        LEFT JOIN user_detected_systems uds
+          ON uds.app_system_id = ur.app_system_id
+        WHERE instr(ur.rom_path, '://') > 0
+      ''');
+
       // Clear previous detections to avoid stale or duplicate entries.
       await txn.delete('user_detected_systems');
 
@@ -3075,6 +3092,22 @@ class SqliteService {
             'is_hidden': hiddenFolders.contains(folder) ? 1 : 0,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
+      }
+
+      for (final row in virtualDetections) {
+        final systemId = row['app_system_id']?.toString() ?? '';
+        final actualFolderName =
+            row['actual_folder_name']?.toString().trim() ?? '';
+        if (systemId.isEmpty || actualFolderName.isEmpty) continue;
+
+        final hidden =
+            (int.tryParse(row['is_hidden']?.toString() ?? '0') ?? 0) == 1 ||
+            hiddenFolders.contains(actualFolderName);
+        await txn.insert('user_detected_systems', {
+          'app_system_id': systemId,
+          'actual_folder_name': actualFolderName,
+          'is_hidden': hidden ? 1 : 0,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }

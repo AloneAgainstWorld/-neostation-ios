@@ -853,7 +853,10 @@ class ScraperRepository {
   ) async {
     final db = await SqliteService.getDatabase();
     final result = await db.rawQuery(
-      '''SELECT COUNT(*) as count FROM user_roms ur LEFT JOIN user_screenscraper_metadata usm ON ur.filename = usm.filename 
+      '''SELECT COUNT(*) as count FROM user_roms ur
+       LEFT JOIN user_screenscraper_metadata usm
+         ON ur.app_system_id = usm.app_system_id
+         AND ur.filename = usm.filename
        WHERE ur.app_system_id = ? ${scrapeMode == 'new_only' ? 'AND (usm.filename IS NULL OR usm.is_fully_scraped = 0)' : ''}''',
       [appSystemId],
     );
@@ -867,8 +870,12 @@ class ScraperRepository {
   ) async {
     final db = await SqliteService.getDatabase();
     return await db.rawQuery(
-      '''SELECT ur.filename, ur.rom_path, ur.title_name, usm.is_fully_scraped 
-       FROM user_roms ur LEFT JOIN user_screenscraper_metadata usm ON ur.filename = usm.filename 
+      '''SELECT ur.filename, ur.rom_path, ur.title_id, ur.title_name,
+              usm.is_fully_scraped
+       FROM user_roms ur
+       LEFT JOIN user_screenscraper_metadata usm
+         ON ur.app_system_id = usm.app_system_id
+         AND ur.filename = usm.filename
        WHERE ur.app_system_id = ? ${scrapeMode == 'new_only' ? 'AND (usm.filename IS NULL OR usm.is_fully_scraped = 0)' : ''}''',
       [appSystemId],
     );

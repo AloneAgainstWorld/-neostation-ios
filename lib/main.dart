@@ -484,6 +484,13 @@ void main() async {
       databaseProvider: sqliteDatabaseProvider,
     );
 
+    if (Platform.isIOS) {
+      await Rpcs3LibraryService.restoreAfterDatabaseReady(
+        configProvider: sqliteConfigProvider,
+        databaseProvider: sqliteDatabaseProvider,
+      );
+    }
+
     // Background scrape Windows games from Steam
     SteamScraperService.scrapeSteamGames(provider: sqliteDatabaseProvider);
   } catch (e) {

@@ -445,16 +445,13 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
         result: @escaping FlutterResult
     ) {
         guard let args = call.arguments as? [String: Any],
-            let rawLaunch = args["launchUrl"] as? String,
-            !rawLaunch.isEmpty,
-            let launchURL = URL(string: rawLaunch),
             let targetBaseBundleId = args["targetBaseBundleId"] as? String,
             !targetBaseBundleId.isEmpty
         else {
             result(
                 FlutterError(
                     code: "INVALID_ARGS",
-                    message: "openUrlAfterJitPreflight requires launchUrl and targetBaseBundleId",
+                    message: "openUrlAfterJitPreflight requires targetBaseBundleId and a valid launch mode",
                     details: nil
                 )
             )
@@ -493,14 +490,55 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             targetBundleId = targetBaseBundleId
         }
 
+        let openTargetApp = (args["openTargetApp"] as? Bool) ?? false
+        let rawLaunch = (args["launchUrl"] as? String) ?? ""
+        let launchURL: URL
+        if openTargetApp {
+            var launchComponents = URLComponents()
+            launchComponents.scheme = "stikjit"
+            launchComponents.host = "launch-app"
+            launchComponents.queryItems = [
+                URLQueryItem(name: "bundle-id", value: targetBundleId)
+            ]
+            guard let generatedLaunchURL = launchComponents.url else {
+                result(
+                    FlutterError(
+                        code: "INVALID_TARGET_LAUNCH_URL",
+                        message: "Could not build StikDebug launch-app URL",
+                        details: targetBundleId
+                    )
+                )
+                return
+            }
+            launchURL = generatedLaunchURL
+        } else {
+            guard let parsedLaunchURL = URL(string: rawLaunch) else {
+                result(
+                    FlutterError(
+                        code: "INVALID_LAUNCH_URL",
+                        message: "The delayed launch URL is missing or invalid",
+                        details: rawLaunch
+                    )
+                )
+                return
+            }
+            launchURL = parsedLaunchURL
+        }
+
         var components = URLComponents()
         components.scheme = "stikjit"
         components.host = "enable-jit"
-        var queryItems = [URLQueryItem(name: "bundle-id", value: targetBundleId)]
-        if !scriptName.isEmpty {
-            queryItems.append(URLQueryItem(name: "script-name", value: scriptName))
+        components.queryItems = [
+            URLQueryItem(name: "bundle-id", value: targetBundleId),
+            URLQueryItem(name: "script-name", value: scriptName),
+        ]
+        if let scriptData = args["scriptData"] as? String,
+            !scriptData.isEmpty
+        {
+            components.queryItems?.append(
+                URLQueryItem(name: "script-data", value: scriptData)
+            )
         }
-        components.queryItems = queryItems
 
         guard let preflightURL = components.url else {
             result(
@@ -526,7 +564,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
                 + "Script: \(scriptName)\n"
                 + "Warm-up delay: \(delayMs) ms\n"
                 + "StikDebug URL: \(preflightURL.absoluteString)\n"
-                + "Game URL: \(rawLaunch)"
+                + "Delayed URL: \(launchURL.absoluteString)"
         )
 
         delayedRetryBackgroundTask = UIApplication.shared.beginBackgroundTask(

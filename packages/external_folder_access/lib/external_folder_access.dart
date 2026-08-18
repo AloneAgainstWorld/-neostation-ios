@@ -92,7 +92,6 @@ class ExternalFolderAccess {
     }
   }
 
-
   /// Opens an arbitrary URL string on iOS without round-tripping through
   /// Dart's [Uri] class. This matters for custom URL schemes whose handler
   /// (incorrectly, but in practice) treats the host as case-sensitive, e.g.
@@ -175,6 +174,35 @@ class ExternalFolderAccess {
         'targetBaseBundleId': targetBaseBundleId,
         'delayMs': warmupDelay.inMilliseconds,
         'scriptName': scriptName,
+        'debugFileName': debugFileName,
+      });
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Starts StikDebug with an optional custom script, then asks StikDebug to
+  /// foreground the target application after the JIT warm-up delay.
+  ///
+  /// This variant is used when the target app has no public URL scheme of its
+  /// own. The native layer applies the same SideStore/AltStore Team-ID suffix
+  /// adaptation to both the JIT request and the delayed `launch-app` request.
+  static Future<bool?> openAppAfterJitPreflight({
+    required String targetBaseBundleId,
+    Duration warmupDelay = const Duration(seconds: 14),
+    String scriptName = 'universal.js',
+    String? scriptDataBase64Url,
+    String debugFileName = 'jit_app_preflight_debug.txt',
+  }) async {
+    if (!Platform.isIOS) return null;
+    try {
+      return await _channel.invokeMethod<bool>('openUrlAfterJitPreflight', {
+        'launchUrl': '',
+        'openTargetApp': true,
+        'targetBaseBundleId': targetBaseBundleId,
+        'delayMs': warmupDelay.inMilliseconds,
+        'scriptName': scriptName,
+        if (scriptDataBase64Url != null) 'scriptData': scriptDataBase64Url,
         'debugFileName': debugFileName,
       });
     } on PlatformException {

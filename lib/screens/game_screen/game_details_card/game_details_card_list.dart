@@ -926,6 +926,7 @@ class _GameDetailsCardListState extends State<GameDetailsCardList>
         systemFolder: targetSystemFolder,
         romPath: _game.romPath ?? '',
         gameName: _game.name,
+        serialNumber: _game.titleId,
         forceOverwrite: forceOverwrite,
         onProgress: (statusKey, progress) {
           if (!context.mounted) return;

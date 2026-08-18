@@ -44,6 +44,7 @@ class Rpcs3LibraryGame {
     'category': category,
     'sourcePath': sourcePath,
     'sourceKind': sourceKind,
+    'iconPath': iconPath,
   };
 
   factory Rpcs3LibraryGame.fromJson(Map<String, dynamic> json) {
@@ -54,6 +55,7 @@ class Rpcs3LibraryGame {
       category: json['category']?.toString() ?? '',
       sourcePath: json['sourcePath']?.toString() ?? '',
       sourceKind: json['sourceKind']?.toString() ?? '',
+      iconPath: json['iconPath']?.toString(),
     );
   }
 }
@@ -139,6 +141,33 @@ class Rpcs3LibraryService {
       }
     } catch (e) {
       _log.w('Rpcs3LibraryService: could not restore linked Data folder: $e');
+    }
+  }
+
+  /// Restores cached virtual PS3 rows after SQLite providers are ready.
+  ///
+  /// The bookmark/cache is loaded before the provider graph during startup, but
+  /// UI providers cannot be refreshed at that point. Re-importing the tiny
+  /// cached metadata set here keeps the PS3 system and games visible on every
+  /// cold launch without requiring a manual RPCS3 resync.
+  static Future<void> restoreAfterDatabaseReady({
+    required SqliteConfigProvider configProvider,
+    required SqliteDatabaseProvider databaseProvider,
+  }) async {
+    await loadCachedLibrary();
+    final cache = _cache;
+    if (!_syncCompleted || cache == null || cache.isEmpty) return;
+
+    try {
+      await _importIntoNeoStation(cache.values.toList());
+      await databaseProvider.loadGamesForSystem('ps3');
+      await configProvider.refreshDetectedSystems();
+      _log.i(
+        'Rpcs3LibraryService: restored ${cache.length} cached PS3 game(s) '
+        'after database initialization.',
+      );
+    } catch (e) {
+      _log.e('Rpcs3LibraryService: startup restore failed: $e');
     }
   }
 
@@ -838,7 +867,7 @@ class Rpcs3LibraryService {
         );
         final virtualPath = virtualUri.toString();
         desiredVirtualPaths.add(virtualPath);
-        final syntheticFilename = '${game.titleId}.rpcs3';
+        final syntheticFilename = game.titleId;
 
         await txn.rawInsert(
           '''
