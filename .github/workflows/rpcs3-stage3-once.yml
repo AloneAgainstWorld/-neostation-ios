@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/rpcs3-stage3
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
