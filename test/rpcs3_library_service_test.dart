@@ -97,13 +97,7 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
       );
 
       final realDiscMetadata = Directory(
-        path.join(
-          dataRoot.path,
-          'games',
-          'DiscImages',
-          'BLES00540',
-          'PS3_GAME',
-        ),
+        path.join(dataRoot.path, 'games', 'discImgs', 'BLES00540', 'PS3_GAME'),
       );
       await realDiscMetadata.create(recursive: true);
       await File(path.join(realDiscMetadata.path, 'PARAM.SFO')).writeAsBytes(
@@ -118,7 +112,7 @@ NPUB00001: '$(EmulatorDir)games/DiscImages/Game Two.iso'
           .writeAsBytes(const <int>[]);
 
       final fallbackFolder = Directory(
-        path.join(dataRoot.path, 'games', 'DiscImages', 'BLES77777'),
+        path.join(dataRoot.path, 'games', 'discImgs', 'BLES77777'),
       );
       await fallbackFolder.create(recursive: true);
 

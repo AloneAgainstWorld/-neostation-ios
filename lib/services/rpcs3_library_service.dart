@@ -382,7 +382,10 @@ class Rpcs3LibraryService {
       maxDepth: 5,
       hddRules: false,
     );
-    for (final discDirectoryName in const <String>['DiscImages', 'DiscImgs']) {
+    final discDirectoryNames = await _discoverDiscImageDirectoryNames(
+      root.path,
+    );
+    for (final discDirectoryName in discDirectoryNames) {
       await scan(
         path.join('games', discDirectoryName),
         sourceKind: 'disc-image',
@@ -404,6 +407,29 @@ class Rpcs3LibraryService {
     final games = byTitleId.values.toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return games;
+  }
+
+  static Future<List<String>> _discoverDiscImageDirectoryNames(
+    String dataRoot,
+  ) async {
+    final gamesRoot = Directory(path.join(dataRoot, 'games'));
+    if (!await gamesRoot.exists()) return const <String>[];
+
+    final names = <String>[];
+    try {
+      await for (final entity in gamesRoot.list(followLinks: false)) {
+        if (entity is! Directory) continue;
+        final basename = path.basename(entity.path);
+        final normalized = basename.toLowerCase();
+        if (normalized == 'discimages' || normalized == 'discimgs') {
+          names.add(basename);
+        }
+      }
+    } catch (error) {
+      _log.w('Rpcs3LibraryService: could not list disc-image roots: $error');
+    }
+    names.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return names.toSet().toList(growable: false);
   }
 
   static Future<void> _addDiscImageFolderFallbacks({
