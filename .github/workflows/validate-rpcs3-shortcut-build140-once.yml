@@ -20,7 +20,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply Build 140 device-local automation migration
-        run: python3 tools/apply_build140_v2.py
+        run: |
+          python3 tools/apply_build140_v2.py
+          python3 tools/apply_build140_v3.py
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -38,6 +40,7 @@ jobs:
             lib/services/ios_shortcut_jit_launch_service.dart \
             lib/services/game/game_launch_service.dart \
             lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
+            test/rpcs3_stage3_test.dart \
             test/rpcs3_stage6_test.dart \
             test/rpcs3_stage7_test.dart
 
@@ -57,6 +60,7 @@ jobs:
           grep -R "isRpcs3AutomationConfigured" lib/services/ios_shortcut_jit_launch_service.dart
           grep -R "shortcuts://" lib/services/ios_shortcut_jit_launch_service.dart
           grep -R "Set Switch Control Switch State" lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
+          ! grep -R "buildScriptForTesting" test/rpcs3_stage3_test.dart
 
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -77,7 +81,7 @@ jobs:
           set -euo pipefail
           git config user.name 'NeoStation CI'
           git config user.email 'actions@users.noreply.github.com'
-          git rm tools/apply_build140.py tools/apply_build140_v2.py .github/workflows/validate-rpcs3-shortcut-build140-once.yml
+          git rm tools/apply_build140.py tools/apply_build140_v2.py tools/apply_build140_v3.py .github/workflows/validate-rpcs3-shortcut-build140-once.yml
           git add -A
           if git diff --cached --quiet; then
             echo 'No changes to commit.'
