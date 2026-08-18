@@ -39,28 +39,59 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Show failing patch context
+      - name: Apply RPCS3 persistence, scraping and launch patches
         run: |
+          set -euo pipefail
           python3 - <<'PY'
-          import base64
-          import re
-          import zlib
           from pathlib import Path
 
-          wrapper = Path('.github/scripts/apply_rpcs3_stage3.py').read_text(encoding='utf-8')
-          match = re.search(r"b64decode\('([^']+)'\)", wrapper)
-          if not match:
-              raise SystemExit('Compressed patch payload not found')
-          source = zlib.decompress(base64.b64decode(match.group(1))).decode('utf-8')
-          needle = 'manual RPCS3 serial request'
-          index = source.find(needle)
-          if index < 0:
-              raise SystemExit(f'Patch label not found: {needle}')
-          print(source[max(0, index - 2500):index + 2500])
+          file = Path('lib/services/screenscraper_service.dart')
+          text = file.read_text(encoding='utf-8')
+          start = text.find('  static Future<Map<String, dynamic>> downloadGameManual({')
+          end = text.find('\n  ///', start + 20)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not isolate downloadGameManual')
+          section = text[start:end]
+          current = """          gameName: (systemFolder == 'android' || isMeloNxVirtual)
+              ? gameName
+              : null,
+"""
+          expected = """          gameName: isMeloNxVirtual ? gameName : null,
+"""
+          if current not in section:
+              raise SystemExit('Current manual gameName marker not found')
+          section = section.replace(current, expected, 1)
+          file.write_text(text[:start] + section + text[end:], encoding='utf-8')
           PY
 
-      - name: Apply RPCS3 persistence, scraping and launch patches
-        run: python3 .github/scripts/apply_rpcs3_stage3.py
+          python3 .github/scripts/apply_rpcs3_stage3.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          file = Path('lib/services/screenscraper_service.dart')
+          text = file.read_text(encoding='utf-8')
+          start = text.find('  static Future<Map<String, dynamic>> downloadGameManual({')
+          end = text.find('\n  ///', start + 20)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not isolate patched downloadGameManual')
+          section = text[start:end]
+          generated = """          gameName: (isMeloNxVirtual || isRpcs3Virtual) ? gameName : null,
+          serialNumber: isRpcs3Virtual ? serialNumber : null,
+"""
+          corrected = """          gameName:
+              (systemFolder == 'android' ||
+                  isMeloNxVirtual ||
+                  isRpcs3Virtual)
+              ? gameName
+              : null,
+          serialNumber: isRpcs3Virtual ? serialNumber : null,
+"""
+          if generated not in section:
+              raise SystemExit('Generated manual RPCS3 block not found')
+          section = section.replace(generated, corrected, 1)
+          file.write_text(text[:start] + section + text[end:], encoding='utf-8')
+          PY
 
       - name: Format changed Dart files
         run: |
@@ -113,28 +144,10 @@ jobs:
           git checkout -- packages/gamepads/analysis_options.yaml || true
           rm -f .github/scripts/apply_rpcs3_stage3.py
           rm -f .github/workflows/rpcs3-stage3-once.yml
+          rm -f _rpcs3_stage3_pr_marker
+          rm -f .github/ISSUE_TEMPLATE/_noop_should_not_exist
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            README.md NOTICE.md pubspec.yaml \
-            assets/data/rpcs3_stikdebug_launch.js \
-            lib/main.dart \
-            lib/data/datasources/sqlite_service.dart \
-            lib/models/game_model.dart \
-            lib/repositories/scraper_repository.dart \
-            lib/services/screenscraper_service.dart \
-            lib/services/rpcs3_library_service.dart \
-            lib/services/rpcs3_launch_service.dart \
-            lib/services/game/game_launch_service.dart \
-            lib/l10n/rpcs3_library_locale.dart \
-            lib/screens/game_screen/my_games_list.dart \
-            lib/screens/game_screen/game_details_card/game_details_card_list.dart \
-            lib/screens/game_screen/game_settings_dialog/game_settings_scrapping_tab.dart \
-            lib/screens/game_screen/game_settings_dialog/game_settings_manual_tab.dart \
-            packages/external_folder_access/lib/external_folder_access.dart \
-            packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift \
-            test/rpcs3_stage3_test.dart \
-            .github/scripts/apply_rpcs3_stage3.py \
-            .github/workflows/rpcs3-stage3-once.yml
+          git add -A
           git commit -m "feat(ios): persist scrape and launch RPCS3 titles"
           git push origin HEAD:feature/rpcs3-stage3
