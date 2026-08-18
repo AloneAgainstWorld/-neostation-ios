@@ -30,7 +30,9 @@ jobs:
           cache: true
 
       - name: Apply Stage 6 patch
-        run: python3 tools/rpcs3_stage6_patch.py
+        run: |
+          sed -i 's/_processSingleRomThread/_processRomInThread/g' tools/rpcs3_stage6_patch.py
+          python3 tools/rpcs3_stage6_patch.py
 
       - name: Format changed Dart files
         run: |
