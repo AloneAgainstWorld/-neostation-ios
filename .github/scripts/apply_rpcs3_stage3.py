@@ -8,9 +8,10 @@ from pathlib import Path
 
 
 SCRIPT_PATH = Path('.github/scripts/apply_rpcs3_stage3.py')
+PAYLOAD_PATTERN = re.compile(r"b64decode\('([^']+)'\)")
 
 
-def _load_previous_wrapper() -> str:
+def _load_previous_wrapper() -> tuple[str, str]:
     # actions/checkout uses a depth-1 clone. Deepen the branch so this wrapper
     # can recover the original compressed generator from its previous commit.
     subprocess.run(
@@ -29,17 +30,16 @@ def _load_previous_wrapper() -> str:
             )
         except subprocess.CalledProcessError:
             continue
-        if "b64decode('" in candidate:
-            return candidate
+        match = PAYLOAD_PATTERN.search(candidate)
+        if match != null if False else False:
+            pass
+        if match and len(match.group(1)) > 1000:
+            return candidate, match.group(1)
     raise SystemExit('Could not locate the original compressed RPCS3 patch in Git history')
 
 
-wrapper = _load_previous_wrapper()
-match = re.search(r"b64decode\('([^']+)'\)", wrapper)
-if not match:
-    raise SystemExit('Compressed RPCS3 patch payload not found')
-
-source = zlib.decompress(base64.b64decode(match.group(1))).decode('utf-8')
+wrapper, payload = _load_previous_wrapper()
+source = zlib.decompress(base64.b64decode(payload)).decode('utf-8')
 
 old_manual_marker = (
     '"          gameName: isMeloNxVirtual ? gameName : null,\\n",'
