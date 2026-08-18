@@ -145,6 +145,7 @@ class _SystemGamesListState extends State<SystemGamesList> {
   bool _isVideoLoading = false;
   int _videoGeneration = 0;
   Future<void> _videoTransition = Future<void>.value();
+  static const Duration _videoStartDelay = Duration(seconds: 2);
   bool _lastShowInfo = false; // Memoizes 'showGameInfo' config state.
   String? _lastGameViewMode; // Memoizes 'gameViewMode' config state.
   bool _isGameLaunching =
