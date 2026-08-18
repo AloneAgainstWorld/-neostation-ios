@@ -49,6 +49,11 @@ class SfxService {
   /// change or engine teardown silence voices that already started.
   final List<SoundHandle> _activeHandles = <SoundHandle>[];
 
+  /// Serializes every UI voice start. Rapid input can otherwise create two
+  /// SoLoud voices while the iOS audio session is being reasserted, leaving a
+  /// tiny audible window under the wrong session category.
+  Future<void> _sfxStartSerial = Future<void>.value();
+
   bool _isInitialized = false;
   bool _isInitializing = false;
 
@@ -275,23 +280,90 @@ class SfxService {
   }
 
   /// Initiates playback for a pre-loaded source identified by its [path].
-  Future<void> _play(String path) async {
+  ///
+  /// The complete voice-start transaction is serialized. More importantly, a
+  /// voice is created paused and at zero volume. Starting/unpausing SoLoud can
+  /// reactivate its iOS audio backend, so NeoStation reapplies the `.ambient`
+  /// session *after* each of those operations while the voice is still muted.
+  /// Only then is the configured SFX volume restored. This closes the brief
+  /// audible race that rapid menu presses could expose with the Ring/Silent
+  /// switch enabled.
+  Future<void> _play(String path) {
+    _sfxStartSerial = _sfxStartSerial
+        .catchError((Object _) {})
+        .then((_) => _playSerially(path));
+    return _sfxStartSerial;
+  }
+
+  Future<void> _playSerially(String path) async {
     final source = _sources[path];
     if (source == null) {
       _log.w('[SfxService] Source not found for: $path');
       return;
     }
+    if (!_enabled || !_isInitialized || !SoLoud.instance.isInitialized) {
+      return;
+    }
+
+    SoundHandle? handle;
     try {
+      // Navigation sounds are intentionally non-overlapping. Besides sounding
+      // cleaner during rapid input, this guarantees that no previous SFX voice
+      // is audible while a new SoLoud voice may reactivate the audio backend.
+      await stopAllSounds();
+      if (!_enabled || !SoLoud.instance.isInitialized) return;
+
       await AudioPolicyService().prepareForPlayback('sfx');
-      final handle = SoLoud.instance.play(source, volume: _volume);
+      if (!_enabled || !SoLoud.instance.isInitialized) return;
+
+      // Never create an audible voice. `play` itself can wake the native audio
+      // device, so the first policy reassertion happens while it is paused.
+      handle = SoLoud.instance.play(source, volume: 0.0, paused: true);
       _activeHandles.add(handle);
+      await AudioPolicyService().afterPlaybackStarted('sfx-paused');
+
+      if (!_enabled ||
+          !SoLoud.instance.isInitialized ||
+          !SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        await _stopHandleIfValid(handle);
+        return;
+      }
+
+      // Unpause at zero volume first. Waking the device must also complete
+      // before `.ambient` is asserted for the final time.
+      SoLoud.instance.setPause(handle, false);
+      await AudioPolicyService().ensureSilentCompatibleSession(
+        reason: 'sfx-unpaused-zero-volume',
+      );
+
+      if (!_enabled ||
+          !SoLoud.instance.isInitialized ||
+          !SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        await _stopHandleIfValid(handle);
+        return;
+      }
+
+      // This is the first point at which the voice can become audible. The
+      // native session is already `.ambient`, so iOS remains authoritative for
+      // the physical Ring/Silent switch.
+      SoLoud.instance.setVolume(handle, _volume);
       _activeHandles.removeWhere(
         (candidate) => !SoLoud.instance.getIsValidVoiceHandle(candidate),
       );
-      await AudioPolicyService().afterPlaybackStarted('sfx');
     } catch (e) {
+      if (handle != null) await _stopHandleIfValid(handle);
       _log.w('[SfxService] Playback error for $path: $e');
     }
+  }
+
+  Future<void> _stopHandleIfValid(SoundHandle handle) async {
+    _activeHandles.remove(handle);
+    if (!SoLoud.instance.isInitialized) return;
+    try {
+      if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        await SoLoud.instance.stop(handle);
+      }
+    } catch (_) {}
   }
 
   /// Selects a random navigation sound index that differs from the last played index.
