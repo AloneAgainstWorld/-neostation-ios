@@ -1,0 +1,111 @@
+name: Validate RPCS3 Stage 7 and silent mode once
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: rpcs3-stage7-silent-mode
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Apply, analyze and test Stage 7
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v7
+        with:
+          ref: fix/rpcs3-0.2-discimages-silent-mode-20260818
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply Stage 7 patch
+        run: python3 tools/rpcs3_stage7_patch.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/models/game_model.dart \
+            lib/screens/app_screen.dart \
+            lib/screens/settings_screen/new_settings_options/themes_settings_content.dart \
+            lib/services/home_music_service.dart \
+            lib/services/rpcs3_launch_service.dart \
+            lib/services/rpcs3_library_service.dart \
+            lib/services/sfx_service.dart \
+            test/home_music_silent_mode_test.dart \
+            test/rpcs3_library_service_test.dart \
+            test/rpcs3_stage3_test.dart
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify implementation markers
+        run: |
+          set -euo pipefail
+          grep -Fq "version: 0.9.9+136" pubspec.yaml
+          grep -Fq "5C4D64FFB79930AD879C13009838F136" lib/services/rpcs3_launch_service.dart
+          grep -Fq "0x36224" lib/services/rpcs3_launch_service.dart
+          grep -Fq "__NEOSTATION_SUPPORTED_CORES_JSON__" assets/data/rpcs3_stikdebug_launch.js
+          grep -Fq "disc-image-folder" lib/services/rpcs3_library_service.dart
+          grep -Fq "Do not create entries from games.yml" lib/services/rpcs3_library_service.dart
+          grep -Fq "isMeaningfulRpcs3MetadataNameForTesting" lib/models/game_model.dart
+          grep -Fq "_restoreSilentModeAudioSession" lib/services/home_music_service.dart
+          grep -Fq "Theme is never the Systems main menu" lib/screens/settings_screen/new_settings_options/themes_settings_content.dart
+          grep -Fq "Reassert `.ambient` immediately before every UI sound" lib/services/sfx_service.dart
+
+      - name: Check RPCS3 JavaScript syntax
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('assets/data/rpcs3_stikdebug_launch.js').read_text(encoding='utf-8')
+          source = source.replace('__NEOSTATION_TITLE_ID_JSON__', '"BLES00412"')
+          source = source.replace(
+              '__NEOSTATION_SUPPORTED_CORES_JSON__',
+              '{"CFE15492152B331E83959A3CF9AC8A9F":195096,"5C4D64FFB79930AD879C13009838F136":221732}',
+          )
+          Path('/tmp/rpcs3_stage7.js').write_text(source, encoding='utf-8')
+          PY
+          node --check /tmp/rpcs3_stage7.js
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run dedicated regression tests
+        run: |
+          flutter test \
+            test/home_music_silent_mode_test.dart \
+            test/rpcs3_library_service_test.dart \
+            test/rpcs3_stage3_test.dart \
+            test/rpcs3_stage6_test.dart
+
+      - name: Run full Flutter test suite
+        run: flutter test
+
+      - name: Commit validated source and remove temporary automation
+        run: |
+          set -euo pipefail
+          git checkout -- pubspec.lock analysis_options.yaml || true
+          git checkout -- packages/flutter_7zip/analysis_options.yaml || true
+          git checkout -- packages/gamepads/analysis_options.yaml || true
+          rm -f .github/workflows/validate-rpcs3-stage7-silent-mode-once.yml
+          rm -f tools/rpcs3_stage7_patch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ios): support RPCS3 0.2 and preserve silent mode"
+          git push origin HEAD:fix/rpcs3-0.2-discimages-silent-mode-20260818
