@@ -1,0 +1,73 @@
+name: Validate custom background update persistence once
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: custom-background-persistence
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Analyze and test background persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v7
+        with:
+          ref: fix/custom-background-update-persistence
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Format changed Dart files
+        run: dart format lib/providers/theme_provider.dart test/theme_provider_background_persistence_test.dart
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify implementation markers
+        run: |
+          set -euo pipefail
+          grep -Fq "version: 0.9.9+134" pubspec.yaml
+          grep -Fq "resolvePersistedCustomBackgroundForTesting" lib/providers/theme_provider.dart
+          grep -Fq "path.basename(resolved.path)" lib/providers/theme_provider.dart
+          grep -Fq "iOS can change the app-container UUID" lib/providers/theme_provider.dart
+          grep -Fq "recovers background after the iOS container root changes" test/theme_provider_background_persistence_test.dart
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run background persistence tests
+        run: flutter test test/theme_provider_background_persistence_test.dart
+
+      - name: Run full Flutter test suite
+        run: flutter test
+
+      - name: Commit formatting and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git checkout -- pubspec.lock analysis_options.yaml || true
+          git checkout -- packages/flutter_7zip/analysis_options.yaml || true
+          git checkout -- packages/gamepads/analysis_options.yaml || true
+          rm -f .github/workflows/custom-background-persistence-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "test(theme): validate update-safe background persistence"
+            git push origin HEAD:fix/custom-background-update-persistence
+          fi
