@@ -145,6 +145,9 @@ jobs:
           game_list_path.write_text(game_list, encoding='utf-8')
           PY
 
+      - name: Repair legacy RPCS3 metadata rows
+        run: python3 tools/stage7_metadata_repair.py
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
@@ -190,6 +193,7 @@ jobs:
               'shared RPCS3 name resolver': ('lib/services/game/game_list_service.dart', 'resolveDatabaseNamesForDisplay'),
               'RPCS3 filename-priority guard': ('lib/services/game/game_list_service.dart', 'preferFileName && !isRpcs3Virtual'),
               'RPCS3 metadata repair': ('lib/services/rpcs3_library_service.dart', '_repairPersistedRpcs3Names'),
+              'dynamic metadata schema repair': ('lib/services/rpcs3_library_service.dart', 'PRAGMA table_info(user_screenscraper_metadata)'),
               'foreground JIT script': ('lib/services/rpcs3_launch_service.dart', 'openJitScriptOnly'),
               'native foreground preflight': ('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift', 'launchAfterPreflight'),
               'RPCS3 boot result log': ('assets/data/rpcs3_stikdebug_launch.js', 'NEOSTATION_RPC_BOOT_RESULT'),
@@ -267,7 +271,7 @@ jobs:
           git checkout -- packages/flutter_7zip/analysis_options.yaml || true
           git checkout -- packages/gamepads/analysis_options.yaml || true
           rm -f .github/workflows/validate-stage7-once.yml
-          rm -f tools/apply_stage7.py tools/finalize_stage7.py
+          rm -f tools/apply_stage7.py tools/finalize_stage7.py tools/stage7_metadata_repair.py
           rm -f _stage7_trigger*
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
