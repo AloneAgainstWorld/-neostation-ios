@@ -32,16 +32,20 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           host_path = Path('lib/screens/game_screen/my_games_list.dart')
           host = host_path.read_text(encoding='utf-8')
-          host = host.replace(
-              """  static const Duration _videoDelay = Duration(
-            milliseconds: 1500,
-          ); // Debounce for video playback.
-          """,
-              '',
+          host, removed = re.subn(
+              r"\n\s*static const Duration _videoDelay = Duration\(\s*"
+              r"milliseconds:\s*1500,\s*\);\s*"
+              r"// Debounce for video playback\.\s*\n",
+              '\n',
+              host,
+              count=1,
           )
+          if removed != 1 and '_videoDelay' in host:
+              raise SystemExit('Could not remove fixed video delay field')
           host_path.write_text(host, encoding='utf-8')
 
           part_path = Path('lib/screens/game_screen/my_games_list/secondary_display.dart')
@@ -134,21 +138,33 @@ jobs:
 
       - name: Verify implementation markers
         run: |
-          set -euo pipefail
-          grep -Fq "version: 0.9.9+137" pubspec.yaml
-          grep -Fq "class AudioPolicyService" lib/services/audio_policy_service.dart
-          grep -Fq "_activeHandles" lib/services/sfx_service.dart
-          grep -Fq "AudioPolicyService" lib/services/home_music_service.dart
-          grep -Fq "AudioPolicyService" lib/services/music_player_service.dart
-          grep -Fq "GameModel.fromDatabaseModel" lib/services/game/game_list_service.dart
-          grep -Fq "_repairPersistedRpcs3Names" lib/services/rpcs3_library_service.dart
-          grep -Fq "openJitScriptOnly" lib/services/rpcs3_launch_service.dart
-          grep -Fq "launchAfterPreflight" packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift
-          grep -Fq "NEOSTATION_RPC_BOOT_RESULT" assets/data/rpcs3_stikdebug_launch.js
-          grep -Fq "_videoGeneration" lib/screens/game_screen/my_games_list.dart
-          grep -Fq "_videoTransition" lib/screens/game_screen/my_games_list.dart
-          grep -Fq "_startVideoPreviewForSelection" lib/screens/game_screen/my_games_list/secondary_display.dart
-          ! grep -Fq "Duration(milliseconds: 1500)" lib/screens/game_screen/my_games_list.dart
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checks = {
+              'version': ('pubspec.yaml', 'version: 0.9.9+137'),
+              'audio policy': ('lib/services/audio_policy_service.dart', 'class AudioPolicyService'),
+              'active SFX handles': ('lib/services/sfx_service.dart', '_activeHandles'),
+              'home music policy': ('lib/services/home_music_service.dart', 'AudioPolicyService'),
+              'music player policy': ('lib/services/music_player_service.dart', 'AudioPolicyService'),
+              'canonical game conversion': ('lib/services/game/game_list_service.dart', 'GameModel.fromDatabaseModel'),
+              'RPCS3 metadata repair': ('lib/services/rpcs3_library_service.dart', '_repairPersistedRpcs3Names'),
+              'foreground JIT script': ('lib/services/rpcs3_launch_service.dart', 'openJitScriptOnly'),
+              'native foreground preflight': ('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift', 'launchAfterPreflight'),
+              'RPCS3 boot result log': ('assets/data/rpcs3_stikdebug_launch.js', 'NEOSTATION_RPC_BOOT_RESULT'),
+              'video generation': ('lib/screens/game_screen/my_games_list.dart', '_videoGeneration'),
+              'video transition queue': ('lib/screens/game_screen/my_games_list.dart', '_videoTransition'),
+              'immediate generation-guarded preview': ('lib/screens/game_screen/my_games_list/secondary_display.dart', '_startVideoPreviewForSelection'),
+          }
+          for label, (path, marker) in checks.items():
+              text = Path(path).read_text(encoding='utf-8')
+              if marker not in text:
+                  raise SystemExit(f'Missing {label}: {marker} in {path}')
+          host = Path('lib/screens/game_screen/my_games_list.dart').read_text(encoding='utf-8')
+          if '_videoDelay' in host or 'milliseconds: 1500' in host:
+              raise SystemExit('Fixed 1500 ms preview delay is still present')
+          print('All Stage 7 implementation markers are present.')
+          PY
 
       - name: Validate generated RPCS3 JavaScript syntax
         run: |
