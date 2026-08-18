@@ -27,11 +27,11 @@ class IosShortcutJitLaunchService {
 
   /// RPCS3 intentionally has no shared iCloud installer yet.
   ///
-  /// The automation depends on a Switch Control switch/gesture created on the
-  /// user's own device, and Apple does not provide a public API for an app to
-  /// create that accessibility configuration. NeoStation therefore opens the
-  /// official Shortcuts editor and shows the required device-local steps in
-  /// its settings UI instead of shipping a misleading pre-bound Shortcut.
+  /// The Switch Control set, switch and gesture are device-local accessibility
+  /// configuration, so NeoStation cannot pre-create those pieces. The user
+  /// creates the `NeoStation+RPCS3+Start` helper once, then NeoStation invokes
+  /// that exact Shortcut directly from the RPCS3 launch path after the JIT
+  /// warm-up. A separate Personal Automation is therefore not required.
   static const String _rpcs3ShortcutInstallUrl = '';
 
   static bool get hasMeloNXShortcutInstaller =>
@@ -77,12 +77,12 @@ class IosShortcutJitLaunchService {
     }
   }
 
-  /// Opens the RPCS3 automation setup entry point.
+  /// Opens the RPCS3 Shortcut setup entry point.
   ///
   /// Until a portable, device-independent Switch Control binding exists,
   /// this opens a blank Shortcut editor. The user creates the small
-  /// `NeoStation+RPCS3+Start` helper and a personal automation triggered when
-  /// RPCS3 opens. NeoStation itself remains on the stable standard JIT path.
+  /// `NeoStation+RPCS3+Start` helper and the required device-local Switch
+  /// Control configuration. NeoStation calls the helper itself during launch.
   static Future<bool> openRpcs3ShortcutInstaller() async {
     if (!Platform.isIOS) return false;
 
@@ -98,23 +98,38 @@ class IosShortcutJitLaunchService {
     }
   }
 
-  /// Runs an installed Shortcut and passes an emulator game deeplink as text
-  /// input. The Shortcut owns the foreground sequence so StikDebug can finish
-  /// enabling JIT before it opens the game URL.
+  /// Builds the canonical Shortcuts URL used by NeoStation to invoke an
+  /// installed helper from outside the Shortcuts app.
+  ///
+  /// Keeping URL construction here guarantees the literal `+` characters in
+  /// names such as `NeoStation+RPCS3+Start` are encoded consistently everywhere.
+  static Uri buildRunUri({
+    required String shortcutName,
+    String? input,
+  }) {
+    final query = <String, String>{'name': shortcutName};
+    if (input != null) {
+      query['input'] = 'text';
+      query['text'] = input;
+    }
+
+    return Uri(
+      scheme: 'shortcuts',
+      host: 'run-shortcut',
+      queryParameters: query,
+    );
+  }
+
+  /// Runs an installed Shortcut and optionally passes text input to it.
   static Future<bool> run({
     required String shortcutName,
-    required String input,
+    String? input,
   }) async {
     if (!Platform.isIOS) return false;
 
-    final shortcutUri = Uri(
-      scheme: 'shortcuts',
-      host: 'run-shortcut',
-      queryParameters: <String, String>{
-        'name': shortcutName,
-        'input': 'text',
-        'text': input,
-      },
+    final shortcutUri = buildRunUri(
+      shortcutName: shortcutName,
+      input: input,
     );
 
     try {
