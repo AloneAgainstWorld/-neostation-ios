@@ -1,0 +1,43 @@
+name: Temporary refresh iOS-only lockfile
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.event.head_commit.message == 'Refresh iOS-only lockfile'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve cleaned dependency graph
+        run: flutter pub get
+
+      - name: Finalize cleaned tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/temp-refresh-ios-lock.yml \
+            .github/workflows/temp-ios-only-controller-test.yml
+
+          git config user.name 'Tarble FR'
+          git config user.email 'f9wynyv9qy@privaterelay.appleid.com'
+          git add pubspec.lock .github/workflows
+          git diff --cached --check
+          git commit -m 'Finalize iOS-only cleanup and lockfile'
+          git push origin HEAD:main
