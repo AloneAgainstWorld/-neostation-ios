@@ -315,8 +315,8 @@ export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/s
 # Setting LD_LIBRARY_PATH can shadow system GL/EGL libs and break video rendering.
 #
 # NOTE: Do NOT force GPU selection (e.g. DRI_PRIME, __NV_PRIME_RENDER_OFFLOAD).
-# The app and mdk/fvp must use the same GPU. Forcing PRIME offload can cause
-# mdk to render on a different GPU than Flutter, resulting in black video.
+# Keep Flutter and media rendering on the same GPU. Forcing PRIME offload can
+# move media rendering to a different GPU and result in black video.
 
 if [ "$DEBUG_APPIMAGE" = "1" ]; then
   echo "HERE: $HERE"
