@@ -17,6 +17,50 @@ jobs:
         with:
           ref: maintenance/final-repository-cleanup
           fetch-depth: 0
+
+      - name: Finalize native cleanup and remove trigger artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift')
+          text = path.read_text(encoding='utf-8')
+          definition = '    private static func applicationStateName() -> String {'
+          if definition not in text:
+              marker = '    private static func safeDebugFileName(_ value: String) -> String {'
+              if marker not in text:
+                  raise SystemExit('safeDebugFileName marker missing')
+              helper = '''    private static func applicationStateName() -> String {
+        switch UIApplication.shared.applicationState {
+        case .active:
+            return "active"
+        case .inactive:
+            return "inactive"
+        case .background:
+            return "background"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+'''
+              text = text.replace(marker, helper + marker, 1)
+              path.write_text(text, encoding='utf-8')
+
+          for transient in (
+              '.cleanup-verify-trigger',
+              '.cleanup-trigger',
+              '.cleanup-trigger-2',
+              '.cleanup-trigger-3',
+              'cleanup-executor-error.txt',
+          ):
+              candidate = Path(transient)
+              if candidate.exists():
+                  candidate.unlink()
+          PY
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -48,7 +92,7 @@ jobs:
       - name: Test
         run: flutter test
 
-      - name: Commit dependency lock and analyzer-safe fixes
+      - name: Commit verified cleanup state
         shell: bash
         run: |
           set -euo pipefail
@@ -110,6 +154,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin maintenance/final-repository-cleanup
           git reset --hard origin/maintenance/final-repository-cleanup
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
