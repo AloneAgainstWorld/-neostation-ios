@@ -18,15 +18,51 @@ jobs:
           ref: maintenance/final-repository-cleanup
           fetch-depth: 0
 
-      - name: Finalize native cleanup and remove trigger artifacts
+      - name: Restore audited settings file and finalize cleanup state
         shell: bash
         run: |
           set -euo pipefail
+          # Restore the last audited full settings file before a bad manual
+          # whole-file replacement, then apply the intended narrow RPCS3 UI fix.
+          git checkout 79533b65373159aa09e6f8bdb2f581b5bc47ddbb -- \
+            lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
+
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift')
-          text = path.read_text(encoding='utf-8')
+          settings = Path('lib/screens/settings_screen/new_settings_options/directories_settings_content.dart')
+          text = settings.read_text(encoding='utf-8')
+          old = '''      trailingAction: SizedBox(
+        height: 32,
+        child: OutlinedButton.icon(
+          onPressed: _linkingFolderKey == null ? _syncWithRpcs3 : null,
+          icon: const Icon(Symbols.sync_rounded, size: 16),
+          label: Text(Rpcs3LibraryLocale.sync(context)),
+        ),
+      ),
+'''
+          new = '''      trailingAction: SizedBox(
+        height: 48.r,
+        child: FilledButton.icon(
+          onPressed: !isLinked || _linkingFolderKey != null
+              ? null
+              : _syncWithRpcs3,
+          icon: Icon(Symbols.bolt_rounded, size: 20.r),
+          label: Text(
+            hasSynced
+                ? AppLocale.iosEmuResync.getString(context)
+                : AppLocale.iosEmuSync.getString(context),
+            style: TextStyle(fontSize: 14.r),
+          ),
+        ),
+      ),
+'''
+          if old not in text:
+              raise SystemExit('Expected cleaned RPCS3 action block not found')
+          settings.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          swift = Path('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift')
+          text = swift.read_text(encoding='utf-8')
           definition = '    private static func applicationStateName() -> String {'
           if definition not in text:
               marker = '    private static func safeDebugFileName(_ value: String) -> String {'
@@ -46,20 +82,32 @@ jobs:
     }
 
 '''
-              text = text.replace(marker, helper + marker, 1)
-              path.write_text(text, encoding='utf-8')
+              swift.write_text(text.replace(marker, helper + marker, 1), encoding='utf-8')
 
           for transient in (
               '.cleanup-verify-trigger',
+              '.cleanup-verify-trigger-2',
+              '.cleanup-verify-trigger-3',
               '.cleanup-trigger',
               '.cleanup-trigger-2',
               '.cleanup-trigger-3',
               'cleanup-executor-error.txt',
+              'cleanup-verification-error.txt',
+              'cleanup-ios-build-error.txt',
           ):
-              candidate = Path(transient)
-              if candidate.exists():
-                  candidate.unlink()
+              p = Path(transient)
+              if p.exists():
+                  p.unlink()
           PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'Prepare final audited cleanup state'
+            git push origin HEAD:maintenance/final-repository-cleanup
+          fi
 
       - uses: subosito/flutter-action@v2
         with:
@@ -77,27 +125,55 @@ jobs:
             dart format "${dart_files[@]}"
           fi
 
-      - name: Verify retired RPCS3 automation residue is gone
+      - name: Check retired RPCS3 residue
         shell: bash
         run: |
-          set -euo pipefail
-          if grep -RInE 'NeoStation\+RPCS3\+Start|rpcs3ShortcutName|openRpcs3ShortcutInstaller|openUrlAfterJitPreflight|openAppWithTwoPassJit|remove_rpcs3_shortcut_ui|RPCS3Core' lib test packages build-utils docs codemagic.yaml 2>/dev/null; then
-            echo 'Retired RPCS3 automation residue remains.' >&2
+          set +e
+          grep -RInE 'NeoStation\+RPCS3\+Start|rpcs3ShortcutName|openRpcs3ShortcutInstaller|openUrlAfterJitPreflight|openAppWithTwoPassJit|remove_rpcs3_shortcut_ui|RPCS3Core' \
+            lib test packages build-utils docs codemagic.yaml 2>/dev/null > /tmp/residue.txt
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            cat /tmp/residue.txt
+            cp /tmp/residue.txt cleanup-verification-error.txt
+            git add cleanup-verification-error.txt
+            git commit -m 'Record cleanup residue verification failure'
+            git push origin HEAD:maintenance/final-repository-cleanup
             exit 1
           fi
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze and test
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos --no-fatal-warnings > /tmp/analyze.txt 2>&1
+          analyze_code=$?
+          flutter test > /tmp/test.txt 2>&1
+          test_code=$?
+          set -e
+          cat /tmp/analyze.txt
+          tail -250 /tmp/test.txt
+          if [ "$analyze_code" -ne 0 ] || [ "$test_code" -ne 0 ]; then
+            {
+              echo "flutter analyze exit: $analyze_code"
+              echo "flutter test exit: $test_code"
+              echo
+              echo '=== flutter analyze ==='
+              cat /tmp/analyze.txt
+              echo
+              echo '=== flutter test tail ==='
+              tail -400 /tmp/test.txt
+            } > cleanup-verification-error.txt
+            git add cleanup-verification-error.txt
+            git commit -m 'Record cleanup analysis or test failure'
+            git push origin HEAD:maintenance/final-repository-cleanup
+            exit 1
+          fi
 
-      - name: Test
-        run: flutter test
-
-      - name: Commit verified cleanup state
+      - name: Commit verified dependency lock and fixes
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
           if ! git diff --cached --quiet; then
@@ -147,16 +223,24 @@ jobs:
           cd ios
           pod install --repo-update
 
-      - name: Compile iOS without signing
-        run: flutter build ios --release --no-codesign
-
-      - name: Record successful iOS verification
+      - name: Compile iOS without signing and record result
         shell: bash
         run: |
-          set -euo pipefail
-          git fetch origin maintenance/final-repository-cleanup
-          git reset --hard origin/maintenance/final-repository-cleanup
+          set +e
+          flutter build ios --release --no-codesign > /tmp/ios-build.txt 2>&1
+          code=$?
+          set -e
+          tail -300 /tmp/ios-build.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin maintenance/final-repository-cleanup
+          git reset --hard origin/maintenance/final-repository-cleanup
+          if [ "$code" -ne 0 ]; then
+            cp /tmp/ios-build.txt cleanup-ios-build-error.txt
+            git add cleanup-ios-build-error.txt
+            git commit -m 'Record iOS cleanup build failure'
+            git push origin HEAD:maintenance/final-repository-cleanup
+            exit 1
+          fi
           git commit --allow-empty -m 'iOS compile verification passed'
           git push origin HEAD:maintenance/final-repository-cleanup
