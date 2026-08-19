@@ -1,7 +1,10 @@
 import 'dart:io';
+
 import 'package:neostation/models/retroarch_config_model.dart';
 import 'package:neostation/services/permission_service.dart';
+
 import '../repositories/emulator_repository.dart';
+
 import 'package:neostation/services/config_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart';
@@ -137,6 +140,115 @@ class RetroArchConfigService {
     return normalized;
   }
 
+  /// Resolves RetroArch directories from the security-scoped folder linked
+  /// by NeoStation on iOS. The bookmark itself is restored in main.dart before
+  /// providers are created, so filesystem access is already active here.
+  Future<RetroArchConfig?> _getIOSLinkedConfig() async {
+    if (!Platform.isIOS) return null;
+
+    final linkedRoot = ConfigService.linkedExternalFolderPath?.trim();
+    if (linkedRoot == null || linkedRoot.isEmpty) {
+      _log.w(
+        'iOS RetroArch folder is not linked; NeoSync local paths unavailable',
+      );
+      return null;
+    }
+
+    final root = Directory(linkedRoot);
+    if (!await root.exists()) {
+      _log.w('iOS linked RetroArch folder no longer exists: $linkedRoot');
+      return null;
+    }
+
+    String? configPath;
+    final configCandidates = <String>[
+      path.join(linkedRoot, 'retroarch.cfg'),
+      path.join(linkedRoot, 'config', 'retroarch.cfg'),
+      path.join(linkedRoot, 'RetroArch', 'retroarch.cfg'),
+    ];
+    for (final candidate in configCandidates) {
+      if (File(candidate).existsSync()) {
+        configPath = candidate;
+        break;
+      }
+    }
+
+    if (configPath == null) {
+      try {
+        for (final child
+            in root.listSync(followLinks: false).whereType<Directory>()) {
+          final candidate = path.join(child.path, 'retroarch.cfg');
+          if (File(candidate).existsSync()) {
+            configPath = candidate;
+            break;
+          }
+        }
+      } catch (e) {
+        _log.w(
+          'Could not inspect linked RetroArch folder for retroarch.cfg: $e',
+        );
+      }
+    }
+
+    RetroArchConfig? parsed;
+    if (configPath != null) {
+      try {
+        parsed = await parseConfig(configPath);
+      } catch (e) {
+        _log.w('Could not parse linked iOS RetroArch config: $e');
+      }
+    }
+
+    String resolveDirectory(String logicalName, String? configured) {
+      if (configured != null &&
+          configured.isNotEmpty &&
+          Directory(configured).existsSync()) {
+        return configured;
+      }
+
+      final names = <String>{logicalName.toLowerCase()};
+      if (configured != null && configured.isNotEmpty) {
+        names.add(path.basename(configured).toLowerCase());
+      }
+
+      final candidates = <String>[
+        for (final name in names) path.join(linkedRoot, name),
+        for (final name in names) path.join(linkedRoot, 'RetroArch', name),
+      ];
+      for (final candidate in candidates) {
+        if (Directory(candidate).existsSync()) return candidate;
+      }
+
+      try {
+        for (final child
+            in root.listSync(followLinks: false).whereType<Directory>()) {
+          if (names.contains(path.basename(child.path).toLowerCase())) {
+            return child.path;
+          }
+        }
+      } catch (_) {}
+
+      // Downloads stay inside the bookmarked RetroArch folder even if the
+      // directory has not been created by RetroArch yet.
+      return path.join(linkedRoot, logicalName);
+    }
+
+    final resolved = RetroArchConfig(
+      configPath: configPath ?? '',
+      systemDirectory: resolveDirectory('system', parsed?.systemDirectory),
+      savefileDirectory: resolveDirectory('saves', parsed?.savefileDirectory),
+      savestateDirectory: resolveDirectory(
+        'states',
+        parsed?.savestateDirectory,
+      ),
+    );
+    _log.i(
+      'iOS RetroArch paths resolved for NeoSync: '
+      'saves=${resolved.savefileDirectory}, states=${resolved.savestateDirectory}',
+    );
+    return resolved;
+  }
+
   /// Returns the merged configuration by discovering the platform's standard
   /// config path and applying defaults for missing fields.
   ///
@@ -145,6 +257,20 @@ class RetroArchConfigService {
   Future<RetroArchConfig> getMergedConfig({bool forceRefresh = false}) async {
     if (_cachedConfig != null && !forceRefresh) {
       return _cachedConfig!;
+    }
+
+    if (Platform.isIOS) {
+      final iosConfig = await _getIOSLinkedConfig();
+      if (iosConfig != null) {
+        _cachedConfig = iosConfig;
+        return iosConfig;
+      }
+      return RetroArchConfig(
+        configPath: '',
+        systemDirectory: null,
+        savefileDirectory: null,
+        savestateDirectory: null,
+      );
     }
 
     String? configPath;

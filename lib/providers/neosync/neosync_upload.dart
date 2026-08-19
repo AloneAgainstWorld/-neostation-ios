@@ -36,6 +36,33 @@ extension NeoSyncUpload on NeoSyncProvider {
         retroArchStates = await _getSaveFiles(statesPath);
       }
 
+      final customSaveFiles =
+          <({File file, String root, String system, String emulatorSlug})>[];
+      if (Platform.isIOS) {
+        final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
+        if (armsx2Root != null && Directory(armsx2Root).existsSync()) {
+          for (final file in await _getSaveFiles(armsx2Root)) {
+            customSaveFiles.add((
+              file: file,
+              root: armsx2Root,
+              system: 'ps2',
+              emulatorSlug: 'armsx2',
+            ));
+          }
+        }
+        final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
+        if (melonxRoot != null && Directory(melonxRoot).existsSync()) {
+          for (final file in await _getSaveFiles(melonxRoot)) {
+            customSaveFiles.add((
+              file: file,
+              root: melonxRoot,
+              system: 'switch',
+              emulatorSlug: 'melonx',
+            ));
+          }
+        }
+      }
+
       // 2. Collect Switch NAND files
       try {
         final emulators = await SwitchSaveDetector.detectEmulatorNandPaths();
@@ -130,7 +157,10 @@ extension NeoSyncUpload on NeoSyncProvider {
         NeoSyncProvider._log.e('Error scanning Switch NAND saves: $e');
       }
 
-      if (saveFiles.isEmpty) {
+      if (retroArchSaves.isEmpty &&
+          retroArchStates.isEmpty &&
+          customSaveFiles.isEmpty &&
+          saveFiles.isEmpty) {
         _syncStatus = 'No local save files found';
         _processedItems.add('No local save files found for auto-sync');
         _setSyncing(false);
@@ -140,6 +170,7 @@ extension NeoSyncUpload on NeoSyncProvider {
       _totalFiles =
           retroArchSaves.length +
           retroArchStates.length +
+          customSaveFiles.length +
           saveFiles.length; // saveFiles contains Switch files here
 
       _processedItems.add('Auto-syncing $_totalFiles local files...');
@@ -157,6 +188,20 @@ extension NeoSyncUpload on NeoSyncProvider {
       // Process RetroArch States
       for (final file in retroArchStates) {
         await _processAutoUploadFile(file, statesPath!, isState: true);
+        _processedFiles++;
+        _syncProgress = _totalFiles > 0 ? _processedFiles / _totalFiles : 0.0;
+        notify();
+      }
+
+      // Process iOS standalone-emulator save roots.
+      for (final entry in customSaveFiles) {
+        await _processAutoUploadFile(
+          entry.file,
+          entry.root,
+          isState: false,
+          customSystem: entry.system,
+          customEmulatorSlug: entry.emulatorSlug,
+        );
         _processedFiles++;
         _syncProgress = _totalFiles > 0 ? _processedFiles / _totalFiles : 0.0;
         notify();
@@ -227,6 +272,8 @@ extension NeoSyncUpload on NeoSyncProvider {
     File file,
     String basePath, {
     bool isState = false,
+    String? customSystem,
+    String? customEmulatorSlug,
   }) async {
     try {
       final isNandFile = file.path.contains(
@@ -238,17 +285,79 @@ extension NeoSyncUpload on NeoSyncProvider {
         return;
       }
 
-      String relativePath = _calculateRelativePath(
+      if (customSystem != null && customEmulatorSlug != null) {
+        final relativeFile = path
+            .relative(file.path, from: basePath)
+            .replaceAll('\\', '/');
+        if (relativeFile.startsWith('..')) {
+          _skippedFiles++;
+          return;
+        }
+        final cloudPath = CloudPathBuilder.build(
+          system: customSystem,
+          emulatorSlug: customEmulatorSlug,
+          scope: 'shared',
+          filePath: relativeFile,
+          isState: isState,
+        );
+        final result = await _neoSyncService.syncFile(
+          file,
+          _extractGameNameFromPath(file.path),
+          customFilename: cloudPath,
+          systemId: customSystem,
+          emulatorId: customEmulatorSlug,
+          isState: isState,
+          scope: 'shared',
+        );
+        if (result['success'] == true) {
+          if (result['skipped'] == true) {
+            _skippedFiles++;
+          } else {
+            _uploadedFiles++;
+            _resetQuotaAttempts();
+          }
+          _processedItems.add('NeoSync: $cloudPath');
+        } else {
+          final errorMessage = result['message']?.toString() ?? '';
+          _processedItems.add('Failed to upload: $cloudPath - $errorMessage');
+          if (_checkQuotaExceeded(errorMessage)) {
+            _quotaExceededActive = true;
+            throw QuotaExceededException(errorMessage, _quotaExceededAttempts);
+          }
+        }
+        return;
+      }
+
+      final game = await _gameForSaveFile(file);
+      if (game == null) {
+        _skippedFiles++;
+        _processedItems.add(
+          'Skipped unrecognized save (NeoSync v2 safety): ${path.basename(file.path)}',
+        );
+        return;
+      }
+
+      final relativePath = await _calculateSyncRelativePath(
+        game,
         file,
         basePath,
         isState: isState,
       );
-      final gameName = _extractGameNameFromPath(file.path);
+      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) {
+        _skippedFiles++;
+        _processedItems.add('Skipped non-v2 path: $relativePath');
+        return;
+      }
 
       final result = await _neoSyncService.syncFile(
         file,
-        gameName,
+        game.name,
         customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
       );
 
       if (result['success']) {
@@ -357,17 +466,36 @@ extension NeoSyncUpload on NeoSyncProvider {
     bool isState = false,
   }) async {
     try {
-      String relativePath = _calculateRelativePath(
+      final game = await _gameForSaveFile(file);
+      if (game == null) {
+        _skippedFiles++;
+        _processedItems.add(
+          'Skipped unrecognized save (NeoSync v2 safety): ${path.basename(file.path)}',
+        );
+        return;
+      }
+
+      final relativePath = await _calculateSyncRelativePath(
+        game,
         file,
         basePath,
         isState: isState,
       );
-      final gameName = _extractGameNameFromPath(file.path);
+      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) {
+        _skippedFiles++;
+        _processedItems.add('Skipped non-v2 path: $relativePath');
+        return;
+      }
 
       final result = await _neoSyncService.syncFile(
         file,
-        gameName,
+        game.name,
         customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
       );
 
       if (result['success']) {

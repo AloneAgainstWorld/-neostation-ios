@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:neostation/services/logger_service.dart';
+
 import '../models/system_model.dart';
 import '../models/config_model.dart';
 import '../models/emulator_model.dart';
@@ -36,6 +38,14 @@ class ConfigService {
   /// [linkedExternalFolderPath] because each emulator has its own library
   /// export and direct-launch URL scheme. Null if nothing is linked.
   static String? linkedArmsx2FolderPath;
+
+  /// iOS-only NeoSync save roots. These bookmarks are intentionally
+  /// separate from ROM/library folders so cloud-save configuration never
+  /// changes game discovery or launch paths.
+  static const String armsx2NeoSyncBookmarkKey = 'neosync-armsx2-saves';
+  static const String melonxNeoSyncBookmarkKey = 'neosync-melonx-saves';
+  static String? linkedArmsx2SaveFolderPath;
+  static String? linkedMelonxSaveFolderPath;
 
   /// Determines the base execution path for Windows installations.
   ///
@@ -259,7 +269,9 @@ class ConfigService {
     final sourceDir = Directory(sourcePath);
 
     if (!await sourceDir.exists()) {
-      _log.w('importFilesFromExternalFolder: source does not exist: $sourcePath');
+      _log.w(
+        'importFilesFromExternalFolder: source does not exist: $sourcePath',
+      );
       return 0;
     }
 
