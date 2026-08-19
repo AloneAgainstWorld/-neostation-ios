@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/runner/work/neostation-ios/neostation-ios/build-utils/repository_cleanup_20260819.py", line 327, in <module>
+    raise RuntimeError("CodeMagic still references RPCS3 UI patcher")
+RuntimeError: CodeMagic still references RPCS3 UI patcher
