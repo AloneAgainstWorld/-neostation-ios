@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gamepads/gamepads.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:neostation/services/sfx_service.dart';
+
 import '../responsive.dart';
 import 'gamepad_translator.dart';
 import 'select_tap.dart';
@@ -172,8 +174,16 @@ class GamepadNavigation {
   /// Delay before the first repeat event occurs when a button is held.
   static const Duration _initialRepeatDelay = Duration(milliseconds: 300);
 
-  /// Interval between the first few repeat events when a button is held.
+  /// Fast repeat base used only by views that explicitly opt into
+  /// [accelerateRepeats], such as large game libraries.
   static const Duration _repeatInterval = Duration(milliseconds: 80);
+
+  /// Steady cadence for ordinary menus. Most menu scroll animations take
+  /// 120-300 ms; repeating every 80 ms made the logical selection outrun the
+  /// viewport and repeatedly interrupted animateTo/ensureVisible calls.
+  /// Keeping menu repeats at 300 ms lets each move settle before the next one
+  /// while accelerated library browsing keeps the original fast ramp.
+  static const Duration _menuRepeatInterval = Duration(milliseconds: 300);
 
   /// Fastest repeat interval reached while a direction stays held. The interval
   /// ramps from [_repeatInterval] down to this over [_rampRepeats] repeats, so
@@ -1244,7 +1254,9 @@ class GamepadNavigation {
         }
         repeats++;
         schedule(
-          accelerateRepeats ? _rampedRepeatInterval(repeats) : _repeatInterval,
+          accelerateRepeats
+              ? _rampedRepeatInterval(repeats)
+              : _menuRepeatInterval,
         );
       });
     }
