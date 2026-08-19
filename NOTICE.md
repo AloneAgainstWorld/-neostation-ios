@@ -66,11 +66,6 @@ This project includes or depends on third-party software, including:
 - external_folder_access (vendored under packages/external_folder_access)
   Preserve its package license and notices.
 
-- RPCS3 StikDebug launch helper (`assets/data/rpcs3_stikdebug_launch.js`)
-  Derived from StikDebug's GPL-3.0 Universal JIT script. The NeoStation
-  derivative adds a version-fingerprinted RPCS3 title boot call. Preserve the
-  StikDebug copyright/license and this notice when redistributing that file.
-
 - GameDB-PS3 title catalog (runtime cached lookup)
   NeoStation may download `PS3.titles.json` from the GPL-3.0 GameDB-PS3
   project to resolve PS3 serial numbers when local metadata and ScreenScraper
