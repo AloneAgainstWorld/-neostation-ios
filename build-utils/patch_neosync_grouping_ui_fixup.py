@@ -26,5 +26,7 @@ if old_list in s:
 elif new_list not in s:
     raise SystemExit('Online saves list field marker not found')
 
+s = s.replace('oldWidget.files.length', 'oldWidget.groups.length')
+
 p.write_text(s, encoding='utf-8')
 print('NeoSync grouped save UI model fixup applied')
