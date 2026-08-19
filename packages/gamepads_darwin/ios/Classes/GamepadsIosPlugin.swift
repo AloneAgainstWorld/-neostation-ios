@@ -1,10 +1,10 @@
 // iOS gamepad bridge for NeoStation.
 //
 // The GameController framework exposes stable logical elements (buttonA,
-// dpad, leftThumbstick, ...). Do not use sfSymbolsName as an input protocol:
-// those strings are presentation metadata and are not the names understood by
-// NeoStation's cross-platform translator. Emit the same canonical logical names
-// used by the Windows GameInput backend instead.
+// dpad, leftThumbstick, ...). Presentation-only SF Symbol names are not an
+// input protocol and are not the names understood by NeoStation's cross-platform
+// translator. Emit the same canonical logical names used by the Windows
+// GameInput backend instead.
 import UIKit
 import GameController
 import Flutter
