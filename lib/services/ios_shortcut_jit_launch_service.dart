@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:neostation/services/logger_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Runs user-configured Apple Shortcuts used by NeoStation's iOS emulator
-/// launch flow and opens their one-time installation/setup links.
+/// Runs the Apple Shortcuts used by NeoStation's MeloNX and ARMSX2 iOS launch
+/// flows and opens their one-time installation/setup links.
 class IosShortcutJitLaunchService {
   IosShortcutJitLaunchService._();
 
@@ -29,7 +29,6 @@ class IosShortcutJitLaunchService {
 
   static bool get hasArmsx2ShortcutInstaller =>
       _armsx2ShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
-
 
   /// Opens the shared ARMSX2 launch Shortcut. While the iCloud sharing link
   /// is not configured yet, fall back to Apple's official create-shortcut URL.
