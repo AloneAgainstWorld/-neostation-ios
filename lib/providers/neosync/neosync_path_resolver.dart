@@ -197,6 +197,77 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     return [];
   }
 
+  ({String cloudPath, String gameName, bool isState, String category})?
+  _resolveArmsx2FileForCloud(File file, String root) {
+    const categories = <String>['memcards', 'savestates', 'sstates'];
+    final relative = path.relative(file.path, from: root).replaceAll('\\', '/');
+    if (relative == '..' || relative.startsWith('../')) return null;
+
+    final rootName = path.basename(root).toLowerCase();
+    final segments = relative
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (segments.isEmpty) return null;
+
+    late final String category;
+    late final String internalPath;
+    if (categories.contains(rootName)) {
+      category = rootName;
+      internalPath = segments.join('/');
+    } else {
+      final candidate = segments.first.toLowerCase();
+      if (!categories.contains(candidate) || segments.length < 2) return null;
+      category = candidate;
+      internalPath = segments.sublist(1).join('/');
+    }
+
+    final isState = category != 'memcards';
+    final gameName = isState ? 'ARMSX2 Save States' : 'ARMSX2 Memory Cards';
+    final cloudPath = CloudPathBuilder.build(
+      system: 'ps2',
+      emulatorSlug: 'armsx2',
+      scope: 'shared',
+      filePath: '$category/$internalPath',
+      isState: isState,
+    );
+    return (
+      cloudPath: cloudPath,
+      gameName: gameName,
+      isState: isState,
+      category: category,
+    );
+  }
+
+  String? _resolveArmsx2CloudFileToLocal(String root, String cloudFilePath) {
+    const categories = <String>['memcards', 'savestates', 'sstates'];
+    final segments = cloudFilePath
+        .replaceAll('\\', '/')
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (segments.isEmpty) return null;
+
+    final rootName = path.basename(root).toLowerCase();
+    final category = segments.first.toLowerCase();
+    if (!categories.contains(category)) {
+      // Compatibility with the first iOS preview which stored paths relative
+      // to the chosen folder without a category prefix.
+      return path.join(root, cloudFilePath);
+    }
+
+    final internalPath = segments.length > 1
+        ? segments.sublist(1).join(Platform.pathSeparator)
+        : '';
+    if (internalPath.isEmpty) return null;
+
+    if (categories.contains(rootName)) {
+      if (rootName != category) return null;
+      return path.join(root, internalPath);
+    }
+    return path.join(root, category, internalPath);
+  }
+
   bool _isMeloNXTitleId(String value) {
     final normalized = value.trim();
     return normalized.toLowerCase() != '0000000000000000' &&
@@ -509,7 +580,8 @@ extension NeoSyncPathResolver on NeoSyncProvider {
       if (v2Path.emulatorSlug == 'armsx2') {
         final root = ConfigService.linkedArmsx2SaveFolderPath;
         if (root != null && root.isNotEmpty) {
-          return [path.join(root, v2Path.filePath)];
+          final local = _resolveArmsx2CloudFileToLocal(root, v2Path.filePath);
+          return local == null ? [] : [local];
         }
       } else if (v2Path.emulatorSlug == 'melonx') {
         final root = ConfigService.linkedMelonxSaveFolderPath;

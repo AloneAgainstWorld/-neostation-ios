@@ -795,6 +795,53 @@ class NeoSyncContentState extends State<NeoSyncContent>
     super.dispose();
   }
 
+  List<_OnlineSaveGroup> _groupedOnlineSaves(NeoSyncProvider provider) {
+    final buckets = <String, List<NeoSyncFile>>{};
+    final labels = <String, String>{};
+
+    for (final file in provider.onlineFiles) {
+      final lowerPath = file.fileName.toLowerCase();
+      final isMeloNX =
+          lowerPath.startsWith('v2/saves/switch/melonx/game/') ||
+          lowerPath.startsWith('v2/states/switch/melonx/game/');
+      final isArmsx2Save = lowerPath.startsWith('v2/saves/ps2/armsx2/');
+      final isArmsx2State = lowerPath.startsWith('v2/states/ps2/armsx2/');
+
+      String key;
+      String label;
+      if (isMeloNX) {
+        label = file.gameName.trim().isNotEmpty
+            ? file.gameName.trim()
+            : _readableGameNameFromV2Path(file.fileName);
+        key = 'melonx:${label.toLowerCase()}';
+      } else if (isArmsx2Save || isArmsx2State) {
+        label = file.gameName.trim().isNotEmpty
+            ? file.gameName.trim()
+            : (isArmsx2State ? 'ARMSX2 Save States' : 'ARMSX2 Memory Cards');
+        key =
+            'armsx2:${isArmsx2State ? 'states' : 'saves'}:${label.toLowerCase()}';
+      } else {
+        label = file.id.startsWith('v1:')
+            ? '[V1] ${file.fileName}'
+            : file.fileName;
+        key = 'file:${file.id}';
+      }
+
+      buckets.putIfAbsent(key, () => <NeoSyncFile>[]).add(file);
+      labels[key] = label;
+    }
+
+    return [
+      for (final entry in buckets.entries)
+        _OnlineSaveGroup(files: entry.value, displayName: labels[entry.key]!),
+    ];
+  }
+
+  String _readableGameNameFromV2Path(String cloudPath) {
+    final parts = cloudPath.split('/');
+    return parts.length > 5 ? parts[5] : cloudPath;
+  }
+
   void _resetSelection() {
     if (!mounted) return;
 
@@ -808,10 +855,11 @@ class NeoSyncContentState extends State<NeoSyncContent>
       context,
       listen: false,
     );
-    if (neoSyncProvider.onlineFiles.isNotEmpty) {
+    final groups = _groupedOnlineSaves(neoSyncProvider);
+    if (groups.isNotEmpty) {
       final newIndex = _selectedSaveIndex > 0
           ? _selectedSaveIndex - 1
-          : neoSyncProvider.onlineFiles.length - 1;
+          : groups.length - 1;
       _updateSelectionIndex(newIndex);
     }
   }
@@ -821,9 +869,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
       context,
       listen: false,
     );
-    if (neoSyncProvider.onlineFiles.isNotEmpty) {
-      final newIndex =
-          (_selectedSaveIndex + 1) % neoSyncProvider.onlineFiles.length;
+    final groups = _groupedOnlineSaves(neoSyncProvider);
+    if (groups.isNotEmpty) {
+      final newIndex = (_selectedSaveIndex + 1) % groups.length;
       _updateSelectionIndex(newIndex);
     }
   }
@@ -856,21 +904,19 @@ class NeoSyncContentState extends State<NeoSyncContent>
       context,
       listen: false,
     );
-    if (neoSyncProvider.onlineFiles.isNotEmpty &&
-        _selectedSaveIndex < neoSyncProvider.onlineFiles.length) {
-      final selectedFile = neoSyncProvider.onlineFiles[_selectedSaveIndex];
+    final groups = _groupedOnlineSaves(neoSyncProvider);
+    if (groups.isNotEmpty && _selectedSaveIndex < groups.length) {
+      final selectedGroup = groups[_selectedSaveIndex];
+      final selectedFile = selectedGroup.primaryFile;
 
-      bool disableNeoSync = false; // Estado del checkbox, por defecto false
-
-      final confirmed = await _showDeleteDialog(selectedFile, (value) {
+      bool disableNeoSync = false;
+      final confirmed = await _showDeleteDialog(selectedGroup, (value) {
         disableNeoSync = value;
       });
 
       if (confirmed == true) {
-        // Si el usuario marcó el checkbox, desactivar NeoSync para este juego
         if (disableNeoSync) {
           try {
-            // Buscar el sistema y filename del juego usando el gameName
             final systemFolderName =
                 await GameRepository.getSystemFolderForGame(
                   selectedFile.gameName,
@@ -883,7 +929,6 @@ class NeoSyncContentState extends State<NeoSyncContent>
               );
             }
           } catch (e) {
-            // Mostrar error pero continuar con la eliminación
             if (!mounted) return;
             custom.AppNotification.showNotification(
               context,
@@ -893,23 +938,25 @@ class NeoSyncContentState extends State<NeoSyncContent>
           }
         }
 
-        final success = await neoSyncProvider.deleteOnlineFile(selectedFile.id);
+        var success = true;
+        for (final file in selectedGroup.files) {
+          final deleted = await neoSyncProvider.deleteOnlineFile(file.id);
+          if (!deleted) success = false;
+        }
+
         if (success) {
-          // Ajustar índice seleccionado si es necesario después de eliminar
-          final remainingFiles = neoSyncProvider.onlineFiles.length - 1;
-          if (_selectedSaveIndex >= remainingFiles && remainingFiles > 0) {
+          final remainingGroups = _groupedOnlineSaves(neoSyncProvider).length;
+          if (mounted) {
             setState(() {
-              _selectedSaveIndex = remainingFiles - 1;
-            });
-          } else if (remainingFiles == 0) {
-            setState(() {
-              _selectedSaveIndex = 0;
+              if (remainingGroups == 0) {
+                _selectedSaveIndex = 0;
+              } else if (_selectedSaveIndex >= remainingGroups) {
+                _selectedSaveIndex = remainingGroups - 1;
+              }
             });
           }
 
-          // Actualizar el quota después de eliminar el archivo
           await neoSyncProvider.loadQuota();
-          // Show success message
           if (!mounted) return;
           custom.AppNotification.showNotification(
             context,
@@ -917,7 +964,6 @@ class NeoSyncContentState extends State<NeoSyncContent>
             type: custom.NotificationType.success,
           );
         } else {
-          // Show error message
           if (!mounted) return;
           custom.AppNotification.showNotification(
             context,
@@ -926,11 +972,11 @@ class NeoSyncContentState extends State<NeoSyncContent>
           );
         }
       }
-    } else {}
+    }
   }
 
   Future<bool?> _showDeleteDialog(
-    NeoSyncFile file,
+    _OnlineSaveGroup group,
     Function(bool) onDisableNeoSyncChanged,
   ) async {
     // Desactivar navegación principal antes de mostrar el dialog
@@ -941,7 +987,7 @@ class NeoSyncContentState extends State<NeoSyncContent>
       barrierDismissible: false,
       builder: (BuildContext context) {
         return _DeleteCloudSaveDialog(
-          file: file,
+          file: group.displayFile,
           onDisableNeoSyncChanged: onDisableNeoSyncChanged,
         );
       },
@@ -1193,6 +1239,7 @@ class NeoSyncContentState extends State<NeoSyncContent>
   Widget _buildOnlineSavesColumn() {
     return Consumer<NeoSyncProvider>(
       builder: (context, neoSyncProvider, child) {
+        final groups = _groupedOnlineSaves(neoSyncProvider);
         return Container(
           padding: EdgeInsets.all(6.r),
           decoration: BoxDecoration(
@@ -1263,14 +1310,14 @@ class NeoSyncContentState extends State<NeoSyncContent>
               Expanded(
                 child: neoSyncProvider.isLoadingOnlineFiles
                     ? const Center(child: CircularProgressIndicator())
-                    : neoSyncProvider.onlineFiles.isEmpty
+                    : groups.isEmpty
                     ? _buildEmptyState(context)
                     : OnlineSavesListView(
                         key: _onlineSavesListKey,
-                        files: neoSyncProvider.onlineFiles,
+                        groups: groups,
                         selectedIndex: _selectedSaveIndex,
                         isNavigatingFast: _isNavigatingFast,
-                        onDeleteRequest: (file, index) async {
+                        onDeleteRequest: (group, index) async {
                           // This logic can be simplified but essentially it's the same
                           // we can trigger the deletion logic here or move it to a method
                           setState(() => _selectedSaveIndex = index);
@@ -2856,16 +2903,59 @@ class _ErrorDialogState extends State<_ErrorDialog> {
   }
 }
 
-class OnlineSavesListView extends StatefulWidget {
+class _OnlineSaveGroup {
   final List<NeoSyncFile> files;
+  final String displayName;
+
+  const _OnlineSaveGroup({required this.files, required this.displayName});
+
+  NeoSyncFile get primaryFile => files.first;
+  int get totalBytes => files.fold(0, (sum, file) => sum + file.fileSize);
+  DateTime get newestAt => files
+      .map((file) => file.uploadedAt)
+      .reduce((a, b) => a.isAfter(b) ? a : b);
+
+  String get sizeFormatted {
+    final bytes = totalBytes;
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  String get subtitle {
+    final date = newestAt.toLocal().toString().split(' ')[0];
+    return files.length > 1
+        ? '${files.length}× • $sizeFormatted • $date'
+        : '$sizeFormatted • $date';
+  }
+
+  NeoSyncFile get displayFile => NeoSyncFile(
+    id: primaryFile.id,
+    fileName: displayName,
+    filePath: primaryFile.filePath,
+    fileSize: totalBytes,
+    gameName: primaryFile.gameName,
+    uploadedAt: newestAt,
+    fileModifiedAt: primaryFile.fileModifiedAt,
+    fileModifiedAtTimestamp: primaryFile.fileModifiedAtTimestamp,
+    userId: primaryFile.userId,
+    checksum: primaryFile.checksum,
+  );
+}
+
+class OnlineSavesListView extends StatefulWidget {
+  final List<_OnlineSaveGroup> groups;
   final int selectedIndex;
-  final Function(NeoSyncFile, int) onDeleteRequest;
+  final Function(_OnlineSaveGroup, int) onDeleteRequest;
   final Function(int) onSelectionChanged;
   final bool isNavigatingFast;
 
   const OnlineSavesListView({
     super.key,
-    required this.files,
+    required this.groups,
     required this.selectedIndex,
     required this.onDeleteRequest,
     required this.onSelectionChanged,
@@ -2902,7 +2992,7 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
         _centeredScrollController.initialize(
           context: context,
           initialIndex: widget.selectedIndex,
-          totalItems: widget.files.length,
+          totalItems: widget.groups.length,
         );
         // Force scroll to index 0 on initial load to ensure highlight appears
         _centeredScrollController.scrollToIndex(
@@ -2917,8 +3007,8 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
   void didUpdateWidget(OnlineSavesListView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.files.length != widget.files.length) {
-      _centeredScrollController.updateTotalItems(widget.files.length);
+    if (oldWidget.groups.length != widget.groups.length) {
+      _centeredScrollController.updateTotalItems(widget.groups.length);
     }
 
     if (oldWidget.selectedIndex != widget.selectedIndex) {
@@ -3017,7 +3107,7 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
               key: ValueKey('online_saves_list_$rebuildCount'),
               controller: _centeredScrollController.scrollController,
               padding: EdgeInsets.symmetric(vertical: 4.r, horizontal: 4.w),
-              itemCount: widget.files.length,
+              itemCount: widget.groups.length,
               itemBuilder: (context, index) {
                 return GestureDetector(
                   onTap: () {
@@ -3026,7 +3116,7 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
                   },
                   child: _buildOnlineSaveItem(
                     context,
-                    widget.files[index],
+                    widget.groups[index],
                     index,
                   ),
                 );
@@ -3040,7 +3130,7 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
 
   Widget _buildOnlineSaveItem(
     BuildContext context,
-    NeoSyncFile file,
+    _OnlineSaveGroup group,
     int index,
   ) {
     final isSelected = index == widget.selectedIndex;
@@ -3102,9 +3192,7 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
                         ?.fontFamily,
                   ),
                   child: Text(
-                    file.id.startsWith('v1:')
-                        ? '[V1] ${file.fileName}'
-                        : file.fileName,
+                    group.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -3125,15 +3213,13 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
                         .bodySmall
                         ?.fontFamily,
                   ),
-                  child: Text(
-                    '${file.fileSizeFormatted} • ${file.uploadedAt.toLocal().toString().split(' ')[0]}',
-                  ),
+                  child: Text(group.subtitle),
                 ),
               ],
             ),
           ),
           IconButton(
-            onPressed: () => widget.onDeleteRequest(file, index),
+            onPressed: () => widget.onDeleteRequest(group, index),
             icon: Icon(
               Symbols.delete_rounded,
               color: isSelected

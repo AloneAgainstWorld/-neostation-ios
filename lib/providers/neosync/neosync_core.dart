@@ -688,6 +688,15 @@ extension NeoSyncCore on NeoSyncProvider {
         return false;
       }
 
+      final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
+      if (Platform.isIOS &&
+          system.folderName.toLowerCase() == 'ps2' &&
+          armsx2Root != null &&
+          armsx2Root.isNotEmpty &&
+          path.isWithin(armsx2Root, file.path)) {
+        return await _uploadArmsx2File(file, armsx2Root);
+      }
+
       // MeloNX on iOS stores saves below a Title-ID directory. Use that ID
       // only for local matching, while the cloud keeps the readable game name.
       final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
@@ -853,9 +862,16 @@ extension NeoSyncCore on NeoSyncProvider {
           bool isMatch = false;
 
           if (isSharedSystem) {
-            // Para sistemas compartidos, cualquier archivo de save/state válido es un match
-            // PS2: .ps2, DC: vmu_save
-            if (system.folderName == 'ps2' && fileName.endsWith('.ps2')) {
+            final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
+            if (Platform.isIOS &&
+                system.folderName.toLowerCase() == 'ps2' &&
+                armsx2Root != null &&
+                armsx2Root.isNotEmpty &&
+                path.isWithin(armsx2Root, file.path) &&
+                _resolveArmsx2FileForCloud(file, armsx2Root) != null) {
+              isMatch = true;
+            } else if (system.folderName == 'ps2' &&
+                fileName.endsWith('.ps2')) {
               isMatch = true;
             } else if (system.folderName == 'dc' &&
                 fileName.startsWith('vmu_save') &&
@@ -910,25 +926,36 @@ extension NeoSyncCore on NeoSyncProvider {
             }
 
             String relativePath;
-            final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
+            final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
             if (Platform.isIOS &&
-                system.folderName.toLowerCase() == 'switch' &&
-                melonxRoot != null &&
-                melonxRoot.isNotEmpty &&
-                path.isWithin(melonxRoot, file.path)) {
-              final melonx = await _resolveMeloNXFileForCloud(
-                file,
-                melonxRoot,
-                preferredGame: game,
-              );
-              if (melonx == null) continue;
-              relativePath = melonx.cloudPath;
+                system.folderName.toLowerCase() == 'ps2' &&
+                armsx2Root != null &&
+                armsx2Root.isNotEmpty &&
+                path.isWithin(armsx2Root, file.path)) {
+              final armsx2 = _resolveArmsx2FileForCloud(file, armsx2Root);
+              if (armsx2 == null) continue;
+              relativePath = armsx2.cloudPath;
             } else {
-              relativePath = _calculateRelativePath(
-                file,
-                basePath,
-                isState: isState,
-              );
+              final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
+              if (Platform.isIOS &&
+                  system.folderName.toLowerCase() == 'switch' &&
+                  melonxRoot != null &&
+                  melonxRoot.isNotEmpty &&
+                  path.isWithin(melonxRoot, file.path)) {
+                final melonx = await _resolveMeloNXFileForCloud(
+                  file,
+                  melonxRoot,
+                  preferredGame: game,
+                );
+                if (melonx == null) continue;
+                relativePath = melonx.cloudPath;
+              } else {
+                relativePath = _calculateRelativePath(
+                  file,
+                  basePath,
+                  isState: isState,
+                );
+              }
             }
 
             matchingFiles.add(
@@ -1002,7 +1029,12 @@ extension NeoSyncCore on NeoSyncProvider {
 
         if (isSharedSystem) {
           // Para sistemas compartidos, filtrar estrictamente por sistema
-          if (system.folderName == 'ps2' && fileName.endsWith('.ps2')) {
+          final parsed = CloudPathBuilder.parse(cloudFile.fileName);
+          if (system.folderName.toLowerCase() == 'ps2' &&
+              parsed?.emulatorSlug == 'armsx2' &&
+              parsed?.isShared == true) {
+            isMatch = true;
+          } else if (system.folderName == 'ps2' && fileName.endsWith('.ps2')) {
             isMatch = true;
           } else if (system.folderName == 'dc' &&
               fileName.startsWith('vmu_save') &&

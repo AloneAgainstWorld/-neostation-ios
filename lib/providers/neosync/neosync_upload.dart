@@ -37,17 +37,44 @@ extension NeoSyncUpload on NeoSyncProvider {
       }
 
       final customSaveFiles =
-          <({File file, String root, String system, String emulatorSlug})>[];
+          <
+            ({
+              File file,
+              String root,
+              String system,
+              String emulatorSlug,
+              bool isState,
+            })
+          >[];
       if (Platform.isIOS) {
         final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
         if (armsx2Root != null && Directory(armsx2Root).existsSync()) {
-          for (final file in await _getSaveFiles(armsx2Root)) {
-            customSaveFiles.add((
-              file: file,
-              root: armsx2Root,
-              system: 'ps2',
-              emulatorSlug: 'armsx2',
-            ));
+          const categories = <String>['memcards', 'savestates', 'sstates'];
+          final selectedName = path.basename(armsx2Root).toLowerCase();
+          final roots = <({String folder, String category})>[];
+
+          if (categories.contains(selectedName)) {
+            roots.add((folder: armsx2Root, category: selectedName));
+          } else {
+            for (final category in categories) {
+              final folder = path.join(armsx2Root, category);
+              if (Directory(folder).existsSync()) {
+                roots.add((folder: folder, category: category));
+              }
+            }
+          }
+
+          for (final rootInfo in roots) {
+            final isState = rootInfo.category != 'memcards';
+            for (final file in await _getSaveFiles(rootInfo.folder)) {
+              customSaveFiles.add((
+                file: file,
+                root: armsx2Root,
+                system: 'ps2',
+                emulatorSlug: 'armsx2',
+                isState: isState,
+              ));
+            }
           }
         }
         final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
@@ -58,6 +85,7 @@ extension NeoSyncUpload on NeoSyncProvider {
               root: melonxRoot,
               system: 'switch',
               emulatorSlug: 'melonx',
+              isState: false,
             ));
           }
         }
@@ -198,7 +226,7 @@ extension NeoSyncUpload on NeoSyncProvider {
         await _processAutoUploadFile(
           entry.file,
           entry.root,
-          isState: false,
+          isState: entry.isState,
           customSystem: entry.system,
           customEmulatorSlug: entry.emulatorSlug,
         );
@@ -282,6 +310,11 @@ extension NeoSyncUpload on NeoSyncProvider {
 
       if (isNandFile) {
         await _handleSwitchNandAutoUpload(file);
+        return;
+      }
+
+      if (customSystem == 'ps2' && customEmulatorSlug == 'armsx2') {
+        await _uploadArmsx2File(file, basePath);
         return;
       }
 
@@ -389,6 +422,46 @@ extension NeoSyncUpload on NeoSyncProvider {
         rethrow;
       }
     }
+  }
+
+  /// Uploads ARMSX2 memory cards and states from the three supported iOS
+  /// folders. The rest of the ARMSX2 root (BIOS, cache, covers, logs, etc.) is
+  /// deliberately excluded from NeoSync.
+  Future<bool> _uploadArmsx2File(File file, String root) async {
+    final resolved = _resolveArmsx2FileForCloud(file, root);
+    if (resolved == null) {
+      _skippedFiles++;
+      return false;
+    }
+
+    final result = await _neoSyncService.syncFile(
+      file,
+      resolved.gameName,
+      customFilename: resolved.cloudPath,
+      systemId: 'ps2',
+      emulatorId: 'armsx2',
+      isState: resolved.isState,
+      scope: 'shared',
+    );
+
+    if (result['success'] == true) {
+      if (result['skipped'] == true) {
+        _skippedFiles++;
+      } else {
+        _uploadedFiles++;
+        _resetQuotaAttempts();
+      }
+      _processedItems.add('NeoSync: ${resolved.gameName}');
+      return true;
+    }
+
+    final errorMessage = result['message']?.toString() ?? '';
+    _processedItems.add('Failed to upload ${resolved.gameName}: $errorMessage');
+    if (_checkQuotaExceeded(errorMessage)) {
+      _quotaExceededActive = true;
+      throw QuotaExceededException(errorMessage, _quotaExceededAttempts);
+    }
+    return false;
   }
 
   /// Uploads one MeloNX file using Title ID only to identify the local game.
