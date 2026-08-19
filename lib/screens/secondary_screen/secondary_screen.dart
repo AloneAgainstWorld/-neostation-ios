@@ -275,6 +275,7 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
       // Game selected, same video, but maybe mute changed
       if (_videoController != null && _videoController!.value.isInitialized) {
         _videoController!.setVolume(state.isVideoMuted ? 0.0 : 1.0);
+        AudioPolicyService().setVideoPlaybackActive(!state.isVideoMuted);
       }
     }
   }
@@ -583,6 +584,11 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
         return;
       }
 
+      // Unrelated clients (SFX, music) will skip their own native audio
+      // session reassertions while this is true, so their frequent calls
+      // stop resetting the shared audio unit under this video's audio track.
+      AudioPolicyService().setVideoPlaybackActive(!isMuted);
+
       setState(() {
         _videoController = controller;
         _showVideo = true;
@@ -604,6 +610,7 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
     _videoGeneration++;
     _videoTimer?.cancel();
     _videoTimer = null;
+    AudioPolicyService().setVideoPlaybackActive(false);
     if (_videoController != null) {
       final controller = _videoController!;
       _videoController = null;

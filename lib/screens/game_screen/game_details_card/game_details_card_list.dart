@@ -22,6 +22,7 @@ import '../../../services/screenscraper_service.dart';
 import '../../../services/game_service.dart';
 import '../../../services/android_service.dart';
 import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/audio_policy_service.dart';
 import 'package:neostation/widgets/custom_notification.dart';
 import '../../../models/secondary_display_state.dart';
 import 'widgets/game_details_footer.dart';
@@ -604,6 +605,10 @@ class _GameDetailsCardListState extends State<GameDetailsCardList>
         widget.videoController!.value.isInitialized &&
         !_isLoadingVideoConfig) {
       await widget.videoController!.setVolume(shouldBeMuted ? 0.0 : 1.0);
+      // Keep the shared audio-session gate (see AudioPolicyService) in sync
+      // with the audible state: SFX/music should be free to reassert the
+      // native session again as soon as this preview goes silent.
+      AudioPolicyService().setVideoPlaybackActive(!shouldBeMuted);
     }
   }
 

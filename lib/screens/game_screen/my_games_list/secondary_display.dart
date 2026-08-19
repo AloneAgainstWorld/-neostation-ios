@@ -49,6 +49,11 @@ extension _SecondaryDisplay on _SystemGamesListState {
     VideoPlayerController controller, {
     required String reason,
   }) async {
+    // This is the sole owner of the primary preview's audio track, so
+    // tearing it down always means no gameplay-preview audio is playing
+    // anymore (a replacement controller re-asserts this itself once it
+    // starts, see _initializeVideo).
+    AudioPolicyService().setVideoPlaybackActive(false);
     try {
       if (controller.value.isInitialized) {
         await controller.setVolume(0.0);
@@ -501,6 +506,13 @@ extension _SecondaryDisplay on _SystemGamesListState {
           await _disposeVideoController(controller, reason: 'stale-play');
           return;
         }
+
+        // From here on this controller owns the shared audio session's
+        // active audio track (when unmuted). Unrelated clients (SFX, music)
+        // will skip their own session reassertions until this is cleared, so
+        // their frequent native calls stop resetting the audio unit under
+        // the video's feet.
+        AudioPolicyService().setVideoPlaybackActive(config.videoSound);
 
         _videoController = controller;
         rebuild(() {

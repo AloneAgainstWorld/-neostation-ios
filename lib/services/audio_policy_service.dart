@@ -25,9 +25,15 @@ class AudioPolicyService with WidgetsBindingObserver {
   bool _initialized = false;
   Future<void> _serial = Future<void>.value();
   int _applicationCount = 0;
+  int _skippedWhileVideoCount = 0;
+
+  /// Whether a gameplay/preview video with an active audio track is
+  /// currently playing (see [setVideoPlaybackActive]).
+  bool _videoPlaybackActive = false;
 
   bool get isInitialized => _initialized;
   int get applicationCountForTesting => _applicationCount;
+  int get skippedWhileVideoCountForTesting => _skippedWhileVideoCount;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -36,12 +42,43 @@ class AudioPolicyService with WidgetsBindingObserver {
     await ensureSilentCompatibleSession(reason: 'application-start');
   }
 
+  /// Marks whether a gameplay/preview video with audible sound is currently
+  /// playing.
+  ///
+  /// Every video preview (game list, secondary display) calls this once
+  /// right after it starts/stops playback. While a video is active, calls to
+  /// [ensureSilentCompatibleSession] coming from unrelated audio clients
+  /// (SFX, music) are skipped instead of hitting the native side.
+  ///
+  /// This matters because `AVAudioSession.setCategory` /
+  /// `setActive(true)` reset the shared audio render/IO unit on iOS. Doing
+  /// that once per UI navigation sound (as SFX playback does, up to three
+  /// times per tap) while an `AVPlayer` is actively decoding the gameplay
+  /// video's audio track causes that track to crackle and, after enough
+  /// repeated resets, drop out entirely — even though the video image keeps
+  /// playing, since video and audio are independent pipelines in AVPlayer.
+  /// The video's own initialization call (reason containing `video`) is
+  /// never skipped, so its session configuration is still guaranteed.
+  void setVideoPlaybackActive(bool active) {
+    _videoPlaybackActive = active;
+  }
+
   /// Reasserts the single native session policy in a serialized queue.
   ///
   /// Serializing these calls matters because SoLoud asset loads and AVPlayer
   /// initialization can complete concurrently during rapid menu navigation.
   Future<void> ensureSilentCompatibleSession({required String reason}) {
     if (!Platform.isIOS) return Future<void>.value();
+
+    // Skip reassertions from clients other than the currently-playing video
+    // itself: see setVideoPlaybackActive for why this avoids audio glitches.
+    if (_videoPlaybackActive && !reason.contains('video')) {
+      _skippedWhileVideoCount++;
+      _log.d(
+        '[AudioPolicy] Skipped while video is playing: $reason',
+      );
+      return Future<void>.value();
+    }
 
     final completer = Completer<void>();
     _serial = _serial.catchError((Object _) {}).then((_) async {
