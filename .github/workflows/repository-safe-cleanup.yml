@@ -1,4 +1,4 @@
-name: Temporary safe repository cleanup
+name: Temporary repository cleanup verification
 
 on:
   push:
@@ -9,56 +9,19 @@ permissions:
   contents: write
 
 jobs:
-  apply-cleanup:
-    if: github.event.head_commit.message != 'Apply audited repository cleanup'
+  verify:
+    if: contains(github.event.head_commit.message, '[verify-cleanup]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Apply deterministic source cleanup
-        id: deterministic
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          python3 build-utils/repository_cleanup_runner_20260819.py > /tmp/cleanup-script.log 2>&1
-          code=$?
-          cat /tmp/cleanup-script.log
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Persist deterministic cleanup or its failure report
-        shell: bash
-        run: |
-          set -euo pipefail
-          code='${{ steps.deterministic.outputs.exit_code }}'
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if [ "$code" != '0' ]; then
-            cp /tmp/cleanup-script.log cleanup-executor-error.txt
-            git add cleanup-executor-error.txt
-            git commit -m 'Record cleanup executor failure'
-            git push origin HEAD:maintenance/final-repository-cleanup
-            exit 1
-          fi
-          git add -A
-          git diff --cached --check
-          git commit -m 'Apply deterministic repository cleanup'
-          git push origin HEAD:maintenance/final-repository-cleanup
-
-  verify-cleanup:
-    if: github.event.head_commit.message == 'Apply deterministic repository cleanup'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
+          ref: maintenance/final-repository-cleanup
           fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
       - name: Resolve dependencies and apply analyzer-safe fixes
         shell: bash
         run: |
@@ -69,46 +32,61 @@ jobs:
           if [ "${#dart_files[@]}" -gt 0 ]; then
             dart format "${dart_files[@]}"
           fi
+
       - name: Verify retired RPCS3 automation residue is gone
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RInE 'NeoStation\+RPCS3\+Start|rpcs3ShortcutName|openRpcs3ShortcutInstaller|openUrlAfterJitPreflight|openAppWithTwoPassJit|remove_rpcs3_shortcut_ui' lib test packages build-utils docs codemagic.yaml 2>/dev/null; then
+          if grep -RInE 'NeoStation\+RPCS3\+Start|rpcs3ShortcutName|openRpcs3ShortcutInstaller|openUrlAfterJitPreflight|openAppWithTwoPassJit|remove_rpcs3_shortcut_ui|RPCS3Core' lib test packages build-utils docs codemagic.yaml 2>/dev/null; then
+            echo 'Retired RPCS3 automation residue remains.' >&2
             exit 1
           fi
-      - name: Analyze and test
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test
-      - name: Commit analyzer-safe fixes and lockfile
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        run: flutter test
+
+      - name: Commit dependency lock and analyzer-safe fixes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
+          git diff --cached --check
           if ! git diff --cached --quiet; then
-            git diff --cached --check
-            git commit -m 'Apply audited repository cleanup'
-            git push origin HEAD:maintenance/final-repository-cleanup
+            git commit -m 'Apply analyzer-safe cleanup fixes'
           else
-            git commit --allow-empty -m 'Apply audited repository cleanup'
-            git push origin HEAD:maintenance/final-repository-cleanup
+            git commit --allow-empty -m 'Repository analysis and tests passed'
           fi
+          git push origin HEAD:maintenance/final-repository-cleanup
 
   ios-build:
-    if: github.event.head_commit.message == 'Apply audited repository cleanup'
+    needs: verify
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: maintenance/final-repository-cleanup
+          fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Fast-forward to verified branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin maintenance/final-repository-cleanup
+          git checkout maintenance/final-repository-cleanup
+          git reset --hard origin/maintenance/final-repository-cleanup
+
       - name: Resolve dependencies
         run: flutter pub get
+
       - name: Scaffold iOS platform
         shell: bash
         run: |
@@ -118,10 +96,22 @@ jobs:
           fi
           sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' ios/Runner.xcodeproj/project.pbxproj
+
       - name: CocoaPods
         shell: bash
         run: |
           cd ios
           pod install --repo-update
+
       - name: Compile iOS without signing
         run: flutter build ios --release --no-codesign
+
+      - name: Record successful iOS verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard origin/maintenance/final-repository-cleanup
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m 'iOS compile verification passed'
+          git push origin HEAD:maintenance/final-repository-cleanup
