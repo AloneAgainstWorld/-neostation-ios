@@ -7,11 +7,8 @@ workspace:
   - packages/external_folder_access
   - packages/flutter_7zip
   - packages/gamepads
-  - packages/gamepads_android
   - packages/gamepads_darwin
-  - packages/gamepads_linux
   - packages/gamepads_platform_interface
-  - packages/gamepads_windows
 
 version: 0.9.9+140
 environment:
@@ -72,25 +69,9 @@ dev_dependencies:
   flutter_launcher_icons: "^0.14.4"
 
 flutter_launcher_icons:
-  android: "launcher_icon"
   ios: true
   image_path: "assets/images/logo.png"
   image_path_ios: "assets/images/fork-icon-valid.jpg"
-  adaptive_icon_background: "assets/images/logo-background.png"
-  adaptive_icon_foreground: "assets/images/logo-foreground.png"
-  adaptive_icon_monochrome: "assets/images/logo-monochrome.png"
-  adaptive_icon_foreground_inset: 20
-  min_sdk_android: 21 # android min sdk min:16, default 21 
-  windows:
-    generate: true
-    image_path: "assets/images/logo.png"
-    icon_size: 48
-  macos:
-    generate: true
-    image_path: "assets/images/logo.png"
-  linux:
-    generate: true
-    image_path: "assets/images/logo.png"
 
 flutter:
   uses-material-design: true

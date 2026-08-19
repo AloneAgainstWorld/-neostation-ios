@@ -19,18 +19,34 @@ class GamepadsListener {
             object: nil
         )
 
-        // A controller may already be connected before Flutter registers this
-        // plugin. GCControllerDidConnect is not replayed for those devices, so
-        // relying on notifications alone leaves the app with an empty list and
-        // no valueChangedHandler until the user disconnects/reconnects the pad.
-        // Register the controllers iOS already knows about immediately.
-        for controller in GCController.controllers() {
-            register(controller)
-        }
+        // GCControllerDidConnect is not replayed for devices that were already
+        // connected before this listener was created. Seed the registry from
+        // the controllers iOS currently knows about, then let the plugin run
+        // additional delayed/foreground rescans to cover framework startup races.
+        rescanConnectedControllers()
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Synchronizes NeoStation's registry with GameController's current state.
+    ///
+    /// This is intentionally safe to call repeatedly. It catches controllers
+    /// connected before app launch, after Flutter plugin registration, and after
+    /// returning from an emulator or the background without duplicating handlers.
+    func rescanConnectedControllers() {
+        let controllers = GCController.controllers()
+        let connectedGamepads = controllers.compactMap { $0.extendedGamepad }
+
+        gamepads.removeAll { known in
+            !connectedGamepads.contains(where: { $0 == known })
+        }
+
+        for controller in controllers {
+            register(controller)
+        }
+        refreshPlayerIndices()
     }
 
     @objc private func joystickDidConnect(notification: NSNotification) {

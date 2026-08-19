@@ -2,28 +2,51 @@
 //
 // The GameController framework exposes stable logical elements (buttonA,
 // dpad, leftThumbstick, ...). Presentation-only SF Symbol names are not an
-// input protocol and are not the names understood by NeoStation's cross-platform
-// translator. Emit the same canonical logical names used by the Windows
-// GameInput backend instead.
+// input protocol and are not the names understood by NeoStation's input
+// translator, so this bridge emits stable logical names.
 import UIKit
 import GameController
 import Flutter
 
 public class GamepadsIosPlugin: NSObject, FlutterPlugin {
     let channel: FlutterMethodChannel
-    let gamepads = GamepadsListener()
+    private lazy var gamepads = GamepadsListener()
 
     init(channel: FlutterMethodChannel) {
         self.channel = channel
         super.init()
 
-        self.gamepads.listener = onGamepadEvent
-
-        // Keep physical MFi/Bluetooth controllers monitored consistently when
-        // NeoStation temporarily loses the foreground during emulator launches.
+        // Configure GameController before the listener is instantiated. The
+        // listener is lazy so controllers that existed before app launch are
+        // seeded only after this policy is active.
         if #available(iOS 14.5, *) {
             GCController.shouldMonitorBackgroundEvents = true
         }
+
+        self.gamepads.listener = { [weak self] gamepadId, gamepad, element in
+            self?.onGamepadEvent(
+                gamepadId: gamepadId,
+                gamepad: gamepad,
+                element: element
+            )
+        }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+
+        // GameController can populate GCController.controllers() just after
+        // Flutter plugin registration on a cold launch. Rescan on the next run
+        // loop and twice more shortly afterwards so a pad that was already on
+        // before NeoStation launched is not missed by that race.
+        scheduleStartupRescans()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -38,9 +61,32 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "listGamepads":
+            // A Dart-side refresh should always reflect the native framework's
+            // current controller list, even if iOS did not deliver a connection
+            // notification while NeoStation was launching or inactive.
+            gamepads.rescanConnectedControllers()
             result(listGamepads())
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+
+    @objc private func applicationDidBecomeActive() {
+        gamepads.rescanConnectedControllers()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.gamepads.rescanConnectedControllers()
+        }
+    }
+
+    private func scheduleStartupRescans() {
+        DispatchQueue.main.async { [weak self] in
+            self?.gamepads.rescanConnectedControllers()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.gamepads.rescanConnectedControllers()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.gamepads.rescanConnectedControllers()
         }
     }
 

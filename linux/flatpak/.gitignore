@@ -1,9 +1,0 @@
-# Flatpak build artifacts
-build-dir/
-repo/
-.flatpak-builder/
-*.flatpak
-*.flatpakref
-
-# Generated icons
-icons/

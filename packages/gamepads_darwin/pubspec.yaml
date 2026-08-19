@@ -1,6 +1,6 @@
 name: gamepads_darwin
 resolution: workspace
-description: MacOS implementation of gamepads, a Flutter plugin to handle gamepad input across multiple platforms.
+description: iOS implementation of gamepads for NeoStation.
 version: 0.1.2+2
 publish_to: none
 
@@ -10,8 +10,6 @@ flutter:
     platforms:
       ios:
         pluginClass: GamepadsIosPlugin
-      macos:
-        pluginClass: GamepadsDarwinPlugin
 
 environment:
   sdk: ">=3.9.0 <4.0.0"
