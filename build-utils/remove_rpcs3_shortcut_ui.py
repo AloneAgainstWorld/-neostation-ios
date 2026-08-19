@@ -24,6 +24,10 @@ old_end = section.rfind(old_end_marker)
 if old_end < 0 or old_end <= old_start:
     raise SystemExit("RPCS3 trailing action end marker not found")
 
+# Consume only the closing line of the old trailingAction Row. Keep the
+# enclosing _buildIOSEmulatorCard close and method close untouched.
+old_end += len("      ),\n")
+
 replacement = """      trailingAction: SizedBox(
         height: 48.r,
         child: FilledButton.icon(
@@ -42,6 +46,8 @@ replacement = """      trailingAction: SizedBox(
 new_section = section[:old_start] + replacement + section[old_end:]
 if "onPressed: _configureRpcs3Launch" in new_section:
     raise SystemExit("RPCS3 Shortcut button survived the patch")
+if "onPressed: !isLinked ? null : _syncWithRpcs3" not in new_section:
+    raise SystemExit("RPCS3 sync button was not preserved")
 
 text = text[:section_start] + new_section + text[section_end:]
 path.write_text(text, encoding="utf-8")
