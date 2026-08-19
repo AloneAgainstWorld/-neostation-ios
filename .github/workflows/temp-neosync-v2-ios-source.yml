@@ -64,6 +64,22 @@ jobs:
       - name: Apply source port
         run: python3 build-utils/patch_neosync_v2_ios_preview.py
 
+      - name: Fix existing async-list lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/providers/neosync/neosync_path_resolver.dart')
+          s = p.read_text(encoding='utf-8')
+          old = "      return dir\n          .list(recursive: true)"
+          new = "      return await dir\n          .list(recursive: true)"
+          if old in s:
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          elif new not in s:
+              raise SystemExit('Async save-list return not found')
+          PY
+
       - name: Format changed Dart files
         run: |
           dart format \
@@ -115,8 +131,7 @@ jobs:
             lib/repositories/game_repository.dart
 
       - name: Run focused tests
-        run: |
-          flutter test test/game_repository_test.dart
+        run: flutter test test/game_repository_test.dart
 
       - name: Commit validated source
         shell: bash
