@@ -688,6 +688,18 @@ extension NeoSyncCore on NeoSyncProvider {
         return false;
       }
 
+      // MeloNX on iOS stores saves below a Title-ID directory. Use that ID
+      // only for local matching, while the cloud keeps the readable game name.
+      final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
+      if (Platform.isIOS &&
+          system.folderName.toLowerCase() == 'switch' &&
+          melonxRoot != null &&
+          melonxRoot.isNotEmpty &&
+          (path.isWithin(melonxRoot, file.path) ||
+              path.equals(file.parent.path, melonxRoot))) {
+        return await _uploadMeloNXFile(file, melonxRoot, preferredGame: game);
+      }
+
       // 2. Determinar la ruta relativa de manera universal
       final savesPath = await _getRetroArchSavesPath();
       final statesPath = await _getRetroArchStatesPath();
@@ -897,11 +909,27 @@ extension NeoSyncCore on NeoSyncProvider {
               isState = false;
             }
 
-            final relativePath = _calculateRelativePath(
-              file,
-              basePath,
-              isState: isState,
-            );
+            String relativePath;
+            final melonxRoot = ConfigService.linkedMelonxSaveFolderPath;
+            if (Platform.isIOS &&
+                system.folderName.toLowerCase() == 'switch' &&
+                melonxRoot != null &&
+                melonxRoot.isNotEmpty &&
+                path.isWithin(melonxRoot, file.path)) {
+              final melonx = await _resolveMeloNXFileForCloud(
+                file,
+                melonxRoot,
+                preferredGame: game,
+              );
+              if (melonx == null) continue;
+              relativePath = melonx.cloudPath;
+            } else {
+              relativePath = _calculateRelativePath(
+                file,
+                basePath,
+                isState: isState,
+              );
+            }
 
             matchingFiles.add(
               LocalSaveFile(
@@ -982,14 +1010,32 @@ extension NeoSyncCore on NeoSyncProvider {
             isMatch = true;
           }
         } else {
-          // Para sistemas estándar, filtrar por romname
-          // Usamos la ruta completa del cloudFile por si está en carpetas (ej. Switch)
+          final parsed = CloudPathBuilder.parse(cloudFile.fileName);
+          if (system.folderName.toLowerCase() == 'switch' &&
+              parsed?.emulatorSlug == 'melonx' &&
+              parsed?.gameName != null) {
+            final expectedNames = <String>{
+              CloudPathBuilder.sanitizeGameName(game.name).toLowerCase(),
+              if (game.titleName != null && game.titleName!.trim().isNotEmpty)
+                CloudPathBuilder.sanitizeGameName(game.titleName!)
+                    .toLowerCase(),
+            };
+            final cloudGameName = parsed!.gameName!.toLowerCase();
+            if (expectedNames.contains(cloudGameName) ||
+                cloudFile.gameName.toLowerCase() == game.name.toLowerCase()) {
+              isMatch = true;
+            }
+          }
+
+          // Para sistemas estándar, filtrar por romname cuando no haya match v2.
+          // Usamos la ruta completa del cloudFile por si está en carpetas.
           final fullCloudPathLower = cloudFile.fileName.toLowerCase();
 
-          if (fileName.contains(gameRomName) ||
-              fullCloudPathLower.contains(gameRomName)) {
+          if (!isMatch &&
+              (fileName.contains(gameRomName) ||
+                  fullCloudPathLower.contains(gameRomName))) {
             isMatch = true;
-          } else {
+          } else if (!isMatch) {
             // Comparación flexible en toda la ruta
             final normalizedCloudPath = fullCloudPathLower.replaceAll(
               RegExp(r'[^\w\s\/]'),

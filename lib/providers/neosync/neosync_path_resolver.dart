@@ -197,6 +197,156 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     return [];
   }
 
+  bool _isMeloNXTitleId(String value) =>
+      RegExp(r'^[0-9a-fA-F]{16}$').hasMatch(value.trim());
+
+  /// Extracts the Switch Title ID from a MeloNX save path while preserving the
+  /// path *inside* that game's save directory. The Title ID is a local lookup
+  /// key only and is never used as the NeoSync-visible game name.
+  ({String titleId, String internalPath})? _parseMeloNXSaveLocation(
+    File file,
+    String root,
+  ) {
+    final relative = path.relative(file.path, from: root).replaceAll('\\', '/');
+    if (relative == '..' || relative.startsWith('../')) return null;
+
+    final segments = relative
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (segments.isEmpty) return null;
+
+    var titleIndex = -1;
+    final saveIndex = segments.indexWhere(
+      (part) => part.toLowerCase() == 'save',
+    );
+    if (saveIndex >= 0) {
+      for (var i = saveIndex + 1; i < segments.length; i++) {
+        if (_isMeloNXTitleId(segments[i])) {
+          titleIndex = i;
+          break;
+        }
+      }
+    }
+    if (titleIndex < 0) {
+      titleIndex = segments.indexWhere(_isMeloNXTitleId);
+    }
+    if (titleIndex < 0 || titleIndex + 1 >= segments.length) return null;
+
+    return (
+      titleId: segments[titleIndex],
+      internalPath: segments.sublist(titleIndex + 1).join('/'),
+    );
+  }
+
+  Future<String?> _meloNXTitleIdForGame(GameModel game) async {
+    var titleId = game.titleId?.trim();
+    if (titleId == null || titleId.isEmpty) {
+      titleId = await GameRepository.getTitleIdForGame(game.romname, game.name);
+    }
+    if (titleId == null || !_isMeloNXTitleId(titleId)) return null;
+    return titleId;
+  }
+
+  /// Builds the canonical NeoSync v2 path for a MeloNX file. The Title ID is
+  /// deliberately removed from the cloud path; NeoSync shows the game title.
+  Future<({String cloudPath, String gameName, String titleId})?>
+  _resolveMeloNXFileForCloud(
+    File file,
+    String root, {
+    GameModel? preferredGame,
+  }) async {
+    final location = _parseMeloNXSaveLocation(file, root);
+    if (location == null) return null;
+
+    String? gameName;
+    String? preferredTitleId;
+    if (preferredGame != null) {
+      preferredTitleId = await _meloNXTitleIdForGame(preferredGame);
+    }
+    if (preferredGame != null &&
+        preferredTitleId != null &&
+        preferredTitleId.toLowerCase() == location.titleId.toLowerCase()) {
+      gameName = preferredGame.name.trim();
+    }
+
+    if (gameName == null || gameName.isEmpty) {
+      final row = await GameRepository.findSwitchGameByTitleId(
+        location.titleId,
+      );
+      if (row == null) return null;
+      final title = row['title_name']?.toString().trim() ?? '';
+      final filename = row['filename']?.toString().trim() ?? '';
+      gameName = title.isNotEmpty
+          ? title
+          : path.basenameWithoutExtension(filename);
+    }
+    if (gameName.isEmpty) return null;
+
+    final cloudPath = CloudPathBuilder.build(
+      system: 'switch',
+      emulatorSlug: 'melonx',
+      scope: 'game',
+      gameName: gameName,
+      filePath: location.internalPath,
+      isState: false,
+    );
+    return (
+      cloudPath: cloudPath,
+      gameName: gameName,
+      titleId: location.titleId,
+    );
+  }
+
+  /// Finds the local MeloNX save directory for a game. Existing Title-ID
+  /// directories are preferred. If the game directory does not exist yet, use
+  /// the standard bis/user/save/... structure only when its user root already
+  /// exists, avoiding creation of guessed account directories.
+  String? _resolveMeloNXGameSaveDirectory(
+    String root,
+    String titleId, {
+    bool allowCreate = false,
+  }) {
+    final rootDir = Directory(root);
+    if (!rootDir.existsSync()) return null;
+
+    try {
+      for (final entity in rootDir.listSync(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is Directory &&
+            path.basename(entity.path).toLowerCase() == titleId.toLowerCase()) {
+          return entity.path;
+        }
+      }
+    } catch (e) {
+      NeoSyncProvider._log.w('Could not scan MeloNX save tree: $e');
+    }
+
+    if (!allowCreate) return null;
+
+    var bisRoot = root;
+    if (path.basename(root).toLowerCase() != 'bis') {
+      final nestedBis = path.join(root, 'bis');
+      if (Directory(nestedBis).existsSync()) bisRoot = nestedBis;
+    }
+
+    final saveBase = path.join(bisRoot, 'user', 'save', '0000000000000000');
+    final saveBaseDir = Directory(saveBase);
+    if (!saveBaseDir.existsSync()) return null;
+
+    try {
+      final userDirs = saveBaseDir
+          .listSync(followLinks: false)
+          .whereType<Directory>();
+      if (userDirs.isEmpty) return null;
+      return path.join(userDirs.first.path, titleId);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Resolves a local save file back to its library game.
   Future<GameModel?> _gameForSaveFile(File file) async {
     final saveBase = path.basenameWithoutExtension(file.path);
@@ -361,7 +511,15 @@ extension NeoSyncPathResolver on NeoSyncProvider {
       } else if (v2Path.emulatorSlug == 'melonx') {
         final root = ConfigService.linkedMelonxSaveFolderPath;
         if (root != null && root.isNotEmpty) {
-          return [path.join(root, v2Path.filePath)];
+          final titleId = await _meloNXTitleIdForGame(game);
+          if (titleId == null) return [];
+          final gameSaveRoot = _resolveMeloNXGameSaveDirectory(
+            root,
+            titleId,
+            allowCreate: true,
+          );
+          if (gameSaveRoot == null) return [];
+          return [path.join(gameSaveRoot, v2Path.filePath)];
         }
       }
     }

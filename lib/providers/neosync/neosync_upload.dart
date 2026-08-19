@@ -285,6 +285,11 @@ extension NeoSyncUpload on NeoSyncProvider {
         return;
       }
 
+      if (customSystem == 'switch' && customEmulatorSlug == 'melonx') {
+        await _uploadMeloNXFile(file, basePath);
+        return;
+      }
+
       if (customSystem != null && customEmulatorSlug != null) {
         final relativeFile = path
             .relative(file.path, from: basePath)
@@ -384,6 +389,53 @@ extension NeoSyncUpload on NeoSyncProvider {
         rethrow;
       }
     }
+  }
+
+  /// Uploads one MeloNX file using Title ID only to identify the local game.
+  /// The NeoSync-visible path and game_name use the human-readable game title.
+  Future<bool> _uploadMeloNXFile(
+    File file,
+    String root, {
+    GameModel? preferredGame,
+  }) async {
+    final resolved = await _resolveMeloNXFileForCloud(
+      file,
+      root,
+      preferredGame: preferredGame,
+    );
+    if (resolved == null) {
+      _skippedFiles++;
+      return false;
+    }
+
+    final result = await _neoSyncService.syncFile(
+      file,
+      resolved.gameName,
+      customFilename: resolved.cloudPath,
+      systemId: 'switch',
+      emulatorId: 'melonx',
+      isState: false,
+      scope: 'game',
+    );
+
+    if (result['success'] == true) {
+      if (result['skipped'] == true) {
+        _skippedFiles++;
+      } else {
+        _uploadedFiles++;
+        _resetQuotaAttempts();
+      }
+      _processedItems.add('NeoSync: ${resolved.gameName}');
+      return true;
+    }
+
+    final errorMessage = result['message']?.toString() ?? '';
+    _processedItems.add('Failed to upload ${resolved.gameName}: $errorMessage');
+    if (_checkQuotaExceeded(errorMessage)) {
+      _quotaExceededActive = true;
+      throw QuotaExceededException(errorMessage, _quotaExceededAttempts);
+    }
+    return false;
   }
 
   /// Maneja la subida automática de archivos de Switch NAND

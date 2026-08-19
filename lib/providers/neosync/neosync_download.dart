@@ -137,6 +137,42 @@ extension NeoSyncDownload on NeoSyncProvider {
   /// Helper para encontrar el juego de un archivo de nube
   Future<GameModel?> _findGameForCloudFile(NeoSyncFile cloudFile) async {
     final v2Path = CloudPathBuilder.parse(cloudFile.fileName);
+    if (v2Path != null &&
+        v2Path.emulatorSlug == 'melonx' &&
+        v2Path.gameName != null) {
+      final displayName = cloudFile.gameName.trim().isNotEmpty
+          ? cloudFile.gameName.trim()
+          : v2Path.gameName!;
+      try {
+        final row = await GameRepository.findSwitchGameByName(displayName);
+        if (row != null) {
+          final romname = row['filename'].toString();
+          final title = row['title_name']?.toString();
+          final titleId = row['title_id']?.toString();
+          final romPath = row['rom_path']?.toString();
+          return GameModel(
+            name: (title == null || title.isEmpty) ? displayName : title,
+            realname: (title == null || title.isEmpty) ? displayName : title,
+            romname: romname,
+            romPath: romPath,
+            titleName: title,
+            systemFolderName: 'switch',
+            systemId: 'switch',
+            year: '',
+            developer: '',
+            publisher: '',
+            genre: '',
+            players: '',
+            rating: 0.0,
+          ).copyWith(titleId: titleId);
+        }
+      } catch (e) {
+        NeoSyncProvider._log.w(
+          'Could not map MeloNX cloud save by game name: $e',
+        );
+      }
+    }
+
     if (v2Path != null && !v2Path.isShared) {
       final saveBase = path.basenameWithoutExtension(v2Path.filePath);
       try {
