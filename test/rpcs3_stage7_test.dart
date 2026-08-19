@@ -22,25 +22,20 @@ void main() {
     expect(resolved.hasMeaningfulScrapedName, isFalse);
   });
 
-  test('RPCS3 launch foregrounds the app after Universal JIT', () {
+  test('RPCS3 launch uses the basic Universal JIT handoff', () {
     final service = File(
       'lib/services/rpcs3_launch_service.dart',
     ).readAsStringSync();
-    expect(service, contains('openAppAfterJitPreflight'));
+    expect(service, contains('openJitRequest'));
     expect(service, contains("scriptName: 'universal.js'"));
-    expect(service, contains('_rpcs3WarmupDelay'));
-    expect(service, contains('rpcs3_automation_launch_debug.txt'));
+    expect(service, contains('rpcs3_launch_debug.txt'));
+    expect(service, isNot(contains('openAppAfterJitPreflight')));
+    expect(service, isNot(contains('openUrlAfterJitPreflight')));
     expect(service, isNot(contains('buildRunUri')));
     expect(service, isNot(contains('rpcs3ShortcutName')));
-    expect(service, isNot(contains('openUrlAfterJitPreflight(')));
-    expect(service, isNot(contains('openJitRequest')));
-    expect(service, isNot(contains('rpcs3_stikdebug_launch.js')));
-    expect(service, isNot(contains('bootGameOffset')));
-    expect(service, isNot(contains('expectedCoreUuid')));
-    expect(service, isNot(contains('SECOND_PASS')));
   });
 
-  test('RPCS3 Shortcut setup keeps the exact helper name', () {
+  test('RPCS3 experimental Shortcut helper keeps its historical name', () {
     expect(
       IosShortcutJitLaunchService.rpcs3ShortcutName,
       'NeoStation+RPCS3+Start',
@@ -51,22 +46,15 @@ void main() {
     ).readAsStringSync();
     expect(shortcutService, contains('shortcuts://create-shortcut'));
     expect(shortcutService, contains('openRpcs3ShortcutInstaller'));
-    expect(shortcutService, contains('Personal Automation'));
   });
 
-  test('RPCS3 Switch Control documentation requires app-open automation', () {
+  test('RPCS3 documentation describes the stable basic launch', () {
     final doc = File(
       'docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md',
     ).readAsStringSync();
-    expect(doc, contains('NeoStation+RPCS3+Start'));
-    expect(doc, contains('NeoStation RPCS3'));
-    expect(doc, contains('Full Screen'));
-    expect(doc, contains('Personal Automation'));
-    expect(doc, contains('Run Immediately'));
-    expect(doc, contains('Do **not** add **Open App -> RPCS3**'));
-  });
-
-  test('obsolete RPCS3 direct injection asset is removed', () {
-    expect(File('assets/data/rpcs3_stikdebug_launch.js').existsSync(), isFalse);
+    expect(doc, contains('stable basic launch'));
+    expect(doc, contains('RPCS3 handles Start and game selection'));
+    expect(doc, contains('disabled or removed'));
+    expect(doc, contains('deep link'));
   });
 }
