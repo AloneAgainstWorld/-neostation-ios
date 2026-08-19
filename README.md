@@ -63,11 +63,7 @@ Current expected flow:
 NeoStation -> StikDebug / universal.js -> RPCS3 -> Start / Commencer -> select the game in RPCS3
 ```
 
-The previously tested `NeoStation+RPCS3+Start` Shortcut / Switch Control automation is considered **experimental and retired from the normal launch path** because it was not reliable enough on iOS 27. Existing personal automations for RPCS3 can be disabled or removed without affecting NeoStation's standard RPCS3 integration.
-
 At present, the integrated RPCS3 iOS build does not expose a supported deep link, App Intent or equivalent public direct-launch interface for opening a specific PS3 title from NeoStation. Direct game launch can be revisited when RPCS3, another iOS PS3 emulator, or a future compatible build exposes a reliable public launch mechanism.
-
-See [`docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md`](docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md) for the current status and historical automation notes.
 
 ## Build from source
 

@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
-/// Localized copy for the experimental RPCS3 iOS library integration.
+/// Localized copy for the RPCS3 iOS library integration.
 abstract final class Rpcs3LibraryLocale {
   static const Map<String, String> _needsLink = {
     'de': 'Verknüpfe den RPCS3-Ordner „Data“, um die installierte PS3-Bibliothek zu importieren.',

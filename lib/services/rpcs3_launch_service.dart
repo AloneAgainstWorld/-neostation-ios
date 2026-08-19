@@ -5,15 +5,8 @@ import 'package:neostation/services/logger_service.dart';
 
 /// Stable RPCS3 iOS launcher.
 ///
-/// NeoStation only performs the proven first-stage JIT handoff through
-/// StikDebug. It does not schedule a delayed app foreground, invoke an Apple
-/// Shortcut, depend on a Personal Automation, inject a second script,
-/// fingerprint RPCS3Core, or call an internal RPCS3 boot function.
-///
-/// RPCS3 remains responsible for its native Start/Commencer screen and game
-/// selection. This is deliberately the conservative fallback until RPCS3 (or
-/// another PS3 emulator) exposes a supported deep link/App Intent/direct-launch
-/// interface that NeoStation can call reliably.
+/// NeoStation requests StikDebug Universal JIT for RPCS3, then leaves RPCS3
+/// responsible for its native Start/Commencer screen and game selection.
 abstract final class Rpcs3LaunchService {
   static const String targetBundleId = 'com.xitrix.RPCS3';
 
@@ -25,17 +18,13 @@ abstract final class Rpcs3LaunchService {
     return _titleIdPattern.hasMatch(titleId) ? titleId : null;
   }
 
-  /// Kept as a no-op compatibility hook because older application startup
-  /// code calls [initialize]. There is intentionally no lifecycle observer
-  /// anymore: the old second-pass/direct-automation experiments are retired.
+  /// Compatibility hook used by application startup.
   static Future<void> initialize() async {}
 
-  /// Opens StikDebug with its normal Universal JIT request for RPCS3.
+  /// Opens StikDebug with its Universal JIT request for RPCS3.
   ///
-  /// [displayTitle], [sourcePath], and [sourceKind] remain accepted so existing
-  /// callers do not need special cases, but they are not injected into RPCS3.
-  /// The selected Title ID is validated only for diagnostics/session tracking;
-  /// RPCS3 itself remains responsible for pressing Start and choosing the game.
+  /// [displayTitle], [sourcePath], and [sourceKind] are retained for diagnostics
+  /// and compatibility with existing callers. RPCS3 performs game selection.
   static Future<bool> launchTitle(
     String? rawTitleId, {
     String? displayTitle,

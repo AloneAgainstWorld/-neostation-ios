@@ -16,11 +16,6 @@ class IosShortcutJitLaunchService {
   static const String melonxShortcutName = 'NeoStation+MeloNX+JIT';
   static const String armsx2ShortcutName = 'NeoStation+ARMSX2+JIT';
 
-  /// Historical RPCS3 helper name retained for backwards compatibility with
-  /// users who already created the experimental Shortcut. The stable RPCS3
-  /// launch path does not invoke it and does not depend on a Personal Automation.
-  static const String rpcs3ShortcutName = 'NeoStation+RPCS3+Start';
-
   /// One-time installer for the exact NeoStation MeloNX launch Shortcut.
   static const String _melonxShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/84b9d0fbdd714c6c9596ba2e3c699031';
@@ -29,21 +24,12 @@ class IosShortcutJitLaunchService {
   static const String _armsx2ShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/1419632b150747f5bcd7b9bc65e36114';
 
-  /// RPCS3 intentionally has no shared iCloud installer.
-  ///
-  /// The Switch Control/Personal Automation experiment was not reliable enough
-  /// on iOS 27 to remain in the normal launch path. This empty installer value
-  /// is retained only so older setup UI/code remains source-compatible.
-  static const String _rpcs3ShortcutInstallUrl = '';
-
   static bool get hasMeloNXShortcutInstaller =>
       _melonxShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
 
   static bool get hasArmsx2ShortcutInstaller =>
       _armsx2ShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
 
-  static bool get hasRpcs3ShortcutInstaller =>
-      _rpcs3ShortcutInstallUrl.startsWith('https://www.icloud.com/shortcuts/');
 
   /// Opens the shared ARMSX2 launch Shortcut. While the iCloud sharing link
   /// is not configured yet, fall back to Apple's official create-shortcut URL.
@@ -75,26 +61,6 @@ class IosShortcutJitLaunchService {
       _log.e(
         'IosShortcutJitLaunchService: failed to open MeloNX installer: $e',
       );
-      return false;
-    }
-  }
-
-  /// Opens the historical RPCS3 Shortcut setup entry point.
-  ///
-  /// This exists only for compatibility with the previous experiment. The
-  /// stable RPCS3 path uses StikDebug Universal JIT and then leaves Start/game
-  /// selection to RPCS3 itself.
-  static Future<bool> openRpcs3ShortcutInstaller() async {
-    if (!Platform.isIOS) return false;
-
-    final target = hasRpcs3ShortcutInstaller
-        ? Uri.parse(_rpcs3ShortcutInstallUrl)
-        : Uri.parse('shortcuts://create-shortcut');
-
-    try {
-      return await launchUrl(target, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      _log.e('IosShortcutJitLaunchService: failed to open RPCS3 setup: $e');
       return false;
     }
   }

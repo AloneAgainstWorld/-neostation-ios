@@ -602,18 +602,6 @@ class DirectoriesSettingsContentState
     );
   }
 
-  Future<void> _configureRpcs3Launch() async {
-    final opened =
-        await IosShortcutJitLaunchService.openRpcs3ShortcutInstaller();
-    if (!mounted || opened) return;
-
-    AppNotification.showNotification(
-      context,
-      AppLocale.shortcutSetupOpenError.getString(context),
-      type: NotificationType.error,
-    );
-  }
-
   Future<void> _linkRpcs3DataFolder() async {
     if (_linkingFolderKey != null) return;
 
@@ -753,40 +741,13 @@ class DirectoriesSettingsContentState
       bookmarkKey: Rpcs3LibraryService.bookmarkKey,
       successMessage: '',
       onLinkPressed: _linkRpcs3DataFolder,
-      trailingAction: Row(
-        children: [
-          Expanded(
-            child: SizedBox(
-              height: 48.r,
-              child: FilledButton.icon(
-                onPressed: !isLinked ? null : _syncWithRpcs3,
-                icon: Icon(Symbols.sync_rounded, size: 20.r),
-                label: Text(
-                  hasSynced
-                      ? AppLocale.iosEmuResync.getString(context)
-                      : AppLocale.iosEmuSync.getString(context),
-                  style: TextStyle(fontSize: 14.r),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(width: 10.r),
-          Expanded(
-            child: SizedBox(
-              height: 48.r,
-              child: OutlinedButton.icon(
-                onPressed: _configureRpcs3Launch,
-                icon: Icon(Symbols.rocket_launch_rounded, size: 20.r),
-                label: Text(
-                  AppLocale.configureLaunch.getString(context),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13.r),
-                ),
-              ),
-            ),
-          ),
-        ],
+      trailingAction: SizedBox(
+        height: 32,
+        child: OutlinedButton.icon(
+          onPressed: _linkingFolderKey == null ? _syncWithRpcs3 : null,
+          icon: const Icon(Symbols.sync_rounded, size: 16),
+          label: Text(Rpcs3LibraryLocale.sync(context)),
+        ),
       ),
     );
   }

@@ -50,7 +50,6 @@ dependencies:
   web_socket_channel: ^3.0.3
   url_launcher: ^6.3.2
   share_plus: ^13.0.0
-  widget_mask: ^1.0.0
   flutter_screenutil: 5.9.3
   window_manager: ^0.5.2
   permission_handler: ^12.0.3
@@ -65,7 +64,6 @@ dependencies:
   audio_metadata_reader: ^1.7.1
   wakelock_plus: ^1.7.0
   flutter_localization: ^0.4.1
-  flutter_tilt: ^4.1.0
   pdfrx: ^2.4.6
 
 dev_dependencies:
@@ -73,7 +71,6 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: "^0.14.4"
-  mocktail: ^1.0.5
 
 flutter_launcher_icons:
   android: "launcher_icon"
