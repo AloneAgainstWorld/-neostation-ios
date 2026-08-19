@@ -28,6 +28,20 @@ replace_once(
     '''  Future<void> detectGameSaveFiles(GameModel game) async {\n    // A shared PS2/DC card may have changed since the previous game session.\n    // Never carry the processed marker across independent detections.\n    _processedMultiEmulatorFilesInSession.clear();\n\n    if (!isNeoSyncAuthenticated) {''',
 )
 
+# The generic detector ignores files above 10 MB. PCSX2/ARMSX2 save states can
+# legitimately exceed that size, so exempt files under the dedicated iOS
+# ARMSX2 bookmark only; keep the safety cap for every other emulator/path.
+replace_once(
+    core,
+    '''      // 3. Escanear archivos en esas rutas pero en un Isolate para no bloquear la UI\n      final List<File> allFiles = [];\n      const int maxFileSize = 10 * 1024 * 1024; // 10MB\n\n      // Execute heavy listing and filtering in background\n      final List<String> filePaths = await Isolate.run(() {''',
+    '''      // 3. Escanear archivos en esas rutas pero en un Isolate para no bloquear la UI\n      final List<File> allFiles = [];\n      const int maxFileSize = 10 * 1024 * 1024; // 10MB\n      final armsx2ScanRoot =\n          Platform.isIOS && system.folderName.toLowerCase() == 'ps2'\n          ? ConfigService.linkedArmsx2SaveFolderPath\n          : null;\n\n      // Execute heavy listing and filtering in background\n      final List<String> filePaths = await Isolate.run(() {''',
+)
+replace_once(
+    core,
+    '''                  final size = file.lengthSync();\n                  return size <= maxFileSize;''',
+    '''                  final size = file.lengthSync();\n                  final inArmsx2Root =\n                      armsx2ScanRoot != null &&\n                      (path.isWithin(armsx2ScanRoot, file.path) ||\n                          path.equals(armsx2ScanRoot, file.parent.path));\n                  return inArmsx2Root || size <= maxFileSize;''',
+)
+
 # 2) Make iOS a first-class NeoSync platform instead of relying on the empty
 # fallback that was originally added around Android/desktop-only system JSON.
 model = 'lib/models/neo_sync_models.dart'
