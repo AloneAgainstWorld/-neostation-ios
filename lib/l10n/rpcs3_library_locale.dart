@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 /// Localized copy for the RPCS3 iOS library integration.
@@ -7,8 +8,7 @@ abstract final class Rpcs3LibraryLocale {
     'en': 'Link RPCS3’s Data folder to import its installed PS3 library.',
     'es': 'Vincula la carpeta Data de RPCS3 para importar su biblioteca de PS3 instalada.',
     'fr': 'Liez le dossier Data de RPCS3 pour importer sa bibliothèque PS3 installée.',
-    'id':
-        'Tautkan folder Data RPCS3 untuk mengimpor pustaka PS3 yang terpasang.',
+    'id': 'Tautkan folder Data RPCS3 untuk mengimpor pustaka PS3 yang terpasang.',
     'it': 'Collega la cartella Data di RPCS3 per importare la libreria PS3 installata.',
     'ja': 'RPCS3 の Data フォルダをリンクして、インストール済みの PS3 ライブラリを読み込みます。',
     'ko': 'RPCS3의 Data 폴더를 연결하여 설치된 PS3 라이브러리를 가져옵니다.',
@@ -24,14 +24,28 @@ abstract final class Rpcs3LibraryLocale {
     'es': 'RPCS3 Data está vinculado. Sincroniza para leer los juegos instalados.',
     'fr': 'RPCS3 Data est lié. Synchronisez pour lire les jeux installés.',
     'id': 'RPCS3 Data sudah tertaut. Sinkronkan untuk membaca game yang terpasang.',
-    'it':
-        'RPCS3 Data è collegato. Sincronizza per leggere i giochi installati.',
+    'it': 'RPCS3 Data è collegato. Sincronizza per leggere i giochi installati.',
     'ja': 'RPCS3 Data はリンク済みです。同期してインストール済みゲームを読み込みます。',
     'ko': 'RPCS3 Data가 연결되었습니다. 설치된 게임을 읽으려면 동기화하세요.',
     'pt': 'RPCS3 Data está vinculado. Sincronize para ler os jogos instalados.',
     'ru': 'RPCS3 Data подключена. Выполните синхронизацию для чтения установленных игр.',
     'zh': 'RPCS3 Data 已连接。同步以读取已安装的游戏。',
     'zh_Hant': 'RPCS3 Data 已連結。同步以讀取已安裝的遊戲。',
+  };
+
+  static const Map<String, String> _sync = {
+    'de': 'Synchronisieren',
+    'en': 'Sync',
+    'es': 'Sincronizar',
+    'fr': 'Synchroniser',
+    'id': 'Sinkronkan',
+    'it': 'Sincronizza',
+    'ja': '同期',
+    'ko': '동기화',
+    'pt': 'Sincronizar',
+    'ru': 'Синхронизировать',
+    'zh': '同步',
+    'zh_Hant': '同步',
   };
 
   static const Map<String, String> _noGames = {
@@ -106,50 +120,44 @@ abstract final class Rpcs3LibraryLocale {
     'pt': 'Não foi possível iniciar o RPCS3 pelo StikDebug. Verifique rpcs3_launch_debug.txt no NeoStation.',
     'ru': 'Не удалось запустить RPCS3 через StikDebug. Проверьте rpcs3_launch_debug.txt в NeoStation.',
     'zh': '无法通过 StikDebug 启动 RPCS3。请查看 NeoStation 中的 rpcs3_launch_debug.txt。',
-    'zh_Hant':
-        '無法透過 StikDebug 啟動 RPCS3。請查看 NeoStation 中的 rpcs3_launch_debug.txt。',
+    'zh_Hant': '無法透過 StikDebug 啟動 RPCS3。請查看 NeoStation 中的 rpcs3_launch_debug.txt。',
   };
 
   static String statusNeedsLink(BuildContext context) =>
       _lookup(_needsLink, context);
   static String statusNeedsSync(BuildContext context) =>
       _lookup(_needsSync, context);
+  static String sync(BuildContext context) => _lookup(_sync, context);
   static String statusSynced(BuildContext context, int count) =>
       statusSyncedForLocale(_localeKey(Localizations.localeOf(context)), count);
 
   @visibleForTesting
   static String statusSyncedForLocale(String localeKey, int count) {
     return switch (localeKey) {
-      'de' =>
-        count == 1
-            ? 'RPCS3 synchronisiert — 1 PS3-Spiel.'
-            : 'RPCS3 synchronisiert — $count PS3-Spiele.',
-      'es' =>
-        count == 1
-            ? 'RPCS3 sincronizado — 1 juego de PS3.'
-            : 'RPCS3 sincronizado — $count juegos de PS3.',
-      'fr' =>
-        count == 1
-            ? 'RPCS3 synchronisé — 1 jeu PS3.'
-            : 'RPCS3 synchronisé — $count jeux PS3.',
+      'de' => count == 1
+          ? 'RPCS3 synchronisiert — 1 PS3-Spiel.'
+          : 'RPCS3 synchronisiert — $count PS3-Spiele.',
+      'es' => count == 1
+          ? 'RPCS3 sincronizado — 1 juego de PS3.'
+          : 'RPCS3 sincronizado — $count juegos de PS3.',
+      'fr' => count == 1
+          ? 'RPCS3 synchronisé — 1 jeu PS3.'
+          : 'RPCS3 synchronisé — $count jeux PS3.',
       'id' => 'RPCS3 tersinkron — $count game PS3.',
-      'it' =>
-        count == 1
-            ? 'RPCS3 sincronizzato — 1 gioco PS3.'
-            : 'RPCS3 sincronizzato — $count giochi PS3.',
+      'it' => count == 1
+          ? 'RPCS3 sincronizzato — 1 gioco PS3.'
+          : 'RPCS3 sincronizzato — $count giochi PS3.',
       'ja' => 'RPCS3 同期済み — PS3 ゲーム $count 本。',
       'ko' => 'RPCS3 동기화됨 — PS3 게임 $count개.',
-      'pt' =>
-        count == 1
-            ? 'RPCS3 sincronizado — 1 jogo de PS3.'
-            : 'RPCS3 sincronizado — $count jogos de PS3.',
+      'pt' => count == 1
+          ? 'RPCS3 sincronizado — 1 jogo de PS3.'
+          : 'RPCS3 sincronizado — $count jogos PS3.',
       'ru' => 'RPCS3 синхронизирован. Игр PS3: $count.',
       'zh' => 'RPCS3 已同步 — $count 个 PS3 游戏。',
       'zh_Hant' => 'RPCS3 已同步 — $count 個 PS3 遊戲。',
-      _ =>
-        count == 1
-            ? 'RPCS3 synced — 1 PS3 game.'
-            : 'RPCS3 synced — $count PS3 games.',
+      _ => count == 1
+          ? 'RPCS3 synced — 1 PS3 game.'
+          : 'RPCS3 synced — $count PS3 games.',
     };
   }
 
@@ -159,36 +167,30 @@ abstract final class Rpcs3LibraryLocale {
   @visibleForTesting
   static String syncCompleteForLocale(String localeKey, int count) {
     return switch (localeKey) {
-      'de' =>
-        count == 1
-            ? 'RPCS3-Bibliothek synchronisiert: 1 Spiel.'
-            : 'RPCS3-Bibliothek synchronisiert: $count Spiele.',
-      'es' =>
-        count == 1
-            ? 'Biblioteca RPCS3 sincronizada: 1 juego.'
-            : 'Biblioteca RPCS3 sincronizada: $count juegos.',
-      'fr' =>
-        count == 1
-            ? 'Bibliothèque RPCS3 synchronisée : 1 jeu.'
-            : 'Bibliothèque RPCS3 synchronisée : $count jeux.',
+      'de' => count == 1
+          ? 'RPCS3-Bibliothek synchronisiert: 1 Spiel.'
+          : 'RPCS3-Bibliothek synchronisiert: $count Spiele.',
+      'es' => count == 1
+          ? 'Biblioteca RPCS3 sincronizada: 1 juego.'
+          : 'Biblioteca RPCS3 sincronizada: $count juegos.',
+      'fr' => count == 1
+          ? 'Bibliothèque RPCS3 synchronisée : 1 jeu.'
+          : 'Bibliothèque RPCS3 synchronisée : $count jeux.',
       'id' => 'Pustaka RPCS3 disinkronkan: $count game.',
-      'it' =>
-        count == 1
-            ? 'Libreria RPCS3 sincronizzata: 1 gioco.'
-            : 'Libreria RPCS3 sincronizzata: $count giochi.',
+      'it' => count == 1
+          ? 'Libreria RPCS3 sincronizzata: 1 gioco.'
+          : 'Libreria RPCS3 sincronizzata: $count giochi.',
       'ja' => 'RPCS3 ライブラリを同期しました：$count 本。',
       'ko' => 'RPCS3 라이브러리 동기화 완료: 게임 $count개.',
-      'pt' =>
-        count == 1
-            ? 'Biblioteca RPCS3 sincronizada: 1 jogo.'
-            : 'Biblioteca RPCS3 sincronizada: $count jogos.',
+      'pt' => count == 1
+          ? 'Biblioteca RPCS3 sincronizada: 1 jogo.'
+          : 'Biblioteca RPCS3 sincronizada: $count jogos.',
       'ru' => 'Библиотека RPCS3 синхронизирована. Игр: $count.',
       'zh' => 'RPCS3 游戏库同步完成：$count 个游戏。',
       'zh_Hant' => 'RPCS3 遊戲庫同步完成：$count 個遊戲。',
-      _ =>
-        count == 1
-            ? 'RPCS3 library synced: 1 game.'
-            : 'RPCS3 library synced: $count games.',
+      _ => count == 1
+          ? 'RPCS3 library synced: 1 game.'
+          : 'RPCS3 library synced: $count games.',
     };
   }
 
