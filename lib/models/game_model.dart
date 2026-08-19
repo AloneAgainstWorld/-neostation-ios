@@ -212,8 +212,8 @@ class GameModel {
         ((localTitle?.isNotEmpty ?? false) ? localTitle : null) ??
         db.filename;
     return (
-      displayName: resolved!,
-      realName: resolvedReal!,
+      displayName: resolved,
+      realName: resolvedReal,
       hasMeaningfulScrapedName: meaningfulScraped,
     );
   }
