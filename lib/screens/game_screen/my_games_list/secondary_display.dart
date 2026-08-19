@@ -495,7 +495,6 @@ extension _SecondaryDisplay on _SystemGamesListState {
         await controller.setVolume(0.0);
         await controller.setLooping(true);
         await controller.play();
-        await AudioPolicyService().afterPlaybackStarted('game-preview-video');
         if (!mounted ||
             generation != _videoGeneration ||
             _selectedGame != game) {
