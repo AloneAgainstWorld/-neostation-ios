@@ -1,10 +1,10 @@
-// iOS counterpart of ../../macos/Classes/GamepadsDarwinPlugin.swift.
-// The GameController framework API (GCExtendedGamepad, GCControllerElement,
-// sfSymbolsName, etc.) is shared between macOS and iOS, so this is almost a
-// verbatim port — only the UI framework import and the `#available` platform
-// tag differ (macOS 11.0 <-> iOS 14.0, when sfSymbolsName was introduced on
-// each platform). GamepadsListener.swift is imported unchanged from the
-// macOS target since it only touches Foundation + GameController.
+// iOS gamepad bridge for NeoStation.
+//
+// The GameController framework exposes stable logical elements (buttonA,
+// dpad, leftThumbstick, ...). Do not use sfSymbolsName as an input protocol:
+// those strings are presentation metadata and are not the names understood by
+// NeoStation's cross-platform translator. Emit the same canonical logical names
+// used by the Windows GameInput backend instead.
 import UIKit
 import GameController
 import Flutter
@@ -19,16 +19,18 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
 
         self.gamepads.listener = onGamepadEvent
 
-        // iOS-only: lets the on-screen virtual controller and MFi/Bluetooth
-        // controllers coexist. Without this, GameController may not surface
-        // physical controllers consistently on some iOS versions.
+        // Keep physical MFi/Bluetooth controllers monitored consistently when
+        // NeoStation temporarily loses the foreground during emulator launches.
         if #available(iOS 14.5, *) {
             GCController.shouldMonitorBackgroundEvents = true
         }
     }
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(name: "xyz.luan/gamepads", binaryMessenger: registrar.messenger())
+        let channel = FlutterMethodChannel(
+            name: "xyz.luan/gamepads",
+            binaryMessenger: registrar.messenger()
+        )
         let instance = GamepadsIosPlugin(channel: channel)
         registrar.addMethodCallDelegate(instance, channel: channel)
     }
@@ -42,8 +44,12 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    private func onGamepadEvent(gamepadId: Int, gamepad: GCExtendedGamepad, element: GCControllerElement) {
-        for (key, value) in getValues(element: element) {
+    private func onGamepadEvent(
+        gamepadId: Int,
+        gamepad: GCExtendedGamepad,
+        element: GCControllerElement
+    ) {
+        for (key, value) in getValues(gamepad: gamepad, element: element) {
             let arguments: [String: Any] = [
                 "gamepadId": String(gamepadId),
                 "time": Int(getTimestamp(gamepad: gamepad)),
@@ -55,39 +61,88 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    private func getValues(element: GCControllerElement) -> [(String, Float)] {
-        if let element = element as? GCControllerButtonInput {
-            var button: String = "Unknown button"
-            if #available(iOS 14.0, *) {
-                if (element.sfSymbolsName != nil) {
-                    button = element.sfSymbolsName!
-                }
-            }
+    /// Converts GameController elements into a stable vocabulary shared with
+    /// NeoStation's Dart input translator. Values stay in GameController's
+    /// native ranges: digital buttons [0, 1], sticks [-1, 1], triggers [0, 1].
+    private func getValues(
+        gamepad: GCExtendedGamepad,
+        element: GCControllerElement
+    ) -> [(String, Float)] {
+        // Face buttons.
+        if element === gamepad.buttonA { return [("a", gamepad.buttonA.value)] }
+        if element === gamepad.buttonB { return [("b", gamepad.buttonB.value)] }
+        if element === gamepad.buttonX { return [("x", gamepad.buttonX.value)] }
+        if element === gamepad.buttonY { return [("y", gamepad.buttonY.value)] }
 
-            return [(button, element.value)]
-        } else if let element = element as? GCControllerAxisInput {
-            var axis: String = "Unknown axis"
-            if #available(iOS 14.0, *) {
-                if (element.sfSymbolsName != nil) {
-                    axis = element.sfSymbolsName!
-                }
-            }
-            return [(axis, element.value)]
-        } else if let element = element as? GCControllerDirectionPad {
-            var directionPad: String = "Unknown direction pad"
-
-            if #available(iOS 14.0, *) {
-                if (element.sfSymbolsName != nil) {
-                    directionPad = element.sfSymbolsName!
-                }
-            }
-            return [
-                (maybeConcat(directionPad, "xAxis"), element.xAxis.value),
-                (maybeConcat(directionPad, "yAxis"), element.yAxis.value)
-            ]
-        } else {
-            return []
+        // Shoulders and triggers.
+        if element === gamepad.leftShoulder {
+            return [("leftshoulder", gamepad.leftShoulder.value)]
         }
+        if element === gamepad.rightShoulder {
+            return [("rightshoulder", gamepad.rightShoulder.value)]
+        }
+        if element === gamepad.leftTrigger {
+            return [("lefttrigger", gamepad.leftTrigger.value)]
+        }
+        if element === gamepad.rightTrigger {
+            return [("righttrigger", gamepad.rightTrigger.value)]
+        }
+
+        // Menu/system buttons.
+        if element === gamepad.buttonMenu {
+            return [("menu", gamepad.buttonMenu.value)]
+        }
+        if let options = gamepad.buttonOptions, element === options {
+            return [("view", options.value)]
+        }
+        if let home = gamepad.buttonHome, element === home {
+            return [("home", home.value)]
+        }
+        if let leftStickButton = gamepad.leftThumbstickButton,
+           element === leftStickButton {
+            return [("leftthumbstick", leftStickButton.value)]
+        }
+        if let rightStickButton = gamepad.rightThumbstickButton,
+           element === rightStickButton {
+            return [("rightthumbstick", rightStickButton.value)]
+        }
+
+        // D-pad. Emit four digital directions so press/release state is
+        // explicit, including diagonals.
+        if element === gamepad.dpad ||
+            element === gamepad.dpad.xAxis ||
+            element === gamepad.dpad.yAxis {
+            let x = gamepad.dpad.xAxis.value
+            let y = gamepad.dpad.yAxis.value
+            return [
+                ("dpadleft", max(0.0, -x)),
+                ("dpadright", max(0.0, x)),
+                ("dpadup", max(0.0, y)),
+                ("dpaddown", max(0.0, -y)),
+            ]
+        }
+
+        // Left thumbstick.
+        if element === gamepad.leftThumbstick ||
+            element === gamepad.leftThumbstick.xAxis ||
+            element === gamepad.leftThumbstick.yAxis {
+            return [
+                ("leftthumbstickx", gamepad.leftThumbstick.xAxis.value),
+                ("leftthumbsticky", gamepad.leftThumbstick.yAxis.value),
+            ]
+        }
+
+        // Right thumbstick.
+        if element === gamepad.rightThumbstick ||
+            element === gamepad.rightThumbstick.xAxis ||
+            element === gamepad.rightThumbstick.yAxis {
+            return [
+                ("rightthumbstickx", gamepad.rightThumbstick.xAxis.value),
+                ("rightthumbsticky", gamepad.rightThumbstick.yAxis.value),
+            ]
+        }
+
+        return []
     }
 
     private func getTimestamp(gamepad: GCExtendedGamepad) -> TimeInterval {
@@ -101,7 +156,8 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
     private func getName(gamepad: GCExtendedGamepad) -> String {
         if #available(iOS 14.0, *) {
             let device = gamepad.device
-            return maybeConcat(device?.vendorName, device?.productCategory) ?? "Unknown device"
+            return maybeConcat(device?.vendorName, device?.productCategory)
+                ?? "Unknown device"
         } else {
             return "Unknown device"
         }
@@ -109,19 +165,13 @@ public class GamepadsIosPlugin: NSObject, FlutterPlugin {
 
     private func listGamepads() -> [[String: Any?]] {
         return gamepads.gamepads.enumerated().map { (index, gamepad) in
-            [ "id": String(index), "name": getName(gamepad: gamepad) ]
+            ["id": String(index), "name": getName(gamepad: gamepad)]
         }
-    }
-
-    private func maybeConcat(_ string1: String?, _ string2: String) -> String {
-        return maybeConcat(string1, string2)!
     }
 
     private func maybeConcat(_ strings: String?...) -> String? {
         let nonNull = strings.compactMap { $0 }
-        if (nonNull.isEmpty) {
-            return nil
-        }
+        if nonNull.isEmpty { return nil }
         return nonNull.joined(separator: " - ")
     }
 }
