@@ -179,6 +179,11 @@ workflows:
       - name: Generate app icons
         script: dart run flutter_launcher_icons
 
+      - name: Force NeoStation fork iOS icon
+        script: |
+          chmod +x build-utils/force_ios_fork_icon.sh
+          build-utils/force_ios_fork_icon.sh
+
       - name: Install CocoaPods dependencies
         script: |
           cd ios
