@@ -15,6 +15,10 @@ class IosShortcutJitLaunchService {
   /// percent-encoded by [Uri] below.
   static const String melonxShortcutName = 'NeoStation+MeloNX+JIT';
   static const String armsx2ShortcutName = 'NeoStation+ARMSX2+JIT';
+
+  /// Historical RPCS3 helper name retained for backwards compatibility with
+  /// users who already created the experimental Shortcut. The stable RPCS3
+  /// launch path does not invoke it and does not depend on a Personal Automation.
   static const String rpcs3ShortcutName = 'NeoStation+RPCS3+Start';
 
   /// One-time installer for the exact NeoStation MeloNX launch Shortcut.
@@ -25,14 +29,11 @@ class IosShortcutJitLaunchService {
   static const String _armsx2ShortcutInstallUrl =
       'https://www.icloud.com/shortcuts/1419632b150747f5bcd7b9bc65e36114';
 
-  /// RPCS3 intentionally has no shared iCloud installer yet.
+  /// RPCS3 intentionally has no shared iCloud installer.
   ///
-  /// The Switch Control set, switch and gesture are device-local accessibility
-  /// configuration, so NeoStation cannot pre-create those pieces. The user
-  /// creates the `NeoStation+RPCS3+Start` helper once and binds it to a Personal
-  /// Automation triggered when RPCS3 opens. NeoStation's RPCS3 launch path
-  /// foregrounds RPCS3 after JIT; the automation then runs the helper while
-  /// RPCS3 is already the active app.
+  /// The Switch Control/Personal Automation experiment was not reliable enough
+  /// on iOS 27 to remain in the normal launch path. This empty installer value
+  /// is retained only so older setup UI/code remains source-compatible.
   static const String _rpcs3ShortcutInstallUrl = '';
 
   static bool get hasMeloNXShortcutInstaller =>
@@ -78,12 +79,11 @@ class IosShortcutJitLaunchService {
     }
   }
 
-  /// Opens the RPCS3 Shortcut setup entry point.
+  /// Opens the historical RPCS3 Shortcut setup entry point.
   ///
-  /// Until a portable, device-independent Switch Control binding exists,
-  /// this opens a blank Shortcut editor. The user creates the small
-  /// `NeoStation+RPCS3+Start` helper, the required device-local Switch Control
-  /// configuration, and a Personal Automation for the RPCS3 app-open event.
+  /// This exists only for compatibility with the previous experiment. The
+  /// stable RPCS3 path uses StikDebug Universal JIT and then leaves Start/game
+  /// selection to RPCS3 itself.
   static Future<bool> openRpcs3ShortcutInstaller() async {
     if (!Platform.isIOS) return false;
 
@@ -103,7 +103,7 @@ class IosShortcutJitLaunchService {
   /// installed helper from outside the Shortcuts app.
   ///
   /// Keeping URL construction here guarantees the literal `+` characters in
-  /// names such as `NeoStation+RPCS3+Start` are encoded consistently everywhere.
+  /// Shortcut names are encoded consistently everywhere.
   static Uri buildRunUri({
     required String shortcutName,
     String? input,
