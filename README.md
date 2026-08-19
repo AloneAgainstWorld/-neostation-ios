@@ -24,7 +24,7 @@ NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://githu
 - **RetroArch** library linking/synchronization and direct game launching through deeplinks.
 - **MeloNX** library synchronization, media association, direct launching and JIT-oriented launch flows.
 - **ARMSX2** library synchronization, direct launching and JIT-oriented launch flows.
-- **RPCS3 iOS** authoritative Data-folder synchronization, repaired PARAM.SFO title precedence, Title-ID ScreenScraper lookup and an experimental state-aware StikDebug launch protocol for the inspected RPCS3 iOS 0.1/0.2 cores.
+- **RPCS3 iOS** Data-folder synchronization, PARAM.SFO title repair, Title-ID ScreenScraper lookup and a conservative StikDebug Universal JIT launch. NeoStation currently opens RPCS3 normally; the user then presses **Start / Commencer** and selects the game inside RPCS3.
 - Installed-emulator detection in NeoStation settings.
 - iOS-specific document, media and external-folder handling.
 - **Custom main-menu backgrounds** using PNG, JPG/JPEG, WebP, GIF, MP4, M4V or MOV files.
@@ -43,13 +43,31 @@ The upstream NeoStation project supports additional platforms. This repository i
 
 - iOS or iPadOS 18 or newer.
 - An IPA signing/sideloading method such as SideStore or another compatible installer, or Apple Developer signing.
-- RetroArch, MeloNX or ARMSX2 when using the corresponding integration.
+- RetroArch, MeloNX, ARMSX2 or RPCS3 when using the corresponding integration.
 
 ### To build locally
 
 - macOS with a compatible Xcode installation.
 - Flutter SDK **3.9.2 or newer**.
 - ScreenScraper developer credentials when building with ScreenScraper enabled.
+
+## RPCS3 on iOS
+
+RPCS3 support is intentionally kept on the most reliable path currently available for this fork.
+
+When a PS3 title is selected in NeoStation, NeoStation validates the stored Title ID and requests **StikDebug Universal JIT** for the RPCS3 bundle using `universal.js`. RPCS3 then opens through its normal startup flow. NeoStation does **not** currently inject a private boot call, perform a second StikDebug pass, use a delayed background launch, or depend on an iOS Shortcut/Personal Automation to press the RPCS3 Start button.
+
+Current expected flow:
+
+```text
+NeoStation -> StikDebug / universal.js -> RPCS3 -> Start / Commencer -> select the game in RPCS3
+```
+
+The previously tested `NeoStation+RPCS3+Start` Shortcut / Switch Control automation is considered **experimental and retired from the normal launch path** because it was not reliable enough on iOS 27. Existing personal automations for RPCS3 can be disabled or removed without affecting NeoStation's standard RPCS3 integration.
+
+At present, the integrated RPCS3 iOS build does not expose a supported deep link, App Intent or equivalent public direct-launch interface for opening a specific PS3 title from NeoStation. Direct game launch can be revisited when RPCS3, another iOS PS3 emulator, or a future compatible build exposes a reliable public launch mechanism.
+
+See [`docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md`](docs/RPCS3_SHORTCUT_SWITCH_CONTROL.md) for the current status and historical automation notes.
 
 ## Build from source
 
@@ -82,6 +100,8 @@ flutter build ios --release --no-codesign --dart-define-from-file=.env
 ```
 
 `.env` is intentionally excluded from Git and **must never be committed**.
+
+The official fork build pipeline also runs `build-utils/force_ios_fork_icon.sh` after Flutter's icon generator so the iOS AppIcon catalog is forcibly replaced with `assets/images/fork-icon-valid.jpg` on every release build.
 
 ## ScreenScraper configuration
 
