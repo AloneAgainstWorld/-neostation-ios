@@ -13,14 +13,14 @@
 
 </div>
 
-NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://github.com/misobadev/neostation-frontend) project. It keeps the original Flutter frontend while adding iPhone/iPad file handling, emulator integration, library synchronization, sideloading support and iOS-specific launch flows.
+NeoStation iOS is an **iOS 18+ port** of the upstream [NeoStation](https://github.com/misobadev/neostation-frontend) project. It keeps the original Flutter frontend while adding iPhone file handling, emulator integration, library synchronization, sideloading support and iOS-specific launch flows.
 
 > **Modified version notice — August 2026**  
 > This repository contains a modified version of NeoStation. The upstream project and its contributors retain credit for the original work. The iOS-specific port and adaptations in this repository are developed and maintained by [@TarbleFR](https://github.com/TarbleFR). This does not imply endorsement by the upstream NeoStation maintainers. The covered modified work is distributed under the GNU General Public License v3.0.
 
 ## Highlights
 
-- **iOS / iPadOS 18+** release target.
+- **iOS 18+** release target.
 - **RetroArch** library linking/synchronization and direct game launching through deeplinks.
 - **MeloNX** library synchronization, media association, direct launching and JIT-oriented launch flows.
 - **ARMSX2** library synchronization, direct launching and JIT-oriented launch flows.
@@ -41,7 +41,7 @@ The upstream NeoStation project supports additional platforms. This repository i
 
 ### To run
 
-- iOS or iPadOS 18 or newer.
+- iOS 18 or newer.
 - An IPA signing/sideloading method such as SideStore or another compatible installer, or Apple Developer signing.
 - RetroArch, MeloNX, ARMSX2 or RPCS3 when using the corresponding integration.
 
@@ -50,20 +50,6 @@ The upstream NeoStation project supports additional platforms. This repository i
 - macOS with a compatible Xcode installation.
 - Flutter SDK **3.9.2 or newer**.
 - ScreenScraper developer credentials when building with ScreenScraper enabled.
-
-## RPCS3 on iOS
-
-RPCS3 support is intentionally kept on the most reliable path currently available for this fork.
-
-When a PS3 title is selected in NeoStation, NeoStation validates the stored Title ID and requests **StikDebug Universal JIT** for the RPCS3 bundle using `universal.js`. RPCS3 then opens through its normal startup flow. NeoStation does **not** currently inject a private boot call, perform a second StikDebug pass, use a delayed background launch, or depend on an iOS Shortcut/Personal Automation to press the RPCS3 Start button.
-
-Current expected flow:
-
-```text
-NeoStation -> StikDebug / universal.js -> RPCS3 -> Start / Commencer -> select the game in RPCS3
-```
-
-At present, the integrated RPCS3 iOS build does not expose a supported deep link, App Intent or equivalent public direct-launch interface for opening a specific PS3 title from NeoStation. Direct game launch can be revisited when RPCS3, another iOS PS3 emulator, or a future compatible build exposes a reliable public launch mechanism.
 
 ## Build from source
 
