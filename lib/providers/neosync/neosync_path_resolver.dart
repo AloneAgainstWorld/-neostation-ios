@@ -197,8 +197,11 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     return [];
   }
 
-  bool _isMeloNXTitleId(String value) =>
-      RegExp(r'^[0-9a-fA-F]{16}$').hasMatch(value.trim());
+  bool _isMeloNXTitleId(String value) {
+    final normalized = value.trim();
+    return normalized.toLowerCase() != '0000000000000000' &&
+        RegExp(r'^[0-9a-fA-F]{16}$').hasMatch(normalized);
+  }
 
   /// Extracts the Switch Title ID from a MeloNX save path while preserving the
   /// path *inside* that game's save directory. The Title ID is a local lookup
