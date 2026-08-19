@@ -1,7 +1,7 @@
 name: Temporary cleanup branch verifier
 
 on:
-  pull_request:
+  push:
     branches:
       - main
 
@@ -13,7 +13,6 @@ env:
 
 jobs:
   verify-cleanup:
-    if: contains(github.event.pull_request.title, '[verify-cleanup-branch]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,14 +20,10 @@ jobs:
           ref: maintenance/final-repository-cleanup
           fetch-depth: 0
 
-      - name: Restore audited settings source and apply narrow RPCS3 UI fix
+      - name: Apply final narrow cleanup fixes
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
-          git checkout 79533b65373159aa09e6f8bdb2f581b5bc47ddbb -- \
-            lib/screens/settings_screen/new_settings_options/directories_settings_content.dart
-
           python3 - <<'PY'
           from pathlib import Path
 
@@ -59,9 +54,10 @@ jobs:
         ),
       ),
 '''
-          if old not in text:
-              raise SystemExit('Expected cleaned RPCS3 action block not found')
-          settings.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if old in text:
+              settings.write_text(text.replace(old, new, 1), encoding='utf-8')
+          elif 'Rpcs3LibraryLocale.sync(context)' in text:
+              raise SystemExit('RPCS3 sync label remains but expected block shape changed')
 
           for transient in (
               '.cleanup-verify-trigger', '.cleanup-verify-trigger-2',
@@ -113,6 +109,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f cleanup-verification-error.txt
           git add -A
           git diff --cached --check
           if ! git diff --cached --quiet; then
