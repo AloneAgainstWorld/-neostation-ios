@@ -434,34 +434,65 @@ extension NeoSyncUpload on NeoSyncProvider {
       return false;
     }
 
-    final result = await _neoSyncService.syncFile(
-      file,
-      resolved.gameName,
-      customFilename: resolved.cloudPath,
-      systemId: 'ps2',
-      emulatorId: 'armsx2',
-      isState: resolved.isState,
-      scope: 'shared',
-    );
+    final isMemoryCard =
+        resolved.category == 'memcards' &&
+        file.path.toLowerCase().endsWith('.ps2');
+    File uploadFile = file;
+    Directory? tempDir;
 
-    if (result['success'] == true) {
-      if (result['skipped'] == true) {
-        _skippedFiles++;
-      } else {
-        _uploadedFiles++;
-        _resetQuotaAttempts();
+    try {
+      if (isMemoryCard) {
+        final rawBytes = await file.readAsBytes();
+        final compressedBytes = gzip.encode(rawBytes);
+        tempDir = await Directory.systemTemp.createTemp('neosync-armsx2-card-');
+        uploadFile = File(
+          path.join(tempDir.path, '${path.basename(file.path)}.neosync.gz'),
+        );
+        await uploadFile.writeAsBytes(compressedBytes, flush: true);
+        _processedItems.add(
+          'ARMSX2 memory card detected: ${path.basename(file.path)} '
+          '(${rawBytes.length} B → ${compressedBytes.length} B)',
+        );
       }
-      _processedItems.add('NeoSync: ${resolved.gameName}');
-      return true;
-    }
 
-    final errorMessage = result['message']?.toString() ?? '';
-    _processedItems.add('Failed to upload ${resolved.gameName}: $errorMessage');
-    if (_checkQuotaExceeded(errorMessage)) {
-      _quotaExceededActive = true;
-      throw QuotaExceededException(errorMessage, _quotaExceededAttempts);
+      final result = await _neoSyncService.syncFile(
+        uploadFile,
+        resolved.gameName,
+        customFilename: resolved.cloudPath,
+        systemId: 'ps2',
+        emulatorId: 'armsx2',
+        isState: resolved.isState,
+        scope: 'shared',
+        contentHashOnly: isMemoryCard,
+      );
+
+      if (result['success'] == true) {
+        if (result['skipped'] == true) {
+          _skippedFiles++;
+        } else {
+          _uploadedFiles++;
+          _resetQuotaAttempts();
+        }
+        _processedItems.add('NeoSync: ${resolved.gameName}');
+        return true;
+      }
+
+      final errorMessage = result['message']?.toString() ?? '';
+      _processedItems.add(
+        'Failed to upload ${resolved.gameName}: $errorMessage',
+      );
+      if (_checkQuotaExceeded(errorMessage)) {
+        _quotaExceededActive = true;
+        throw QuotaExceededException(errorMessage, _quotaExceededAttempts);
+      }
+      return false;
+    } finally {
+      if (tempDir != null) {
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
+      }
     }
-    return false;
   }
 
   /// Uploads one MeloNX file using Title ID only to identify the local game.

@@ -215,7 +215,10 @@ class NeoSyncProvider extends ChangeNotifier {
     final result = await _neoSyncService.downloadFile(cloudFile.id);
     if (result['success'] == true && result['data'] != null) {
       final bytes = result['data'] as List<int>;
-      await localFile.writeAsBytes(bytes);
+      final payload = cloudFile.fileName.toLowerCase().endsWith('.neosync.gz')
+          ? gzip.decode(bytes)
+          : bytes;
+      await localFile.writeAsBytes(payload);
 
       try {
         final stat = await localFile.stat();

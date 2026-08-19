@@ -1136,8 +1136,24 @@ extension NeoSyncCore on NeoSyncProvider {
       final localBytes = await localFile.readAsBytes();
       final localHash = _neoSyncService.calculateFileHash(localBytes);
 
-      // Comparar hashes si están disponibles
+      // ARMSX2 memory cards are cloud-compressed. Compare the exact gzip payload
+      // hash, and when it differs always prefer the existing local card. Its
+      // filesystem timestamp can legitimately remain years old on iOS.
       final cloudHash = cloudSave!.checksum;
+      final isArmsx2CompressedCard =
+          cloudSave.fileName.toLowerCase().contains('/ps2/armsx2/') &&
+          cloudSave.fileName.toLowerCase().endsWith('.ps2.neosync.gz');
+      if (isArmsx2CompressedCard) {
+        final compressedHash = _neoSyncService.calculateFileHash(
+          gzip.encode(localBytes),
+        );
+        if (cloudHash != null && compressedHash == cloudHash) {
+          return neo_sync.GameSyncStatus.upToDate;
+        }
+        return neo_sync.GameSyncStatus.localOnly;
+      }
+
+      // Comparar hashes si están disponibles
       final hashesMatch = cloudHash != null && localHash == cloudHash;
 
       // 1. Si los hashes coinciden → Contenido idéntico

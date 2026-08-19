@@ -96,6 +96,34 @@ extension NeoSyncDownload on NeoSyncProvider {
     String savesPath,
   ) async {
     try {
+      final parsed = CloudPathBuilder.parse(cloudFile.fileName);
+      if (Platform.isIOS &&
+          parsed?.emulatorSlug == 'armsx2' &&
+          parsed?.isShared == true) {
+        final root = ConfigService.linkedArmsx2SaveFolderPath;
+        if (root == null || root.isEmpty) return;
+        final localPath = _resolveArmsx2CloudFileToLocal(
+          root,
+          parsed!.filePath,
+        );
+        if (localPath == null) return;
+        final localFile = File(localPath);
+        final isMemoryCard = parsed.filePath.toLowerCase().startsWith(
+          'memcards/',
+        );
+        if (isMemoryCard && localFile.existsSync()) {
+          // Existing ARMSX2 cards are authoritative; stale mtimes are common.
+          _skippedFiles++;
+          return;
+        }
+        if (!localFile.existsSync()) {
+          await localFile.parent.create(recursive: true);
+          await _downloadCloudFileImpl(cloudFile, localFile);
+          _downloadedFiles++;
+        }
+        return;
+      }
+
       // 1. Resolve the game associated with the file
       GameModel? game = await _findGameForCloudFile(cloudFile);
 
@@ -281,7 +309,10 @@ extension NeoSyncDownload on NeoSyncProvider {
         : await _neoSyncService.downloadFile(cloudFile.id);
     if (result['success'] == true && result['data'] != null) {
       final bytes = result['data'] as List<int>;
-      await localFile.writeAsBytes(bytes);
+      final payload = cloudFile.fileName.toLowerCase().endsWith('.neosync.gz')
+          ? gzip.decode(bytes)
+          : bytes;
+      await localFile.writeAsBytes(payload);
 
       // Save the actual local sync state in the database.
       // This avoids the "Operation not permitted" error on Android 11+ when trying

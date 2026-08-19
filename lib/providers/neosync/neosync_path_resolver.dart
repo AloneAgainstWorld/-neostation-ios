@@ -224,11 +224,16 @@ extension NeoSyncPathResolver on NeoSyncProvider {
 
     final isState = category != 'memcards';
     final gameName = isState ? 'ARMSX2 Save States' : 'ARMSX2 Memory Cards';
+    final isMemoryCardContainer =
+        category == 'memcards' && internalPath.toLowerCase().endsWith('.ps2');
+    final cloudInternalPath = isMemoryCardContainer
+        ? '$category/$internalPath.neosync.gz'
+        : '$category/$internalPath';
     final cloudPath = CloudPathBuilder.build(
       system: 'ps2',
       emulatorSlug: 'armsx2',
       scope: 'shared',
-      filePath: '$category/$internalPath',
+      filePath: cloudInternalPath,
       isState: isState,
     );
     return (
@@ -241,7 +246,14 @@ extension NeoSyncPathResolver on NeoSyncProvider {
 
   String? _resolveArmsx2CloudFileToLocal(String root, String cloudFilePath) {
     const categories = <String>['memcards', 'savestates', 'sstates'];
-    final segments = cloudFilePath
+    var localCloudPath = cloudFilePath;
+    if (localCloudPath.toLowerCase().endsWith('.neosync.gz')) {
+      localCloudPath = localCloudPath.substring(
+        0,
+        localCloudPath.length - '.neosync.gz'.length,
+      );
+    }
+    final segments = localCloudPath
         .replaceAll('\\', '/')
         .split('/')
         .where((part) => part.isNotEmpty)
@@ -253,7 +265,7 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     if (!categories.contains(category)) {
       // Compatibility with the first iOS preview which stored paths relative
       // to the chosen folder without a category prefix.
-      return path.join(root, cloudFilePath);
+      return path.join(root, localCloudPath);
     }
 
     final internalPath = segments.length > 1
