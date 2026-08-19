@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_localization/flutter_localization.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/app_themes.dart';
 import 'package:provider/provider.dart';
+
 import '../models/core_emulator_model.dart';
 import '../models/standalone_emulator_model.dart';
 import '../themes/corner_radii.dart';
@@ -19,14 +21,19 @@ import '../repositories/system_repository.dart';
 import '../repositories/emulator_repository.dart';
 import '../services/config_service.dart';
 import '../services/system_info_catalog.dart';
+
 import 'package:neostation/services/logger_service.dart';
+
 import '../utils/gamepad_nav.dart';
 import '../services/game_service.dart' show GamepadNavigationManager;
 import '../utils/centered_scroll_controller.dart';
+
 import 'package:path/path.dart' as path;
 
 import 'custom_notification.dart';
+
 import 'package:neostation/widgets/custom_toggle_switch.dart';
+
 import '../widgets/shaders/shader_gif_widget.dart';
 import '../utils/image_utils.dart';
 import '../widgets/core_footer.dart';
@@ -60,6 +67,7 @@ class _SystemEmulatorSettingsDialogState
   late GamepadNavigation _gamepadNav; // Now includes keyboard on desktop
   late CenteredScrollController _centeredScrollController;
   late ScrollController _generalScrollController;
+  late ScrollController _systemInfoScrollController;
 
   static final _log = LoggerService.instance;
 
@@ -110,6 +118,7 @@ class _SystemEmulatorSettingsDialogState
         : 5;
 
     _generalScrollController = ScrollController();
+    _systemInfoScrollController = ScrollController();
     _generalItemKeys = List.generate(
       _totalGeneralItems,
       (index) => GlobalKey(
@@ -135,6 +144,7 @@ class _SystemEmulatorSettingsDialogState
     _cleanupGamepad();
     _centeredScrollController.dispose();
     _generalScrollController.dispose();
+    _systemInfoScrollController.dispose();
     // Dispose focus nodes
     _headerCloseButtonFocusNode.dispose();
     _footerCloseButtonFocusNode.dispose();
@@ -840,9 +850,8 @@ class _SystemEmulatorSettingsDialogState
           ),
           boxShadow: [
             BoxShadow(
-              color: Theme.of(
-                context,
-              ).colorScheme.shadow.withValues(alpha: 0.5),
+              color: Theme.of(context).colorScheme.shadow
+                  .withValues(alpha: 0.5),
               blurRadius: 10.r,
               offset: const Offset(0, 4),
             ),
