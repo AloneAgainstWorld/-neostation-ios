@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python3 build-utils/repository_cleanup_20260819.py > /tmp/cleanup-script.log 2>&1
+          python3 build-utils/repository_cleanup_runner_20260819.py > /tmp/cleanup-script.log 2>&1
           code=$?
           cat /tmp/cleanup-script.log
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
