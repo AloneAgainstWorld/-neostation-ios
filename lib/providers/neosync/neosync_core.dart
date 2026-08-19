@@ -710,10 +710,17 @@ extension NeoSyncCore on NeoSyncProvider {
         isState: isState,
       );
 
+      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) return false;
+
       final result = await _neoSyncService.syncFile(
         file,
         game.name,
         customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
       );
 
       if (result['success']) {
@@ -818,9 +825,8 @@ extension NeoSyncCore on NeoSyncProvider {
 
       // 4. Filtrar archivos según el sistema
       final List<LocalSaveFile> matchingFiles = [];
-      final gameRomName = _getRomNameWithoutExtension(
-        game.romname,
-      ).toLowerCase();
+      final gameRomName = _getRomNameWithoutExtension(game.romname)
+          .toLowerCase();
 
       // Identificar si es un sistema de "memory cards compartidas"
       final isSharedSystem =
@@ -954,9 +960,8 @@ extension NeoSyncCore on NeoSyncProvider {
         }
       }
 
-      final gameRomName = _getRomNameWithoutExtension(
-        game.romname,
-      ).toLowerCase();
+      final gameRomName = _getRomNameWithoutExtension(game.romname)
+          .toLowerCase();
       final List<NeoSyncFile> matchingFiles = [];
 
       // Identificar si es un sistema de "memory cards compartidas"

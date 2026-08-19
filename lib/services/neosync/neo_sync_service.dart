@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ import 'package:neostation/utils/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:crypto/crypto.dart';
 import 'package:neostation/services/logger_service.dart';
+
 import '../../repositories/sync_repository.dart';
 
 /// Service responsible for communicating with the NeoSync cloud synchronization API.
@@ -54,7 +56,7 @@ class NeoSyncService extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/files/check');
+      final uri = Uri.parse('$baseUrl/api/v2/files/check');
 
       final requestBody = {
         'filename': filename,
@@ -100,6 +102,11 @@ class NeoSyncService extends ChangeNotifier {
     File file,
     String gameName, {
     String? customFilename,
+    String? systemId,
+    String? emulatorId,
+    String? gameHash,
+    bool? isState,
+    String? scope,
   }) async {
     _isLoading = true;
     _lastError = null;
@@ -155,7 +162,7 @@ class NeoSyncService extends ChangeNotifier {
       }
 
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/upload');
+      final uri = Uri.parse('$baseUrl/api/v2/upload');
 
       final request = http.MultipartRequest('POST', uri);
       request.headers['Authorization'] = 'Bearer $token';
@@ -172,6 +179,21 @@ class NeoSyncService extends ChangeNotifier {
       request.fields['file_size'] = fileBytes.length.toString();
       request.fields['file_modified_at_timestamp'] = fileModifiedAtTimestamp
           .toString();
+      if (systemId != null && systemId.isNotEmpty) {
+        request.fields['system_id'] = systemId;
+      }
+      if (emulatorId != null && emulatorId.isNotEmpty) {
+        request.fields['emulator_id'] = emulatorId;
+      }
+      if (gameHash != null && gameHash.isNotEmpty) {
+        request.fields['game_hash'] = gameHash;
+      }
+      if (isState != null) {
+        request.fields['is_state'] = isState.toString();
+      }
+      if (scope != null && scope.isNotEmpty) {
+        request.fields['scope'] = scope;
+      }
 
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
@@ -243,7 +265,7 @@ class NeoSyncService extends ChangeNotifier {
       }
 
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/upload');
+      final uri = Uri.parse('$baseUrl/api/v2/upload');
 
       final request = http.MultipartRequest('POST', uri);
       request.headers['Authorization'] = 'Bearer $token';
@@ -289,7 +311,8 @@ class NeoSyncService extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/files');
+      final uri = Uri.parse('$baseUrl/api/v2/files')
+          .replace(queryParameters: const {'limit': '200', 'offset': '0'});
 
       final response = await http.get(uri, headers: headers);
 
@@ -327,7 +350,7 @@ class NeoSyncService extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/files/$fileId');
+      final uri = Uri.parse('$baseUrl/api/v2/files/$fileId');
 
       final response = await http.delete(uri, headers: headers);
 
@@ -359,7 +382,7 @@ class NeoSyncService extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/quota');
+      final uri = Uri.parse('$baseUrl/api/v2/quota');
 
       final response = await http.get(uri, headers: headers);
 
@@ -397,7 +420,7 @@ class NeoSyncService extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final baseUrl = AppConfig.neoSyncBaseUrl;
-      final uri = Uri.parse('$baseUrl/api/v1/download');
+      final uri = Uri.parse('$baseUrl/api/v2/download');
 
       final requestBody = {'file_id': fileId};
 

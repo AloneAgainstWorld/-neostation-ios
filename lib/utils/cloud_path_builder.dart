@@ -73,9 +73,8 @@ class CloudPathBuilder {
 
   static String retroArchCoreSlug(String coreNameOrIdentifier) {
     var input = coreNameOrIdentifier.trim();
-    final extMatch = RegExp(
-      r'\.(dll|so|dylib|appimage|exe|bin)$',
-    ).firstMatch(input.toLowerCase());
+    final extMatch = RegExp(r'\.(dll|so|dylib|appimage|exe|bin)$')
+        .firstMatch(input.toLowerCase());
     if (extMatch != null) {
       input = input.substring(0, extMatch.start);
     }

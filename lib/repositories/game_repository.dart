@@ -1,5 +1,7 @@
 import 'dart:io';
+
 import 'package:neostation/services/logger_service.dart';
+
 import '../models/database_game_model.dart';
 import '../data/datasources/sqlite_database_service.dart';
 import '../data/datasources/sqlite_service.dart';
@@ -125,7 +127,14 @@ class GameRepository {
     final strippedBase = _stripExtension(romBaseName);
     final strippedFilename = _stripExtension(filename);
 
-    const mediaTypes = ['screenshots', 'fanarts', 'wheels', 'box2d', 'videos', 'manuals'];
+    const mediaTypes = [
+      'screenshots',
+      'fanarts',
+      'wheels',
+      'box2d',
+      'videos',
+      'manuals',
+    ];
     const extensions = ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'pdf'];
     int deletedMedia = 0;
 
@@ -246,7 +255,7 @@ class GameRepository {
     final db = await SqliteService.getDatabase();
     final result = await db.rawQuery(
       '''
-      SELECT ur.filename, ur.title_name, s.folder_name
+      SELECT ur.filename, ur.title_name, s.folder_name, ur.app_emulator_unique_id AS emulator_name
       FROM user_roms ur
       JOIN app_systems s ON ur.app_system_id = s.id
       WHERE ur.filename LIKE ?

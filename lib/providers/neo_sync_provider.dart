@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+
 import 'dart:io';
 import 'dart:isolate';
+
 import 'package:path/path.dart' as path;
 import 'package:neostation/services/logger_service.dart';
+
 import '../services/neosync/neo_sync_service.dart';
 import '../services/neosync/auth_service.dart';
 import '../models/neo_sync_models.dart';
@@ -18,6 +21,7 @@ import '../repositories/game_repository.dart';
 import '../repositories/emulator_repository.dart';
 import '../services/config_service.dart';
 import '../services/retroarch_config_service.dart';
+import '../utils/cloud_path_builder.dart';
 
 part 'neosync/neosync_exceptions.dart';
 part 'neosync/neosync_status.dart';

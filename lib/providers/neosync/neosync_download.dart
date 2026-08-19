@@ -136,6 +136,33 @@ extension NeoSyncDownload on NeoSyncProvider {
 
   /// Helper para encontrar el juego de un archivo de nube
   Future<GameModel?> _findGameForCloudFile(NeoSyncFile cloudFile) async {
+    final v2Path = CloudPathBuilder.parse(cloudFile.fileName);
+    if (v2Path != null && !v2Path.isShared) {
+      final saveBase = path.basenameWithoutExtension(v2Path.filePath);
+      try {
+        final row = await GameRepository.findRomByFilenamePrefix(saveBase);
+        if (row != null) {
+          final romname = row['filename'].toString();
+          final title = row['title_name']?.toString();
+          return GameModel(
+            name: (title == null || title.isEmpty) ? romname : title,
+            realname: (title == null || title.isEmpty) ? romname : title,
+            romname: romname,
+            systemFolderName: row['folder_name']?.toString() ?? v2Path.system,
+            emulatorName: row['emulator_name']?.toString(),
+            year: '',
+            developer: '',
+            publisher: '',
+            genre: '',
+            players: '',
+            rating: 0.0,
+          );
+        }
+      } catch (e) {
+        NeoSyncProvider._log.w('Could not map v2 cloud save to local game: $e');
+      }
+    }
+
     final parts = cloudFile.fileName.split('/');
 
     // Identify if it is a Switch file based on known prefixes

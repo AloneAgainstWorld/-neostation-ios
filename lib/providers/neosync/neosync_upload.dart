@@ -238,17 +238,36 @@ extension NeoSyncUpload on NeoSyncProvider {
         return;
       }
 
-      String relativePath = _calculateRelativePath(
+      final game = await _gameForSaveFile(file);
+      if (game == null) {
+        _skippedFiles++;
+        _processedItems.add(
+          'Skipped unrecognized save (NeoSync v2 safety): ${path.basename(file.path)}',
+        );
+        return;
+      }
+
+      final relativePath = await _calculateSyncRelativePath(
+        game,
         file,
         basePath,
         isState: isState,
       );
-      final gameName = _extractGameNameFromPath(file.path);
+      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) {
+        _skippedFiles++;
+        _processedItems.add('Skipped non-v2 path: $relativePath');
+        return;
+      }
 
       final result = await _neoSyncService.syncFile(
         file,
-        gameName,
+        game.name,
         customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
       );
 
       if (result['success']) {
@@ -357,17 +376,36 @@ extension NeoSyncUpload on NeoSyncProvider {
     bool isState = false,
   }) async {
     try {
-      String relativePath = _calculateRelativePath(
+      final game = await _gameForSaveFile(file);
+      if (game == null) {
+        _skippedFiles++;
+        _processedItems.add(
+          'Skipped unrecognized save (NeoSync v2 safety): ${path.basename(file.path)}',
+        );
+        return;
+      }
+
+      final relativePath = await _calculateSyncRelativePath(
+        game,
         file,
         basePath,
         isState: isState,
       );
-      final gameName = _extractGameNameFromPath(file.path);
+      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) {
+        _skippedFiles++;
+        _processedItems.add('Skipped non-v2 path: $relativePath');
+        return;
+      }
 
       final result = await _neoSyncService.syncFile(
         file,
-        gameName,
+        game.name,
         customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
       );
 
       if (result['success']) {

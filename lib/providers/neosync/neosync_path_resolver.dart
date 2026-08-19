@@ -11,6 +11,15 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     final folders = system.neosync.getFoldersForCurrentPlatform();
     final List<String> resolvedPaths = [];
 
+    // System JSON predates iOS NeoSync and has no ios_sync_folder entries.
+    // RetroArch's bookmarked saves/states roots are authoritative for preview 1.
+    if (Platform.isIOS && folders.isEmpty) {
+      final saves = await _getRetroArchSavesPath();
+      final states = await _getRetroArchStatesPath();
+      if (saves != null) resolvedPaths.add(saves);
+      if (states != null) resolvedPaths.add(states);
+    }
+
     for (final folder in folders) {
       final resolved = await _resolveSinglePath(
         folder,
@@ -177,60 +186,116 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     return [];
   }
 
-  /// Helper to calculate relative path for sync, with special handling for various systems
+  /// Resolves a local save file back to its library game.
+  Future<GameModel?> _gameForSaveFile(File file) async {
+    final saveBase = path.basenameWithoutExtension(file.path);
+    try {
+      final row = await GameRepository.findRomByFilenamePrefix(saveBase);
+      if (row == null) return null;
+      final romname = row['filename']?.toString() ?? saveBase;
+      final title = row['title_name']?.toString();
+      return GameModel(
+        name: (title == null || title.isEmpty) ? romname : title,
+        realname: (title == null || title.isEmpty) ? romname : title,
+        romname: romname,
+        systemFolderName: row['folder_name']?.toString(),
+        emulatorName: row['emulator_name']?.toString(),
+        year: '',
+        developer: '',
+        publisher: '',
+        genre: '',
+        players: '',
+        rating: 0.0,
+      );
+    } catch (e) {
+      NeoSyncProvider._log.w('Could not map save ${file.path} to a game: $e');
+      return null;
+    }
+  }
+
+  /// Builds the canonical NeoSync v2 path for a local game save/state.
+  /// Never falls back to a v1 cloud path.
   Future<String> _calculateSyncRelativePath(
     GameModel game,
     File file,
     String basePath, {
     bool isState = false,
   }) async {
-    // Check for Dreamcast game
-    bool isDreamcast =
-        game.systemFolderName == 'dreamcast' || game.systemFolderName == 'dc';
-    if (!isDreamcast) {
-      try {
-        final systemId = await GameRepository.getSystemIdForGame(game.romname);
-        if (systemId != null) isDreamcast = systemId == '18';
-      } catch (e) {
-        NeoSyncProvider._log.e(
-          'Error getting system ID for Dreamcast check (${game.romname}): $e',
-        );
+    final systemFolder =
+        game.systemFolderName ??
+        await GameRepository.getSystemFolderForGame(game.romname);
+    if (systemFolder == null || systemFolder.isEmpty) {
+      throw StateError(
+        'NeoSync v2: system could not be resolved for ${game.romname}',
+      );
+    }
+
+    String? emulatorSlug;
+    final relative = path.relative(file.path, from: basePath);
+    final segments = relative.split(RegExp(r'[/\\]'));
+    if (!relative.startsWith('..') && segments.length > 1) {
+      final coreFolder = segments.first;
+      if (coreFolder.isNotEmpty) {
+        emulatorSlug = CloudPathBuilder.retroArchCoreSlug(coreFolder);
       }
     }
 
-    if (isDreamcast && file.path.toLowerCase().contains('vmu_save')) {
-      // Force structure: saves/dc/filename.bin
-      return 'saves/dc/${path.basename(file.path)}';
+    if ((emulatorSlug == null || emulatorSlug.isEmpty) &&
+        game.coreName != null &&
+        game.coreName!.trim().isNotEmpty) {
+      emulatorSlug = CloudPathBuilder.retroArchCoreSlug(game.coreName!);
+    }
+    if ((emulatorSlug == null || emulatorSlug.isEmpty) &&
+        game.emulatorName != null &&
+        game.emulatorName!.trim().isNotEmpty) {
+      emulatorSlug = CloudPathBuilder.slugFromEmulatorUniqueId(
+        game.emulatorName!,
+      );
+    }
+    if (emulatorSlug == null || emulatorSlug.isEmpty) {
+      throw StateError(
+        'NeoSync v2: emulator/core could not be resolved for ${game.romname}',
+      );
     }
 
-    // Special handling for NetherSX2 on Android
-    if (Platform.isAndroid && file.path.contains('xyz.aethersx2.android')) {
-      return 'saves/NetherSX2/${path.basename(file.path)}';
-    }
+    final lowerName = path.basename(file.path).toLowerCase();
+    final systemLower = systemFolder.toLowerCase();
+    final isSharedCard =
+        (systemLower == 'ps2' && lowerName.endsWith('.ps2')) ||
+        ((systemLower == 'dc' || systemLower == 'dreamcast') &&
+            lowerName.contains('vmu_save'));
 
-    // Special handling for PS2 (RetroArch/PCSX2)
-    // Force structure: saves/PS2/filename.ps2 to match standard convention
-    bool isPS2 = game.systemFolderName == 'ps2';
-    if (!isPS2) {
-      try {
-        final systemId = await GameRepository.getSystemIdForGame(game.romname);
-        if (systemId != null) isPS2 = systemId == '21';
-      } catch (e) {
-        NeoSyncProvider._log.e(
-          'Error getting system ID for PS2 check (${game.romname}): $e',
-        );
+    return CloudPathBuilder.build(
+      system: systemFolder,
+      emulatorSlug: emulatorSlug,
+      scope: isSharedCard ? 'shared' : 'game',
+      gameName: isSharedCard ? null : path.basenameWithoutExtension(file.path),
+      filePath: path.basename(file.path),
+      isState: isState,
+    );
+  }
+
+  Future<String?> _retroArchCoreFolderForSlug(
+    String emulatorSlug,
+    String baseFolder,
+  ) async {
+    if (!emulatorSlug.startsWith('retroarch.')) return null;
+    try {
+      final base = Directory(baseFolder);
+      if (!base.existsSync()) return null;
+      for (final child
+          in base.listSync(followLinks: false).whereType<Directory>()) {
+        final name = path.basename(child.path);
+        if (CloudPathBuilder.retroArchCoreSlug(name) == emulatorSlug) {
+          return name;
+        }
       }
+    } catch (e) {
+      NeoSyncProvider._log.w(
+        'Could not map $emulatorSlug under $baseFolder: $e',
+      );
     }
-
-    if (isPS2 && file.path.toLowerCase().endsWith('.ps2')) {
-      return 'saves/PS2/${path.basename(file.path)}';
-    }
-
-    if (game.systemFolderName == 'switch') {
-      return await calculateSwitchRelativePath(file, game);
-    }
-
-    return _calculateRelativePath(file, basePath, isState: isState);
+    return null;
   }
 
   /// Calcula la ruta relativa para sincronización
@@ -270,8 +335,11 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     );
     if (resolvedFolders.isEmpty) return [];
 
-    final isState = cloudFile.fileName.startsWith('states/');
-    final isSave = cloudFile.fileName.startsWith('saves/');
+    final v2Path = CloudPathBuilder.parse(cloudFile.fileName);
+    final isState = v2Path?.isState ?? cloudFile.fileName.startsWith('states/');
+    final isSave = v2Path != null
+        ? !v2Path.isState
+        : cloudFile.fileName.startsWith('saves/');
 
     // Buscar la carpeta más apropiada.
     String targetFolder = resolvedFolders.first;
@@ -308,10 +376,20 @@ extension NeoSyncPathResolver on NeoSyncProvider {
 
     // Limpiar el nombre del archivo (quitar prefijos 'saves/' o 'states/')
     String relativeName = cloudFile.fileName;
-    if (isState) {
+    if (v2Path != null) {
+      relativeName = v2Path.filePath;
+      if (v2Path.emulatorSlug.startsWith('retroarch.')) {
+        final coreFolder = await _retroArchCoreFolderForSlug(
+          v2Path.emulatorSlug,
+          targetFolder,
+        );
+        if (coreFolder != null && coreFolder.isNotEmpty) {
+          relativeName = path.join(coreFolder, relativeName);
+        }
+      }
+    } else if (isState) {
       relativeName = relativeName.replaceFirst(RegExp(r'^states[/\\]'), '');
-    }
-    if (isSave) {
+    } else if (isSave) {
       relativeName = relativeName.replaceFirst(RegExp(r'^saves[/\\]'), '');
     }
 
@@ -488,7 +566,7 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     if (!await dir.exists()) return [];
 
     try {
-      return dir
+      return await dir
           .list(recursive: true)
           .where((entity) => entity is File)
           .cast<File>()
