@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:neostation/services/logger_service.dart';
 
 import '../services/neosync/neo_sync_service.dart';
+import '../services/neosync/legacy_neo_sync_service.dart';
 import '../services/neosync/auth_service.dart';
 import '../models/neo_sync_models.dart';
 import '../widgets/quota_exceeded_dialog.dart';
@@ -52,6 +53,7 @@ class NeoSyncProvider extends ChangeNotifier {
 
   /// Low-level network service for NeoSync API interactions.
   final NeoSyncService _neoSyncService;
+  final LegacyNeoSyncService _legacyNeoSyncService = LegacyNeoSyncService();
 
   NeoSyncProvider(this._neoSyncService);
 

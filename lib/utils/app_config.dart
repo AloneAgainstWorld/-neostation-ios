@@ -5,6 +5,9 @@ class AppConfig {
   /// Base URL for the NeoSync v2 cloud synchronization service.
   static const String neoSyncBaseUrl = 'https://sync.neosync.cloud';
 
+  /// Historical NeoSync v1 endpoint. Read/migration compatibility only.
+  static const String legacyNeoSyncBaseUrl = 'https://neosync.neogamelab.com';
+
   /// Base URL for the billing and subscription management service.
   static const String billingBaseUrl = 'https://billing.neosync.cloud';
 

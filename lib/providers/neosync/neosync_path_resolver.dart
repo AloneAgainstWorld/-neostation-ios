@@ -20,6 +20,17 @@ extension NeoSyncPathResolver on NeoSyncProvider {
       if (states != null) resolvedPaths.add(states);
     }
 
+    if (Platform.isIOS) {
+      final systemFolder = system.folderName.toLowerCase();
+      if (systemFolder == 'ps2') {
+        final custom = ConfigService.linkedArmsx2SaveFolderPath;
+        if (custom != null && custom.isNotEmpty) resolvedPaths.add(custom);
+      } else if (systemFolder == 'switch') {
+        final custom = ConfigService.linkedMelonxSaveFolderPath;
+        if (custom != null && custom.isNotEmpty) resolvedPaths.add(custom);
+      }
+    }
+
     for (final folder in folders) {
       final resolved = await _resolveSinglePath(
         folder,
@@ -340,6 +351,20 @@ extension NeoSyncPathResolver on NeoSyncProvider {
     final isSave = v2Path != null
         ? !v2Path.isState
         : cloudFile.fileName.startsWith('saves/');
+
+    if (Platform.isIOS && v2Path != null) {
+      if (v2Path.emulatorSlug == 'armsx2') {
+        final root = ConfigService.linkedArmsx2SaveFolderPath;
+        if (root != null && root.isNotEmpty) {
+          return [path.join(root, v2Path.filePath)];
+        }
+      } else if (v2Path.emulatorSlug == 'melonx') {
+        final root = ConfigService.linkedMelonxSaveFolderPath;
+        if (root != null && root.isNotEmpty) {
+          return [path.join(root, v2Path.filePath)];
+        }
+      }
+    }
 
     // Buscar la carpeta más apropiada.
     String targetFolder = resolvedFolders.first;

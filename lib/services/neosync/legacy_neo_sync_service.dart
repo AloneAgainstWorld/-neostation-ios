@@ -49,9 +49,7 @@ class LegacyNeoSyncService {
         headers: await _headers(),
       );
       if (response.statusCode != 200) {
-        _log.w(
-          'NeoSync v1 file listing failed: HTTP ${response.statusCode}',
-        );
+        _log.w('NeoSync v1 file listing failed: HTTP ${response.statusCode}');
         return {
           'success': false,
           'message': 'Legacy NeoSync HTTP ${response.statusCode}',
@@ -60,25 +58,23 @@ class LegacyNeoSyncService {
       }
 
       final data = jsonDecode(response.body);
-      final files = (data['files'] as List?)
-              ?.whereType<Map>()
-              .map((raw) {
-                final json = Map<String, dynamic>.from(raw);
-                final parsed = NeoSyncFile.fromJson(json);
-                return NeoSyncFile(
-                  id: '$_idPrefix${parsed.id}',
-                  fileName: parsed.fileName,
-                  filePath: parsed.filePath,
-                  fileSize: parsed.fileSize,
-                  gameName: parsed.gameName,
-                  uploadedAt: parsed.uploadedAt,
-                  fileModifiedAt: parsed.fileModifiedAt,
-                  fileModifiedAtTimestamp: parsed.fileModifiedAtTimestamp,
-                  userId: parsed.userId,
-                  checksum: parsed.checksum,
-                );
-              })
-              .toList() ??
+      final files =
+          (data['files'] as List?)?.whereType<Map>().map((raw) {
+            final json = Map<String, dynamic>.from(raw);
+            final parsed = NeoSyncFile.fromJson(json);
+            return NeoSyncFile(
+              id: '$_idPrefix${parsed.id}',
+              fileName: parsed.fileName,
+              filePath: parsed.filePath,
+              fileSize: parsed.fileSize,
+              gameName: parsed.gameName,
+              uploadedAt: parsed.uploadedAt,
+              fileModifiedAt: parsed.fileModifiedAt,
+              fileModifiedAtTimestamp: parsed.fileModifiedAtTimestamp,
+              userId: parsed.userId,
+              checksum: parsed.checksum,
+            );
+          }).toList() ??
           const <NeoSyncFile>[];
       return {'success': true, 'files': files};
     } catch (e) {

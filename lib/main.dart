@@ -294,6 +294,16 @@ void main() async {
     ConfigService.linkedArmsx2FolderPath =
         await ExternalFolderAccess.resolveBookmarkedFolder(key: 'armsx2');
 
+    // NeoSync save roots are independent from emulator library roots.
+    ConfigService.linkedArmsx2SaveFolderPath =
+        await ExternalFolderAccess.resolveBookmarkedFolder(
+          key: ConfigService.armsx2NeoSyncBookmarkKey,
+        );
+    ConfigService.linkedMelonxSaveFolderPath =
+        await ExternalFolderAccess.resolveBookmarkedFolder(
+          key: ConfigService.melonxNeoSyncBookmarkKey,
+        );
+
     // Load the last exported emulator libraries so direct-launch matching
     // works immediately after a cold start without forcing a fresh sync.
     await RetroArchLibraryService.loadCachedLibrary();

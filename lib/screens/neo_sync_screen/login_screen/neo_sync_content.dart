@@ -15,11 +15,15 @@ import 'package:neostation/models/billing_models.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/gestures.dart';
+
 import '../../../models/neo_sync_models.dart';
+
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:neostation/repositories/game_repository.dart';
 import 'package:neostation/utils/gamepad_nav.dart';
+
 import '../../app_screen.dart';
+
 import 'package:neostation/utils/centered_scroll_controller.dart';
 
 class NeoSyncContent extends StatefulWidget {
@@ -403,9 +407,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
                                       fontWeight: FontWeight.bold,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurface,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
                                       fontSize: 10.r,
                                     ),
                                 overflow: TextOverflow.ellipsis,
@@ -428,9 +432,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
                               child: Text(
                                 '${user.plan.toUpperCase()} ${AppLocale.quota.getString(context).toUpperCase()}',
                                 style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSecondary,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSecondary,
                                   fontSize: 7.r,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -485,9 +489,8 @@ class NeoSyncContentState extends State<NeoSyncContent>
                     Container(
                       padding: EdgeInsets.all(4.r),
                       decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: 0.2),
+                        color: Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(6.r),
                       ),
                       child: Icon(
@@ -506,9 +509,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
                             style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface,
                                   fontSize: 10.r,
                                 ),
                           ),
@@ -571,9 +574,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
                                 ?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 10.r,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface,
                                 ),
                           ),
                           const Spacer(),
@@ -729,8 +732,7 @@ class NeoSyncContentState extends State<NeoSyncContent>
         if (_isDialogMode) return;
         return AppNavigation.nextTab();
       },
-      onBack:
-          _handleDialogBack, // Usar el método que maneja tanto dialog como normal
+      onBack: _handleDialogBack, // Usar el método que maneja tanto dialog como normal
       onFavorite: () {
         // Asegurar que la navegación esté activa antes de abrir el modal
         if (!_savesGamepadNav.isActive) {
@@ -1197,9 +1199,8 @@ class NeoSyncContentState extends State<NeoSyncContent>
             color: Theme.of(context).cardColor.withValues(alpha: 0.25),
             borderRadius: BorderRadius.circular(12.r),
             border: Border.all(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.15),
+              color: Theme.of(context).colorScheme.primary
+                  .withValues(alpha: 0.15),
               width: 1.r,
             ),
           ),
@@ -1296,18 +1297,16 @@ class NeoSyncContentState extends State<NeoSyncContent>
             Icon(
               Symbols.cloud_off_rounded,
               size: 48.sp,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.5),
+              color: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: 0.5),
             ),
             SizedBox(height: 8.r),
             Text(
               AppLocale.noOnlineSavesFound.getString(context),
               style: TextStyle(
                 fontSize: 16.r,
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -2262,9 +2261,8 @@ class _UpgradeModalDialogState extends State<_UpgradeModalDialog> {
                                                   width: double.infinity,
                                                   child: OutlinedButton.icon(
                                                     onPressed: () {
-                                                      Navigator.of(
-                                                        context,
-                                                      ).pop();
+                                                      Navigator.of(context)
+                                                          .pop();
                                                       widget.onCancel();
                                                     },
                                                     icon: Image.asset(
@@ -2443,9 +2441,8 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
             AppLocale.deleteCloudSaveConfirm.getString(context),
             style: TextStyle(
               fontSize: 12.r,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.9),
+              color: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: 0.9),
               height: 1.3,
             ),
           ),
@@ -2453,14 +2450,12 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
           Container(
             padding: EdgeInsets.all(8.r),
             decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest
+                  .withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(6.r),
               border: Border.all(
-                color: Theme.of(
-                  context,
-                ).colorScheme.outline.withValues(alpha: 0.1),
+                color: Theme.of(context).colorScheme.outline
+                    .withValues(alpha: 0.1),
               ),
             ),
             child: Row(
@@ -2489,9 +2484,8 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
                         '${widget.file.fileSizeFormatted} • ${widget.file.uploadedAt.toLocal().toString().split(' ')[0]}',
                         style: TextStyle(
                           fontSize: 9.r,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.7),
+                          color: Theme.of(context).colorScheme.onSurface
+                              .withValues(alpha: 0.7),
                         ),
                       ),
                     ],
@@ -2504,14 +2498,12 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 8.r, vertical: 4.r),
             decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.secondaryContainer.withValues(alpha: 0.05),
+              color: Theme.of(context).colorScheme.secondaryContainer
+                  .withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(6.r),
               border: Border.all(
-                color: Theme.of(
-                  context,
-                ).colorScheme.secondary.withValues(alpha: 0.2),
+                color: Theme.of(context).colorScheme.secondary
+                    .withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -2528,9 +2520,8 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
                       widget.onDisableNeoSyncChanged(value);
                     },
                     activeThumbColor: Theme.of(context).colorScheme.secondary,
-                    activeTrackColor: Theme.of(
-                      context,
-                    ).colorScheme.secondary.withValues(alpha: 0.3),
+                    activeTrackColor: Theme.of(context).colorScheme.secondary
+                        .withValues(alpha: 0.3),
                   ),
                 ),
                 SizedBox(width: 4.r),
@@ -2551,9 +2542,8 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
                         AppLocale.preventsAutoSaves.getString(context),
                         style: TextStyle(
                           fontSize: 10.r,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.7),
+                          color: Theme.of(context).colorScheme.onSurface
+                              .withValues(alpha: 0.7),
                           height: 1.2,
                         ),
                       ),
@@ -2580,18 +2570,16 @@ class _DeleteCloudSaveDialogState extends State<_DeleteCloudSaveDialog> {
                 'assets/images/gamepad/Xbox_B_button.png',
                 width: 14.r,
                 height: 14.r,
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.7),
               ),
               SizedBox(width: 6.r),
               Text(
                 AppLocale.cancel.getString(context),
                 style: TextStyle(
                   fontSize: 12.r,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                  color: Theme.of(context).colorScheme.onSurface
+                      .withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -3079,12 +3067,10 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
             height: 28.r,
             decoration: BoxDecoration(
               color: isSelected
-                  ? Theme.of(
-                      context,
-                    ).colorScheme.onSecondary.withValues(alpha: 0.2)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.1),
+                  ? Theme.of(context).colorScheme.onSecondary
+                        .withValues(alpha: 0.2)
+                  : Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8.r),
             ),
             child: Icon(
@@ -3110,12 +3096,15 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
                     color: isSelected
                         ? Theme.of(context).colorScheme.onSecondary
                         : Theme.of(context).colorScheme.onSurface,
-                    fontFamily: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.fontFamily,
+                    fontFamily: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.fontFamily,
                   ),
                   child: Text(
-                    file.fileName,
+                    file.id.startsWith('v1:')
+                        ? '[V1] ${file.fileName}'
+                        : file.fileName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -3127,15 +3116,14 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
                   style: TextStyle(
                     fontSize: 8.r,
                     color: isSelected
-                        ? Theme.of(
-                            context,
-                          ).colorScheme.onSecondary.withValues(alpha: 0.8)
-                        : Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.6),
-                    fontFamily: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.fontFamily,
+                        ? Theme.of(context).colorScheme.onSecondary
+                              .withValues(alpha: 0.8)
+                        : Theme.of(context).colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                    fontFamily: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.fontFamily,
                   ),
                   child: Text(
                     '${file.fileSizeFormatted} • ${file.uploadedAt.toLocal().toString().split(' ')[0]}',

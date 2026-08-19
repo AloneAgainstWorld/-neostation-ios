@@ -538,14 +538,19 @@ class DirectoriesSettingsContentState
         key: bookmarkKey,
       );
       if (selected == null || !mounted) return;
+      final resolved = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      final activePath = resolved ?? selected;
+      if (!mounted) return;
 
-      ConfigService.linkedExternalFolderPath = selected;
+      ConfigService.linkedExternalFolderPath = activePath;
 
       final configProvider = Provider.of<SqliteConfigProvider>(
         context,
         listen: false,
       );
-      await configProvider.addRomFolder(selected, scan: true);
+      await configProvider.addRomFolder(activePath, scan: true);
       if (!mounted) return;
 
       await _loadCurrentPaths();
@@ -558,6 +563,44 @@ class DirectoriesSettingsContentState
       );
     } catch (e) {
       _log.e('Link external folder failed ($bookmarkKey): $e');
+      if (mounted) {
+        AppNotification.showNotification(
+          context,
+          AppLocale.iosEmuLinkingFailed
+              .getString(context)
+              .replaceFirst('{error}', e.toString()),
+          type: NotificationType.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _linkingFolderKey = null);
+    }
+  }
+
+  Future<void> _linkNeoSyncSaveFolder({
+    required String bookmarkKey,
+    required String emulatorName,
+  }) async {
+    if (_linkingFolderKey != null) return;
+    setState(() => _linkingFolderKey = bookmarkKey);
+    try {
+      final selected = await ExternalFolderAccess.pickAndBookmarkFolder(
+        key: bookmarkKey,
+      );
+      if (selected == null || !mounted) return;
+      final resolved = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      final activePath = resolved ?? selected;
+      if (bookmarkKey == ConfigService.armsx2NeoSyncBookmarkKey) {
+        ConfigService.linkedArmsx2SaveFolderPath = activePath;
+      } else if (bookmarkKey == ConfigService.melonxNeoSyncBookmarkKey) {
+        ConfigService.linkedMelonxSaveFolderPath = activePath;
+      }
+      if (mounted) setState(() {});
+      _log.i('NeoSync $emulatorName save folder linked: $activePath');
+    } catch (e) {
+      _log.e('NeoSync $emulatorName save-folder link failed: $e');
       if (mounted) {
         AppNotification.showNotification(
           context,
@@ -787,10 +830,9 @@ class DirectoriesSettingsContentState
     );
   }
 
-  /// ARMSX2 is sync-only, like MeloNX. Its exported library is authoritative
-  /// for PS2 discovery and does not require a user-selected folder.
   Widget _buildIOSArmsx2Section(ThemeData theme) {
     final hasSynced = Armsx2LibraryService.hasSyncedLibrary;
+    final isSaveLinked = ConfigService.linkedArmsx2SaveFolderPath != null;
     final statusText = hasSynced
         ? AppLocale.iosArmsx2StatusSynced.getString(context)
         : AppLocale.iosArmsx2StatusNeedsSync.getString(context);
@@ -800,10 +842,13 @@ class DirectoriesSettingsContentState
       name: 'ARMSX2',
       icon: Symbols.stadia_controller_rounded,
       statusText: statusText,
-      isLinked: true,
-      bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
+      isLinked: isSaveLinked,
+      bookmarkKey: ConfigService.armsx2NeoSyncBookmarkKey,
       successMessage: '',
-      showLinkButton: false,
+      onLinkPressed: () => _linkNeoSyncSaveFolder(
+        bookmarkKey: ConfigService.armsx2NeoSyncBookmarkKey,
+        emulatorName: 'ARMSX2',
+      ),
       trailingAction: Row(
         children: [
           Expanded(
@@ -844,6 +889,7 @@ class DirectoriesSettingsContentState
 
   Widget _buildIOSMeloNXSection(ThemeData theme) {
     final hasSynced = MelonxLibraryService.hasSyncedLibrary;
+    final isSaveLinked = ConfigService.linkedMelonxSaveFolderPath != null;
 
     final statusText = hasSynced
         ? AppLocale.iosMelonxStatusSynced.getString(context)
@@ -854,10 +900,13 @@ class DirectoriesSettingsContentState
       name: 'MeloNX',
       icon: Symbols.videogame_asset_rounded,
       statusText: statusText,
-      isLinked: true,
-      bookmarkKey: ExternalFolderAccess.defaultBookmarkKey,
+      isLinked: isSaveLinked,
+      bookmarkKey: ConfigService.melonxNeoSyncBookmarkKey,
       successMessage: '',
-      showLinkButton: false,
+      onLinkPressed: () => _linkNeoSyncSaveFolder(
+        bookmarkKey: ConfigService.melonxNeoSyncBookmarkKey,
+        emulatorName: 'MeloNX',
+      ),
       trailingAction: Row(
         children: [
           Expanded(

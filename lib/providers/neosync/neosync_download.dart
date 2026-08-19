@@ -240,7 +240,9 @@ extension NeoSyncDownload on NeoSyncProvider {
     NeoSyncFile cloudFile,
     File localFile,
   ) async {
-    final result = await _neoSyncService.downloadFile(cloudFile.id);
+    final result = LegacyNeoSyncService.isLegacyId(cloudFile.id)
+        ? await _legacyNeoSyncService.downloadFile(cloudFile.id)
+        : await _neoSyncService.downloadFile(cloudFile.id);
     if (result['success'] == true && result['data'] != null) {
       final bytes = result['data'] as List<int>;
       await localFile.writeAsBytes(bytes);
@@ -297,5 +299,102 @@ extension NeoSyncDownload on NeoSyncProvider {
         _processedItems.add('✨ Downloaded: ${cloudFile.fileName}');
       }
     }
+  }
+
+  /// Copies recognizable NeoSync v1 files into the v2 namespace.
+  ///
+  /// This is intentionally non-destructive: the historical object remains in
+  /// v1. Files that cannot be mapped to a local game/emulator are skipped and
+  /// remain visible through the legacy bridge.
+  Future<Set<String>> _migrateLegacyFilesToV2(
+    List<NeoSyncFile> legacyFiles,
+  ) async {
+    final migrated = <String>{};
+
+    for (final legacyFile in legacyFiles) {
+      if (!LegacyNeoSyncService.isLegacyId(legacyFile.id)) continue;
+      Directory? tempDir;
+      try {
+        final game = await _findGameForCloudFile(legacyFile);
+        final system = game?.systemFolderName?.trim();
+        final emulatorId = game?.emulatorName?.trim();
+        if (game == null ||
+            system == null ||
+            system.isEmpty ||
+            emulatorId == null ||
+            emulatorId.isEmpty) {
+          continue;
+        }
+
+        final emulatorSlug = CloudPathBuilder.slugFromEmulatorUniqueId(
+          emulatorId,
+        );
+        if (emulatorSlug.isEmpty || emulatorSlug == 'standalone') continue;
+
+        final downloaded = await _legacyNeoSyncService.downloadFile(
+          legacyFile.id,
+        );
+        if (downloaded['success'] != true || downloaded['data'] == null) {
+          continue;
+        }
+
+        final bytes = downloaded['data'] as List<int>;
+        final fileName = path.basename(legacyFile.fileName);
+        if (fileName.isEmpty) continue;
+        final lowerName = fileName.toLowerCase();
+        final systemLower = system.toLowerCase();
+        final isState = legacyFile.fileName.startsWith('states/');
+        final isShared =
+            (systemLower == 'ps2' && lowerName.endsWith('.ps2')) ||
+            ((systemLower == 'dc' || systemLower == 'dreamcast') &&
+                lowerName.contains('vmu_save'));
+
+        final v2Name = CloudPathBuilder.build(
+          system: system,
+          emulatorSlug: emulatorSlug,
+          scope: isShared ? 'shared' : 'game',
+          gameName: isShared
+              ? null
+              : path.basenameWithoutExtension(legacyFile.fileName),
+          filePath: fileName,
+          isState: isState,
+        );
+
+        tempDir = await Directory.systemTemp.createTemp('neosync-v1-migrate-');
+        final tempFile = File(path.join(tempDir.path, fileName));
+        await tempFile.parent.create(recursive: true);
+        await tempFile.writeAsBytes(bytes, flush: true);
+        try {
+          await tempFile.setLastModified(
+            legacyFile.fileModifiedAt ?? legacyFile.uploadedAt,
+          );
+        } catch (_) {}
+
+        final result = await _neoSyncService.syncFile(
+          tempFile,
+          game.name,
+          customFilename: v2Name,
+          systemId: system,
+          emulatorId: emulatorSlug,
+          isState: isState,
+          scope: isShared ? 'shared' : 'game',
+        );
+        if (result['success'] == true) {
+          migrated.add(legacyFile.id);
+        }
+      } catch (e) {
+        NeoSyncProvider._log.w(
+          'NeoSync v1 migration skipped ${legacyFile.fileName}: $e',
+        );
+      } finally {
+        if (tempDir != null) {
+          try {
+            await tempDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+    }
+
+    return migrated;
   }
 }
