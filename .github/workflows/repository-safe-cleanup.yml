@@ -1,3 +1,4 @@
+# One-shot final cleanup trigger; delete this workflow after it succeeds.
 name: Final repository verification and branch cleanup
 
 on:
@@ -127,7 +128,6 @@ jobs:
                   else:
                       raise
 
-          # Verify the final branch set.
           req = urllib.request.Request(
               f'https://api.github.com/repos/{repo}/branches?per_page=100',
               headers=headers,
