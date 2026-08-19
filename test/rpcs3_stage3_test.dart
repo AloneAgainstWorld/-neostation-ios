@@ -105,17 +105,17 @@ void main() {
       );
     });
 
-    test('RPCS3 launcher foregrounds RPCS3 after Universal JIT', () {
+    test('RPCS3 launcher uses only the stable Universal JIT handoff', () {
       final service = File(
         'lib/services/rpcs3_launch_service.dart',
       ).readAsStringSync();
-      expect(service, contains('openAppAfterJitPreflight'));
+      expect(service, contains('openJitRequest'));
       expect(service, contains("scriptName: 'universal.js'"));
-      expect(service, contains('_rpcs3WarmupDelay'));
-      expect(service, contains('rpcs3_automation_launch_debug.txt'));
+      expect(service, contains('rpcs3_launch_debug.txt'));
+      expect(service, isNot(contains('openAppAfterJitPreflight')));
+      expect(service, isNot(contains('openUrlAfterJitPreflight')));
       expect(service, isNot(contains('buildRunUri')));
       expect(service, isNot(contains('rpcs3ShortcutName')));
-      expect(service, isNot(contains('openJitRequest')));
       expect(service, isNot(contains('supportedCoreFunctions')));
       expect(service, isNot(contains('SECOND_PASS')));
       expect(
