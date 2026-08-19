@@ -742,11 +742,16 @@ class DirectoriesSettingsContentState
       successMessage: '',
       onLinkPressed: _linkRpcs3DataFolder,
       trailingAction: SizedBox(
-        height: 32,
-        child: OutlinedButton.icon(
+        height: 48.r,
+        child: FilledButton.icon(
           onPressed: _linkingFolderKey == null ? _syncWithRpcs3 : null,
-          icon: const Icon(Symbols.sync_rounded, size: 16),
-          label: Text(Rpcs3LibraryLocale.sync(context)),
+          icon: Icon(Symbols.bolt_rounded, size: 20.r),
+          label: Text(
+            hasSynced
+                ? AppLocale.iosEmuResync.getString(context)
+                : AppLocale.iosEmuSync.getString(context),
+            style: TextStyle(fontSize: 14.r),
+          ),
         ),
       ),
     );
