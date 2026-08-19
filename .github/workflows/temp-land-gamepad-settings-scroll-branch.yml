@@ -1,0 +1,57 @@
+name: Temporary land gamepad scroll on fix branch
+on:
+  push:
+    branches: [fix/gamepad-settings-scroll]
+permissions:
+  contents: write
+  statuses: write
+jobs:
+  land:
+    if: github.event.head_commit.message == 'Run branch gamepad scroll landing'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish run locator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          curl -fsSL -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/$REPO/statuses/$SHA" -d "{\"state\":\"pending\",\"context\":\"neostation/branch-gamepad-scroll\",\"description\":\"run_id=$RUN_ID\",\"target_url\":\"https://github.com/$REPO/actions/runs/$RUN_ID\"}"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply validated patch
+        run: python3 build-utils/temp_patch_gamepad_settings_scroll.py
+      - name: Format and validate
+        run: |
+          dart format lib/widgets/system_emulator_settings_dialog.dart lib/widgets/system_emulator_settings_dialog/system_info.dart lib/widgets/system_emulator_settings_dialog/gamepad_nav.dart lib/screens/scraper_screen/scraper_contents/media_content.dart lib/screens/scraper_screen/new_scraper_options_screen.dart lib/screens/settings_screen/new_settings_options/directories_settings_content.dart test/gamepad_settings_scrolling_test.dart
+          git diff --check
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Test
+        run: flutter test test/gamepad_settings_scrolling_test.dart test/ios_gamepad_navigation_test.dart
+      - name: Commit source fix
+        run: |
+          git config user.name 'Tarble FR'
+          git config user.email 'f9wynyv9qy@privaterelay.appleid.com'
+          git add lib/widgets/system_emulator_settings_dialog.dart lib/widgets/system_emulator_settings_dialog/system_info.dart lib/widgets/system_emulator_settings_dialog/gamepad_nav.dart lib/screens/scraper_screen/scraper_contents/media_content.dart lib/screens/scraper_screen/new_scraper_options_screen.dart lib/screens/settings_screen/new_settings_options/directories_settings_content.dart test/gamepad_settings_scrolling_test.dart
+          git diff --cached --check
+          git commit -m 'Fix gamepad scrolling in settings'
+          git push origin HEAD:fix/gamepad-settings-scroll
+      - name: Publish final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          STATE=failure; if [ "$JOB_STATUS" = "success" ]; then STATE=success; fi
+          curl -fsSL -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/$REPO/statuses/$SHA" -d "{\"state\":\"$STATE\",\"context\":\"neostation/branch-gamepad-scroll\",\"description\":\"run_id=$RUN_ID\",\"target_url\":\"https://github.com/$REPO/actions/runs/$RUN_ID\"}"
