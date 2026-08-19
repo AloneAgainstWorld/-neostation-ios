@@ -1,7 +1,7 @@
 name: Temporary cleanup branch verifier
 
 on:
-  push:
+  pull_request:
     branches:
       - main
 
@@ -13,7 +13,7 @@ env:
 
 jobs:
   verify-cleanup:
-    if: contains(github.event.head_commit.message, '[verify-cleanup-branch]')
+    if: contains(github.event.pull_request.title, '[verify-cleanup-branch]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
           ref: maintenance/final-repository-cleanup
           fetch-depth: 0
 
-      - name: Restore audited settings source and final cleanup fixes
+      - name: Restore audited settings source and apply narrow RPCS3 UI fix
         shell: bash
         run: |
           set -euo pipefail
@@ -60,31 +60,8 @@ jobs:
       ),
 '''
           if old not in text:
-              raise SystemExit('Expected RPCS3 sync action block not found')
+              raise SystemExit('Expected cleaned RPCS3 action block not found')
           settings.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          swift = Path('packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift')
-          text = swift.read_text(encoding='utf-8')
-          definition = '    private static func applicationStateName() -> String {'
-          if definition not in text:
-              marker = '    private static func safeDebugFileName(_ value: String) -> String {'
-              if marker not in text:
-                  raise SystemExit('safeDebugFileName marker missing')
-              helper = '''    private static func applicationStateName() -> String {
-        switch UIApplication.shared.applicationState {
-        case .active:
-            return "active"
-        case .inactive:
-            return "inactive"
-        case .background:
-            return "background"
-        @unknown default:
-            return "unknown"
-        }
-    }
-
-'''
-              swift.write_text(text.replace(marker, helper + marker, 1), encoding='utf-8')
 
           for transient in (
               '.cleanup-verify-trigger', '.cleanup-verify-trigger-2',
