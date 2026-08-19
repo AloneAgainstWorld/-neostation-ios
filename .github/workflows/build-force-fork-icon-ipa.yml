@@ -18,8 +18,10 @@ jobs:
       SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
 
     steps:
-      - name: Checkout
+      - name: Checkout latest main
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -154,7 +156,7 @@ jobs:
           cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
           (
             cd build/ios/unsigned
-            zip -r ../../../NeoStation-Forced-ForkIcon-unsigned.ipa Payload
+            zip -r ../../../NeoStation-Final-Stable-RPCS3-ForkIcon-unsigned.ipa Payload
           )
 
       - name: Remove temporary environment file
@@ -165,9 +167,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: NeoStation-Forced-ForkIcon-unsigned-ipa
+          name: NeoStation-Final-Stable-RPCS3-ForkIcon-unsigned-ipa
           path: |
-            NeoStation-Forced-ForkIcon-unsigned.ipa
+            NeoStation-Final-Stable-RPCS3-ForkIcon-unsigned.ipa
             build/ios/xcodebuild-unsigned.log
           if-no-files-found: error
           retention-days: 7
