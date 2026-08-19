@@ -39,7 +39,6 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:fvp/fvp.dart';
 import 'package:fullscreen_window/fullscreen_window.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:neostation/screens/secondary_screen/secondary_screen.dart';
@@ -359,9 +358,6 @@ void main() async {
 
     log.i('Window manager initialized');
   }
-
-  // Inicializar fvp para soporte extendido de video (Windows, Linux, etc.)
-  registerWith();
 
   // Configurar manejo global de errores para evitar crashes
   FlutterError.onError = (FlutterErrorDetails details) {
