@@ -61,6 +61,7 @@ class DirectoriesSettingsContentState
   /// GlobalKeys for the navigable rows, used to keep the focused row visible
   /// during gamepad navigation.
   final List<GlobalKey> _itemKeys = [];
+  int _lastScrollIndex = 0;
 
   /// Grows [_itemKeys] to cover the current navigable-item count.
   void _ensureKeys(int count) {
@@ -116,15 +117,44 @@ class DirectoriesSettingsContentState
   }
 
   void scrollToIndex(int index) {
-    // Use the focused row's own key so scrolling tracks its real height —
-    // section headers and path-chip cards aren't a uniform height, so a
-    // fixed per-row estimate drifts and overshoots as the list scrolls.
-    if (index >= 0 && index < _itemKeys.length) {
-      final ctx = _itemKeys[index].currentContext;
-      if (ctx != null) {
-        _scroller.ensureVisible(ctx);
+    if (index < 0 || index >= _directoryItems.length) return;
+    _ensureKeys(_directoryItems.length);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final itemContext = _itemKeys[index].currentContext;
+      if (itemContext != null) {
+        _lastScrollIndex = index;
+        _scroller.ensureVisible(itemContext);
+        return;
       }
-    }
+
+      // ListView.builder lazily omits off-screen ROM-folder rows. Move one
+      // viewport in the requested direction so the target gets built, then
+      // finish with ensureVisible using its real rendered height.
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final direction = index >= _lastScrollIndex ? 1.0 : -1.0;
+      _lastScrollIndex = index;
+      final target =
+          (position.pixels + direction * position.viewportDimension * 0.72)
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+
+      _scrollController
+          .animateTo(
+            target,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (!mounted || index >= _itemKeys.length) return;
+            final builtContext = _itemKeys[index].currentContext;
+            if (builtContext != null) {
+              _scroller.ensureVisible(builtContext);
+            }
+          });
+    });
   }
 
   void _buildDirectoryItems() {

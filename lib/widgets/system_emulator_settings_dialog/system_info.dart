@@ -29,6 +29,7 @@ extension _SystemInfoTab on _SystemEmulatorSettingsDialogState {
     final architecture = (profile?.architecture ?? '').trim();
 
     return SingleChildScrollView(
+      controller: _systemInfoScrollController,
       padding: EdgeInsets.fromLTRB(12.r, 10.r, 12.r, 12.r),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -481,9 +482,7 @@ extension _SystemInfoTab on _SystemEmulatorSettingsDialogState {
       decoration: BoxDecoration(
         color: scheme.onSurface.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(
-          color: scheme.outline.withValues(alpha: 0.12),
-        ),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
       ),
       child: Text(
         text,

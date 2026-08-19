@@ -9,6 +9,7 @@ import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/widgets/custom_notification.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:neostation/repositories/scraper_repository.dart';
+
 import 'scraper_contents/account_content.dart';
 import 'scraper_contents/language_content.dart';
 import 'scraper_contents/region_content.dart';
@@ -233,9 +234,11 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
             _getContentItemCount() - 1,
           );
         });
-        // Asegurar scroll para Language
+        // Keep the gamepad cursor visible in scrollable content panels.
         if (selectedKey == AppLocale.language) {
           _languageKey.currentState?.ensureVisible(_selectedContentIndex);
+        } else if (selectedKey == AppLocale.media) {
+          _mediaKey.currentState?.ensureVisible(_selectedContentIndex);
         }
       }
     }
@@ -260,9 +263,11 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
             _getContentItemCount() - 1,
           );
         });
-        // Asegurar scroll para Language
+        // Keep the gamepad cursor visible in scrollable content panels.
         if (selectedKey == AppLocale.language) {
           _languageKey.currentState?.ensureVisible(_selectedContentIndex);
+        } else if (selectedKey == AppLocale.media) {
+          _mediaKey.currentState?.ensureVisible(_selectedContentIndex);
         }
       }
     }

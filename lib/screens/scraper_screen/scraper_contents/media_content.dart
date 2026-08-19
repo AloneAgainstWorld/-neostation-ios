@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+
 import '../../settings_screen/new_settings_options/settings_title.dart';
+
 import 'package:neostation/widgets/custom_toggle_switch.dart';
+import 'package:neostation/utils/adaptive_scroll.dart';
 
 class MediaContent extends StatefulWidget {
   final bool isContentFocused;
@@ -24,7 +27,39 @@ class MediaContent extends StatefulWidget {
 }
 
 class MediaContentState extends State<MediaContent> {
-  static const _orderedKeys = ['fanart', 'ss', 'wheel', 'box2D', 'video', 'manuel'];
+  static const _orderedKeys = [
+    'fanart',
+    'ss',
+    'wheel',
+    'box2D',
+    'video',
+    'manuel',
+  ];
+  final AdaptiveScroller _scroller = AdaptiveScroller();
+  final List<GlobalKey> _itemKeys = List.generate(
+    _orderedKeys.length,
+    (_) => GlobalKey(),
+  );
+
+  @override
+  void didUpdateWidget(covariant MediaContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isContentFocused &&
+        (!oldWidget.isContentFocused ||
+            oldWidget.selectedContentIndex != widget.selectedContentIndex)) {
+      ensureVisible(widget.selectedContentIndex);
+    }
+  }
+
+  void ensureVisible(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || index < 0 || index >= _itemKeys.length) return;
+      final itemContext = _itemKeys[index].currentContext;
+      if (itemContext != null) {
+        _scroller.ensureVisible(itemContext);
+      }
+    });
+  }
 
   void selectItem(int index) {
     if (index >= 0 && index < _orderedKeys.length) {
@@ -98,6 +133,7 @@ class MediaContentState extends State<MediaContent> {
                 widget.isContentFocused && widget.selectedContentIndex == index;
 
             return Container(
+              key: _itemKeys[index],
               padding: EdgeInsets.only(
                 left: 12.r,
                 right: 12.r,

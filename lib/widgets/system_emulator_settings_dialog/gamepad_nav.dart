@@ -35,6 +35,21 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
     _gamepadNav.dispose();
   }
 
+  void _scrollSystemInfo({required bool down}) {
+    if (!_systemInfoScrollController.hasClients) return;
+    final position = _systemInfoScrollController.position;
+    final delta = position.viewportDimension * 0.72;
+    final target = (position.pixels + (down ? delta : -delta))
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    if ((target - position.pixels).abs() < 0.5) return;
+    _systemInfoScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   void _navigateUp() {
     if (_openMenuIndex != -1) {
       final focusedContext = FocusManager.instance.primaryFocus?.context;
@@ -75,6 +90,8 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
         _appearanceIndex = (_appearanceIndex - 1 + 2) % 2;
       });
       _scrollToAppearanceSelected();
+    } else if (_currentTab == 3) {
+      _scrollSystemInfo(down: false);
     }
   }
 
@@ -117,13 +134,13 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
         _appearanceIndex = (_appearanceIndex + 1) % 2;
       });
       _scrollToAppearanceSelected();
+    } else if (_currentTab == 3) {
+      _scrollSystemInfo(down: true);
     }
   }
 
   void _navigateLeft() {
-    if (_currentTab != 1 ||
-        !_usesExecutablePicker ||
-        _openMenuIndex != -1) {
+    if (_currentTab != 1 || !_usesExecutablePicker || _openMenuIndex != -1) {
       return;
     }
     if (_emulatorActionIndex == 0) return;
@@ -132,9 +149,7 @@ extension _GamepadNav on _SystemEmulatorSettingsDialogState {
   }
 
   void _navigateRight() {
-    if (_currentTab != 1 ||
-        !_usesExecutablePicker ||
-        _openMenuIndex != -1) {
+    if (_currentTab != 1 || !_usesExecutablePicker || _openMenuIndex != -1) {
       return;
     }
     if (_emulatorActionIndex == 1) return;
