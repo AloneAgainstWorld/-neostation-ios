@@ -20,6 +20,8 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
 {
     private var pendingResult: FlutterResult?
     private var channel: FlutterMethodChannel?
+    private var audioSessionObservers: [NSObjectProtocol] = []
+    private var audioSessionKnownActive = false
 
     /// Bookmarks are stored per-emulator so several external folders can be
     /// linked side by side (RetroArch's, ARMSX2's, ...) instead of the one
@@ -64,6 +66,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
         )
         let instance = ExternalFolderAccessPlugin()
         instance.channel = channel
+        instance.installAudioSessionObservers()
         registrar.addMethodCallDelegate(instance, channel: channel)
         // Lets this plugin receive application(_:open:options:) callbacks —
         // needed to catch RetroArch calling back into neostation://... See
@@ -262,16 +265,106 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
 
     // MARK: - iOS audio session
 
-    /// Uses the AVAudioSession category intended for non-primary app audio.
-    /// `.ambient` is silenced by the iPhone Ring/Silent switch and mixes with
-    /// audio from other apps. NeoStation reapplies this after SoLoud starts,
-    /// because the audio backend may activate a different category during init.
-    private func configureAudioSessionForSilentMode(result: @escaping FlutterResult) {
+    /// Registers infrequent structural recovery hooks. Normal player
+    /// starts, pauses, volume changes and disposals never touch
+    /// AVAudioSession.
+    private func installAudioSessionObservers() {
+        let center = NotificationCenter.default
         let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self else { return }
+                guard
+                    let number = notification.userInfo?[
+                        AVAudioSessionInterruptionTypeKey
+                    ] as? NSNumber,
+                    let type = AVAudioSession.InterruptionType(
+                        rawValue: number.uintValue
+                    )
+                else {
+                    return
+                }
+
+                switch type {
+                case .began:
+                    self.audioSessionKnownActive = false
+                case .ended:
+                    try? self.applySilentModeAudioSession(
+                        forceActivation: true
+                    )
+                @unknown default:
+                    break
+                }
+            }
+        )
+
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                try? self.applySilentModeAudioSession(
+                    forceActivation: false
+                )
+            }
+        )
+    }
+
+    deinit {
+        for observer in audioSessionObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Applies NeoStation's one app-wide audio policy.
+    ///
+    /// Category writes are skipped when the session is already correct.
+    /// Activation is forced only at startup, application resume, shared
+    /// SoLoud engine creation, or interruption end.
+    @discardableResult
+    private func applySilentModeAudioSession(
+        forceActivation: Bool
+    ) throws -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        let desiredOptions: AVAudioSession.CategoryOptions = [
+            .mixWithOthers
+        ]
+        let categoryNeedsUpdate =
+            session.category != .ambient ||
+            session.mode != .default ||
+            session.categoryOptions != desiredOptions
+
+        if categoryNeedsUpdate {
+            try session.setCategory(
+                .ambient,
+                mode: .default,
+                options: desiredOptions
+            )
+        }
+
+        if forceActivation || !audioSessionKnownActive {
             try session.setActive(true)
-            result(true)
+            audioSessionKnownActive = true
+        }
+        return true
+    }
+
+    private func configureAudioSessionForSilentMode(
+        result: @escaping FlutterResult
+    ) {
+        do {
+            result(
+                try applySilentModeAudioSession(
+                    forceActivation: true
+                )
+            )
         } catch {
             result(
                 FlutterError(

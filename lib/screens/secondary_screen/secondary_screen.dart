@@ -27,8 +27,6 @@ import 'widgets/achievement_panel.dart';
 import 'widgets/app_dock.dart';
 import 'widgets/now_playing_panel.dart';
 
-import 'package:neostation/services/audio_policy_service.dart';
-
 class SecondaryScreen extends StatefulWidget {
   const SecondaryScreen({super.key, this.initialThemeName});
 
@@ -275,7 +273,6 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
       // Game selected, same video, but maybe mute changed
       if (_videoController != null && _videoController!.value.isInitialized) {
         _videoController!.setVolume(state.isVideoMuted ? 0.0 : 1.0);
-        AudioPolicyService().setVideoPlaybackActive(!state.isVideoMuted);
       }
     }
   }
@@ -556,14 +553,8 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
     final gen = _videoGeneration;
     VideoPlayerController? controller;
     try {
-      controller = VideoPlayerController.file(
-        File(path),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
+      controller = VideoPlayerController.file(File(path));
       await controller.initialize();
-      await AudioPolicyService().ensureSilentCompatibleSession(
-        reason: 'secondary-preview-video-initialized',
-      );
       if (!mounted || gen != _videoGeneration) {
         await controller.dispose();
         return;
@@ -575,19 +566,11 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
 
       await controller.setLooping(true);
       await controller.play();
-      await AudioPolicyService().afterPlaybackStarted(
-        'secondary-preview-video',
-      );
 
       if (!mounted || gen != _videoGeneration) {
         await controller.dispose();
         return;
       }
-
-      // Unrelated clients (SFX, music) will skip their own native audio
-      // session reassertions while this is true, so their frequent calls
-      // stop resetting the shared audio unit under this video's audio track.
-      AudioPolicyService().setVideoPlaybackActive(!isMuted);
 
       setState(() {
         _videoController = controller;
@@ -610,7 +593,6 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
     _videoGeneration++;
     _videoTimer?.cancel();
     _videoTimer = null;
-    AudioPolicyService().setVideoPlaybackActive(false);
     if (_videoController != null) {
       final controller = _videoController!;
       _videoController = null;

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:neostation/services/audio_policy_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -343,13 +342,6 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _resumeWithAudioPolicy() async {
-    await AudioPolicyService().ensureSilentCompatibleSession(
-      reason: 'home-music-resumed',
-    );
-    await _syncPlayback();
-  }
-
   Future<void> _startPlayback() async {
     if (_starting || _handle != null || !_shouldPlay || _musicPath == null) {
       return;
@@ -357,19 +349,13 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
     _starting = true;
 
     try {
-      // SFX owns the shared engine's normal initialization path and is already
-      // concurrency-safe, so using it here avoids two callers racing SoLoud.
+      // SFX owns the shared SoLoud initialization path. Once the
+      // engine is ready, this reader manages only its own source,
+      // handle and volume.
       await SfxService().init();
-      await AudioPolicyService().ensureSilentCompatibleSession(
-        reason: 'home-music-engine-ready',
-      );
       if (!_shouldPlay || _musicPath == null) return;
 
       final source = await SoLoud.instance.loadFile(_musicPath!);
-      // SoLoud may reactivate its own iOS category while loading/starting a
-      // streamed file. Re-apply `.ambient` after each operation so the hardware
-      // Ring/Silent switch remains authoritative, including inside Theme.
-      await AudioPolicyService().prepareForPlayback('home-music');
       if (!_shouldPlay) {
         await SoLoud.instance.disposeSource(source);
         return;
@@ -377,7 +363,6 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
 
       _source = source;
       _handle = SoLoud.instance.play(source, volume: _volume, looping: true);
-      await AudioPolicyService().afterPlaybackStarted('home-music');
       _log.i('[HomeMusic] Main-menu music started.');
     } catch (e) {
       _source = null;
@@ -413,7 +398,7 @@ class HomeMusicService extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appActive = true;
-      unawaited(_resumeWithAudioPolicy());
+      unawaited(_syncPlayback());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {

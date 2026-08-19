@@ -8,8 +8,6 @@ import 'package:video_player/video_player.dart';
 
 import '../../utils/image_utils.dart';
 
-import '../../services/audio_policy_service.dart';
-
 /// Renders animated background media from the local filesystem.
 ///
 /// GIFs keep NeoStation's shader-backed frame renderer. Supported videos
@@ -92,17 +90,11 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
     if (!await file.exists()) return;
 
     await _clearVideo();
-    final controller = VideoPlayerController.file(
-      file,
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    );
+    final controller = VideoPlayerController.file(file);
     _videoController = controller;
 
     try {
       await controller.initialize();
-      await AudioPolicyService().ensureSilentCompatibleSession(
-        reason: 'custom-background-video-initialized',
-      );
       if (!mounted ||
           _videoController != controller ||
           widget.imagePath != path) {
@@ -112,9 +104,6 @@ class _ShaderGifWidgetState extends State<ShaderGifWidget>
       await controller.setLooping(true);
       await controller.setVolume(0.0);
       await controller.play();
-      await AudioPolicyService().afterPlaybackStarted(
-        'custom-background-video',
-      );
       if (mounted && _videoController == controller) {
         setState(() => _videoReady = true);
       }

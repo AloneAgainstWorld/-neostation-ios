@@ -120,6 +120,9 @@ workflows:
       - name: Resolve Flutter dependencies
         script: flutter pub get
 
+      - name: Keep iOS audio session owned by NeoStation
+        script: python3 build-utils/patch_ios_video_player_audio_session.py
+
       - name: Scaffold iOS platform if missing
         script: |
           set -euo pipefail
@@ -188,6 +191,9 @@ workflows:
         script: |
           cd ios
           pod install --repo-update
+
+      - name: Verify iOS video player audio-session patch
+        script: python3 build-utils/patch_ios_video_player_audio_session.py --check
 
       - name: Configure Flutter build with ScreenScraper defines
         script: |
