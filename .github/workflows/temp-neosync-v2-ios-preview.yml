@@ -1,0 +1,872 @@
+name: Temporary NeoSync v2 iOS preview
+
+on:
+  push:
+    branches:
+      - feature/neosync-v2-ios
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: neosync-v2-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event.head_commit.message == 'Build NeoSync v2 iOS preview'
+    runs-on: macos-14
+    timeout-minutes: 120
+    env:
+      SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+      SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+
+    steps:
+      - name: Checkout preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/neosync-v2-ios
+          fetch-depth: 0
+
+      - name: Publish run locator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          payload = json.dumps({
+              'state': 'pending',
+              'context': 'neostation/neosync-v2-ios-preview',
+              'description': f"run_id={os.environ['RUN_ID']}",
+              'target_url': f"https://github.com/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']}",
+          }).encode()
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/statuses/{os.environ['SHA']}",
+              data=payload,
+              method='POST',
+              headers={
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+              },
+          )
+          urllib.request.urlopen(req, timeout=30).read()
+          PY
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply NeoSync v2 iOS core port
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              if old not in s:
+                  raise SystemExit(f'{label}: expected source fragment not found in {path}')
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # iOS RetroArch filesystem discovery through the existing bookmark.
+          # ------------------------------------------------------------------
+          p = Path('lib/services/retroarch_config_service.dart')
+          s = p.read_text(encoding='utf-8')
+          marker = "  /// Returns the merged configuration by discovering the platform's standard\n"
+          if marker not in s:
+              raise SystemExit('RetroArchConfigService insertion marker not found')
+          ios_helpers = r'''  /// Resolves RetroArch directories from the security-scoped folder linked
+  /// by NeoStation on iOS. The bookmark itself is restored in main.dart before
+  /// providers are created, so filesystem access is already active here.
+  Future<RetroArchConfig?> _getIOSLinkedConfig() async {
+    if (!Platform.isIOS) return null;
+
+    final linkedRoot = ConfigService.linkedExternalFolderPath?.trim();
+    if (linkedRoot == null || linkedRoot.isEmpty) {
+      _log.w('iOS RetroArch folder is not linked; NeoSync local paths unavailable');
+      return null;
+    }
+
+    final root = Directory(linkedRoot);
+    if (!await root.exists()) {
+      _log.w('iOS linked RetroArch folder no longer exists: $linkedRoot');
+      return null;
+    }
+
+    String? configPath;
+    final configCandidates = <String>[
+      path.join(linkedRoot, 'retroarch.cfg'),
+      path.join(linkedRoot, 'config', 'retroarch.cfg'),
+      path.join(linkedRoot, 'RetroArch', 'retroarch.cfg'),
+    ];
+    for (final candidate in configCandidates) {
+      if (File(candidate).existsSync()) {
+        configPath = candidate;
+        break;
+      }
+    }
+
+    // Some iOS RetroArch builds expose one extra Documents subdirectory.
+    if (configPath == null) {
+      try {
+        for (final child in root.listSync(followLinks: false).whereType<Directory>()) {
+          final candidate = path.join(child.path, 'retroarch.cfg');
+          if (File(candidate).existsSync()) {
+            configPath = candidate;
+            break;
+          }
+        }
+      } catch (e) {
+        _log.w('Could not inspect linked RetroArch folder for retroarch.cfg: $e');
+      }
+    }
+
+    RetroArchConfig? parsed;
+    if (configPath != null) {
+      try {
+        parsed = await parseConfig(configPath);
+      } catch (e) {
+        _log.w('Could not parse linked iOS RetroArch config: $e');
+      }
+    }
+
+    String resolveDirectory(String logicalName, String? configured) {
+      // A security-scoped URL may make RetroArch's original absolute path
+      // directly readable. Only use it when it actually exists.
+      if (configured != null &&
+          configured.isNotEmpty &&
+          Directory(configured).existsSync()) {
+        return configured;
+      }
+
+      final names = <String>{logicalName.toLowerCase()};
+      if (configured != null && configured.isNotEmpty) {
+        names.add(path.basename(configured).toLowerCase());
+      }
+
+      final candidates = <String>[
+        for (final name in names) path.join(linkedRoot, name),
+        for (final name in names) path.join(linkedRoot, 'RetroArch', name),
+      ];
+      for (final candidate in candidates) {
+        if (Directory(candidate).existsSync()) return candidate;
+      }
+
+      // Case-insensitive one-level lookup covers Files.app folders whose
+      // display capitalization differs from RetroArch's config value.
+      try {
+        for (final child in root.listSync(followLinks: false).whereType<Directory>()) {
+          if (names.contains(path.basename(child.path).toLowerCase())) {
+            return child.path;
+          }
+        }
+      } catch (_) {}
+
+      // Keep downloads inside the bookmarked root even when RetroArch has not
+      // created the directory yet. The sync layer may create it later.
+      return path.join(linkedRoot, logicalName);
+    }
+
+    final resolved = RetroArchConfig(
+      configPath: configPath ?? '',
+      systemDirectory: resolveDirectory('system', parsed?.systemDirectory),
+      savefileDirectory: resolveDirectory('saves', parsed?.savefileDirectory),
+      savestateDirectory: resolveDirectory('states', parsed?.savestateDirectory),
+    );
+    _log.i(
+      'iOS RetroArch paths resolved for NeoSync: '
+      'saves=${resolved.savefileDirectory}, states=${resolved.savestateDirectory}',
+    );
+    return resolved;
+  }
+
+'''
+          s = s.replace(marker, ios_helpers + marker, 1)
+
+          cache_marker = '''    if (_cachedConfig != null && !forceRefresh) {
+      return _cachedConfig!;
+    }
+
+    String? configPath;
+'''
+          cache_new = '''    if (_cachedConfig != null && !forceRefresh) {
+      return _cachedConfig!;
+    }
+
+    if (Platform.isIOS) {
+      final iosConfig = await _getIOSLinkedConfig();
+      if (iosConfig != null) {
+        _cachedConfig = iosConfig;
+        return iosConfig;
+      }
+      return RetroArchConfig(
+        configPath: '',
+        systemDirectory: null,
+        savefileDirectory: null,
+        savestateDirectory: null,
+      );
+    }
+
+    String? configPath;
+'''
+          if cache_marker not in s:
+              raise SystemExit('RetroArchConfigService cache marker not found')
+          s = s.replace(cache_marker, cache_new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # NeoSync provider: make canonical v2 path helpers available.
+          # ------------------------------------------------------------------
+          replace_once(
+              'lib/providers/neo_sync_provider.dart',
+              "import '../services/retroarch_config_service.dart';\n",
+              "import '../services/retroarch_config_service.dart';\nimport '../utils/cloud_path_builder.dart';\n",
+              'NeoSync provider import',
+          )
+
+          # Return emulator metadata with save-name lookups so flat RetroArch
+          # layouts can still identify which core/standalone wrote the save.
+          replace_once(
+              'lib/repositories/game_repository.dart',
+              'SELECT ur.filename, ur.title_name, s.folder_name\n',
+              'SELECT ur.filename, ur.title_name, s.folder_name, ur.app_emulator_unique_id AS emulator_name\n',
+              'GameRepository emulator metadata',
+          )
+
+          # ------------------------------------------------------------------
+          # NeoSync API v2 endpoints + structured upload metadata.
+          # ------------------------------------------------------------------
+          p = Path('lib/services/neosync/neo_sync_service.dart')
+          s = p.read_text(encoding='utf-8').replace('/api/v1/', '/api/v2/')
+          old_sig = '''  Future<Map<String, dynamic>> syncFile(
+    File file,
+    String gameName, {
+    String? customFilename,
+  }) async {
+'''
+          new_sig = '''  Future<Map<String, dynamic>> syncFile(
+    File file,
+    String gameName, {
+    String? customFilename,
+    String? systemId,
+    String? emulatorId,
+    String? gameHash,
+    bool? isState,
+    String? scope,
+  }) async {
+'''
+          if old_sig not in s:
+              raise SystemExit('NeoSyncService syncFile signature not found')
+          s = s.replace(old_sig, new_sig, 1)
+
+          metadata_marker = '''      request.fields['file_modified_at_timestamp'] = fileModifiedAtTimestamp
+          .toString();
+'''
+          metadata_new = metadata_marker + '''      if (systemId != null && systemId.isNotEmpty) {
+        request.fields['system_id'] = systemId;
+      }
+      if (emulatorId != null && emulatorId.isNotEmpty) {
+        request.fields['emulator_id'] = emulatorId;
+      }
+      if (gameHash != null && gameHash.isNotEmpty) {
+        request.fields['game_hash'] = gameHash;
+      }
+      if (isState != null) {
+        request.fields['is_state'] = isState.toString();
+      }
+      if (scope != null && scope.isNotEmpty) {
+        request.fields['scope'] = scope;
+      }
+'''
+          if metadata_marker not in s:
+              raise SystemExit('NeoSyncService upload metadata marker not found')
+          s = s.replace(metadata_marker, metadata_new, 1)
+
+          # Request a large first page for the existing UI. Full pagination is
+          # part of the later upstream-v2 dashboard port; 200 is enough for the
+          # device compatibility preview while preserving the old UI contract.
+          old_files_uri = "      final uri = Uri.parse('$baseUrl/api/v2/files');\n"
+          new_files_uri = """      final uri = Uri.parse('$baseUrl/api/v2/files').replace(
+        queryParameters: const {'limit': '200', 'offset': '0'},
+      );
+"""
+          if old_files_uri not in s:
+              raise SystemExit('NeoSyncService getFiles URI marker not found')
+          s = s.replace(old_files_uri, new_files_uri, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # iOS path routing + canonical NeoSync v2 cloud names.
+          # ------------------------------------------------------------------
+          p = Path('lib/providers/neosync/neosync_path_resolver.dart')
+          s = p.read_text(encoding='utf-8')
+
+          folders_marker = '''    final folders = system.neosync.getFoldersForCurrentPlatform();
+    final List<String> resolvedPaths = [];
+
+    for (final folder in folders) {
+'''
+          folders_new = '''    final folders = system.neosync.getFoldersForCurrentPlatform();
+    final List<String> resolvedPaths = [];
+
+    // System JSON predates iOS NeoSync and therefore has no ios_sync_folder
+    // entries. For the first iOS v2 port, RetroArch's bookmarked saves/states
+    // roots are the authoritative local sync roots.
+    if (Platform.isIOS && folders.isEmpty) {
+      final saves = await _getRetroArchSavesPath();
+      final states = await _getRetroArchStatesPath();
+      if (saves != null) resolvedPaths.add(saves);
+      if (states != null) resolvedPaths.add(states);
+    }
+
+    for (final folder in folders) {
+'''
+          if folders_marker not in s:
+              raise SystemExit('resolveUniversalPaths marker not found')
+          s = s.replace(folders_marker, folders_new, 1)
+
+          start = s.find('  /// Helper to calculate relative path for sync')
+          end = s.find('  /// Calcula la ruta relativa para sincronización', start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate legacy sync path builder block')
+          v2_builder = r'''  /// Resolves a local save file back to its library game.
+  Future<GameModel?> _gameForSaveFile(File file) async {
+    final saveBase = path.basenameWithoutExtension(file.path);
+    try {
+      final row = await GameRepository.findRomByFilenamePrefix(saveBase);
+      if (row == null) return null;
+      final romname = row['filename']?.toString() ?? saveBase;
+      final title = row['title_name']?.toString();
+      return GameModel(
+        name: (title == null || title.isEmpty) ? romname : title,
+        realname: (title == null || title.isEmpty) ? romname : title,
+        romname: romname,
+        systemFolderName: row['folder_name']?.toString(),
+        emulatorName: row['emulator_name']?.toString(),
+        year: '',
+        developer: '',
+        publisher: '',
+        genre: '',
+        players: '',
+        rating: 0.0,
+      );
+    } catch (e) {
+      NeoSyncProvider._log.w('Could not map save ${file.path} to a game: $e');
+      return null;
+    }
+  }
+
+  /// Builds the canonical NeoSync v2 path for a local game save/state.
+  /// Never falls back to a v1 cloud path: an unresolved file is safer to skip
+  /// than to upload under an ambiguous namespace.
+  Future<String> _calculateSyncRelativePath(
+    GameModel game,
+    File file,
+    String basePath, {
+    bool isState = false,
+  }) async {
+    final systemFolder =
+        game.systemFolderName ??
+        await GameRepository.getSystemFolderForGame(game.romname);
+    if (systemFolder == null || systemFolder.isEmpty) {
+      throw StateError('NeoSync v2: system could not be resolved for ${game.romname}');
+    }
+
+    String? emulatorSlug;
+
+    // Per-core RetroArch layouts encode the core in the first directory below
+    // saves/states. That is more reliable than a stale game emulator override.
+    final relative = path.relative(file.path, from: basePath);
+    final segments = relative.split(RegExp(r'[/\\]'));
+    if (!relative.startsWith('..') && segments.length > 1) {
+      final coreFolder = segments.first;
+      if (coreFolder.isNotEmpty) {
+        emulatorSlug = CloudPathBuilder.retroArchCoreSlug(coreFolder);
+      }
+    }
+
+    if ((emulatorSlug == null || emulatorSlug.isEmpty) &&
+        game.coreName != null &&
+        game.coreName!.trim().isNotEmpty) {
+      emulatorSlug = CloudPathBuilder.retroArchCoreSlug(game.coreName!);
+    }
+    if ((emulatorSlug == null || emulatorSlug.isEmpty) &&
+        game.emulatorName != null &&
+        game.emulatorName!.trim().isNotEmpty) {
+      emulatorSlug = CloudPathBuilder.slugFromEmulatorUniqueId(
+        game.emulatorName!,
+      );
+    }
+
+    if (emulatorSlug == null || emulatorSlug.isEmpty) {
+      throw StateError(
+        'NeoSync v2: emulator/core could not be resolved for ${game.romname}',
+      );
+    }
+
+    final lowerName = path.basename(file.path).toLowerCase();
+    final systemLower = systemFolder.toLowerCase();
+    final isSharedCard =
+        (systemLower == 'ps2' && lowerName.endsWith('.ps2')) ||
+        ((systemLower == 'dc' || systemLower == 'dreamcast') &&
+            lowerName.contains('vmu_save'));
+
+    return CloudPathBuilder.build(
+      system: systemFolder,
+      emulatorSlug: emulatorSlug,
+      scope: isSharedCard ? 'shared' : 'game',
+      gameName: isSharedCard ? null : path.basenameWithoutExtension(file.path),
+      filePath: path.basename(file.path),
+      isState: isState,
+    );
+  }
+
+  Future<String?> _retroArchCoreFolderForSlug(
+    String emulatorSlug,
+    String baseFolder,
+  ) async {
+    if (!emulatorSlug.startsWith('retroarch.')) return null;
+    try {
+      final base = Directory(baseFolder);
+      if (!base.existsSync()) return null;
+      for (final child in base.listSync(followLinks: false).whereType<Directory>()) {
+        final name = path.basename(child.path);
+        if (CloudPathBuilder.retroArchCoreSlug(name) == emulatorSlug) {
+          return name;
+        }
+      }
+    } catch (e) {
+      NeoSyncProvider._log.w('Could not map $emulatorSlug under $baseFolder: $e');
+    }
+    return null;
+  }
+
+'''
+          s = s[:start] + v2_builder + s[end:]
+
+          old_kind = '''    final isState = cloudFile.fileName.startsWith('states/');
+    final isSave = cloudFile.fileName.startsWith('saves/');
+'''
+          new_kind = '''    final v2Path = CloudPathBuilder.parse(cloudFile.fileName);
+    final isState = v2Path?.isState ?? cloudFile.fileName.startsWith('states/');
+    final isSave = v2Path != null
+        ? !v2Path.isState
+        : cloudFile.fileName.startsWith('saves/');
+'''
+          if old_kind not in s:
+              raise SystemExit('Cloud path kind marker not found')
+          s = s.replace(old_kind, new_kind, 1)
+
+          old_relative = '''    String relativeName = cloudFile.fileName;
+    if (isState) {
+      relativeName = relativeName.replaceFirst(RegExp(r'^states[/\\\\]'), '');
+    }
+    if (isSave) {
+      relativeName = relativeName.replaceFirst(RegExp(r'^saves[/\\\\]'), '');
+    }
+'''
+          new_relative = '''    String relativeName = cloudFile.fileName;
+    if (v2Path != null) {
+      relativeName = v2Path.filePath;
+      if (v2Path.emulatorSlug.startsWith('retroarch.')) {
+        final coreFolder = await _retroArchCoreFolderForSlug(
+          v2Path.emulatorSlug,
+          targetFolder,
+        );
+        if (coreFolder != null && coreFolder.isNotEmpty) {
+          relativeName = path.join(coreFolder, relativeName);
+        }
+      }
+    } else if (isState) {
+      relativeName = relativeName.replaceFirst(RegExp(r'^states[/\\\\]'), '');
+    } else if (isSave) {
+      relativeName = relativeName.replaceFirst(RegExp(r'^saves[/\\\\]'), '');
+    }
+'''
+          if old_relative not in s:
+              raise SystemExit('Cloud relative name marker not found')
+          s = s.replace(old_relative, new_relative, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # Auto-upload: resolve game first, then require a v2 path.
+          # ------------------------------------------------------------------
+          p = Path('lib/providers/neosync/neosync_upload.dart')
+          s = p.read_text(encoding='utf-8')
+          old_auto = '''      String relativePath = _calculateRelativePath(
+        file,
+        basePath,
+        isState: isState,
+      );
+      final gameName = _extractGameNameFromPath(file.path);
+
+      final result = await _neoSyncService.syncFile(
+        file,
+        gameName,
+        customFilename: relativePath,
+      );
+'''
+          new_auto = '''      final game = await _gameForSaveFile(file);
+      if (game == null) {
+        _skippedFiles++;
+        _processedItems.add(
+          'Skipped unrecognized save (NeoSync v2 safety): ${path.basename(file.path)}',
+        );
+        return;
+      }
+
+      final relativePath = await _calculateSyncRelativePath(
+        game,
+        file,
+        basePath,
+        isState: isState,
+      );
+      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) {
+        _skippedFiles++;
+        _processedItems.add('Skipped non-v2 path: $relativePath');
+        return;
+      }
+
+      final result = await _neoSyncService.syncFile(
+        file,
+        game.name,
+        customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
+      );
+'''
+          if s.count(old_auto) < 2:
+              raise SystemExit(f'Expected two generic upload blocks, found {s.count(old_auto)}')
+          s = s.replace(old_auto, new_auto, 2)
+          p.write_text(s, encoding='utf-8')
+
+          # Per-game upload already knows the GameModel; attach structured v2
+          # metadata and refuse a non-v2 path.
+          p = Path('lib/providers/neosync/neosync_core.dart')
+          s = p.read_text(encoding='utf-8')
+          old_core = '''      final result = await _neoSyncService.syncFile(
+        file,
+        game.name,
+        customFilename: relativePath,
+      );
+'''
+          new_core = '''      final v2Path = CloudPathBuilder.parse(relativePath);
+      if (v2Path == null) return false;
+
+      final result = await _neoSyncService.syncFile(
+        file,
+        game.name,
+        customFilename: relativePath,
+        systemId: v2Path.system,
+        emulatorId: v2Path.emulatorSlug,
+        isState: v2Path.isState,
+        scope: v2Path.scope,
+      );
+'''
+          if old_core not in s:
+              raise SystemExit('Per-game NeoSync upload block not found')
+          s = s.replace(old_core, new_core, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # Auto-download: understand v2 game paths before legacy heuristics.
+          # ------------------------------------------------------------------
+          p = Path('lib/providers/neosync/neosync_download.dart')
+          s = p.read_text(encoding='utf-8')
+          find_marker = '''  Future<GameModel?> _findGameForCloudFile(NeoSyncFile cloudFile) async {
+    final parts = cloudFile.fileName.split('/');
+'''
+          find_new = '''  Future<GameModel?> _findGameForCloudFile(NeoSyncFile cloudFile) async {
+    final v2Path = CloudPathBuilder.parse(cloudFile.fileName);
+    if (v2Path != null && !v2Path.isShared) {
+      final saveBase = path.basenameWithoutExtension(v2Path.filePath);
+      try {
+        final row = await GameRepository.findRomByFilenamePrefix(saveBase);
+        if (row != null) {
+          final romname = row['filename'].toString();
+          final title = row['title_name']?.toString();
+          return GameModel(
+            name: (title == null || title.isEmpty) ? romname : title,
+            realname: (title == null || title.isEmpty) ? romname : title,
+            romname: romname,
+            systemFolderName: row['folder_name']?.toString() ?? v2Path.system,
+            emulatorName: row['emulator_name']?.toString(),
+            year: '',
+            developer: '',
+            publisher: '',
+            genre: '',
+            players: '',
+            rating: 0.0,
+          );
+        }
+      } catch (e) {
+        NeoSyncProvider._log.w('Could not map v2 cloud save to local game: $e');
+      }
+    }
+
+    final parts = cloudFile.fileName.split('/');
+'''
+          if find_marker not in s:
+              raise SystemExit('NeoSync download game resolver marker not found')
+          s = s.replace(find_marker, find_new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          dart format \
+            lib/utils/cloud_path_builder.dart \
+            lib/utils/app_config.dart \
+            lib/screens/neo_sync_screen/neo_sync_tab.dart \
+            lib/services/retroarch_config_service.dart \
+            lib/services/neosync/neo_sync_service.dart \
+            lib/providers/neo_sync_provider.dart \
+            lib/providers/neosync/neosync_path_resolver.dart \
+            lib/providers/neosync/neosync_upload.dart \
+            lib/providers/neosync/neosync_core.dart \
+            lib/providers/neosync/neosync_download.dart \
+            lib/repositories/game_repository.dart
+
+      - name: Verify NeoSync v2 safety contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path('lib/utils/app_config.dart').read_text()
+          service = Path('lib/services/neosync/neo_sync_service.dart').read_text()
+          paths = Path('lib/providers/neosync/neosync_path_resolver.dart').read_text()
+          tab = Path('lib/screens/neo_sync_screen/neo_sync_tab.dart').read_text()
+          retro = Path('lib/services/retroarch_config_service.dart').read_text()
+          assert 'sync.neosync.cloud' in app
+          assert '/api/v1/' not in service
+          assert '/api/v2/' in service
+          assert 'CloudPathBuilder.build' in paths
+          assert "scope: isSharedCard ? 'shared' : 'game'" in paths
+          assert '_neoSyncSelected' not in tab
+          assert 'ConfigService.linkedExternalFolderPath' in retro
+          assert "resolveDirectory('saves'" in retro
+          assert "resolveDirectory('states'" in retro
+          print('NeoSync v2 iOS safety contract verified.')
+          PY
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze NeoSync iOS port
+        run: |
+          flutter analyze \
+            lib/utils/cloud_path_builder.dart \
+            lib/utils/app_config.dart \
+            lib/screens/neo_sync_screen/neo_sync_tab.dart \
+            lib/services/retroarch_config_service.dart \
+            lib/services/neosync/neo_sync_service.dart \
+            lib/providers/neo_sync_provider.dart \
+            lib/providers/neosync/neosync_path_resolver.dart \
+            lib/providers/neosync/neosync_upload.dart \
+            lib/providers/neosync/neosync_core.dart \
+            lib/providers/neosync/neosync_download.dart \
+            lib/repositories/game_repository.dart
+
+      - name: Run focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=()
+          for candidate in \
+            test/game_repository_test.dart \
+            test/ios_gamepad_navigation_test.dart \
+            test/video_preview_lifecycle_test.dart; do
+            if [ -f "$candidate" ]; then tests+=("$candidate"); fi
+          done
+          if [ ${#tests[@]} -gt 0 ]; then
+            flutter test "${tests[@]}"
+          fi
+
+      - name: Commit validated NeoSync v2 iOS source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'NeoStation Build Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            lib/utils/cloud_path_builder.dart \
+            lib/utils/app_config.dart \
+            lib/screens/neo_sync_screen/neo_sync_tab.dart \
+            lib/services/retroarch_config_service.dart \
+            lib/services/neosync/neo_sync_service.dart \
+            lib/providers/neo_sync_provider.dart \
+            lib/providers/neosync/neosync_path_resolver.dart \
+            lib/providers/neosync/neosync_upload.dart \
+            lib/providers/neosync/neosync_core.dart \
+            lib/providers/neosync/neosync_download.dart \
+            lib/repositories/game_repository.dart
+          if ! git diff --cached --quiet; then
+            git commit -m 'Port NeoSync v2 core to iOS'
+            git push origin HEAD:feature/neosync-v2-ios
+          fi
+
+      - name: Validate ScreenScraper environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SCREENSCRAPER_DEV_ID"
+          test -n "$SCREENSCRAPER_DEV_PASSWORD"
+          printf 'SCREENSCRAPER_DEV_ID=%s\nSCREENSCRAPER_DEV_PASSWORD=%s\n' \
+            "$SCREENSCRAPER_DEV_ID" "$SCREENSCRAPER_DEV_PASSWORD" > .env
+          chmod 600 .env
+
+      - name: Patch flutter_localization for Xcode 16.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLUTTER_LOCALIZATION_FILE=$(find "$HOME/.pub-cache" \
+            -path '*flutter_localization-0.4.1/ios/flutter_localization/Sources/flutter_localization/FlutterLocalizationPlugin.swift' \
+            -print -quit)
+          test -n "$FLUTTER_LOCALIZATION_FILE"
+          python3 - "$FLUTTER_LOCALIZATION_FILE" <<'PY'
+          from pathlib import Path
+          import sys
+          p = Path(sys.argv[1])
+          s = p.read_text(encoding='utf-8')
+          old = '      binaryMessenger: registrar.messenger(),\n    )'
+          new = '      binaryMessenger: registrar.messenger()\n    )'
+          if old in s:
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          elif new not in s:
+              raise SystemExit('Unexpected flutter_localization Swift source')
+          PY
+
+      - name: Keep iOS video audio-session policy intact
+        run: |
+          python3 build-utils/patch_ios_video_player_audio_session.py
+          python3 build-utils/patch_ios_video_player_audio_session.py --check
+
+      - name: Scaffold iOS platform if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d ios ]; then
+            flutter create \
+              --platforms=ios \
+              --org com.neogamelab \
+              --project-name neostation \
+              .
+          fi
+
+      - name: Configure iOS project
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' ios/Runner.xcodeproj/project.pbxproj
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.neogamelab.neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string shortcuts" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:2 string armsx2" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:3 string melonx" "$PLIST"
+          plutil -lint "$PLIST"
+
+      - name: Patch device_info_plus for runner SDK compatibility
+        shell: bash
+        run: |
+          DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" -path '*device_info_plus*/FPPDeviceInfoPlusPlugin.m' -print -quit)
+          if [ -n "$DEVICE_INFO_FILE" ]; then
+            sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"
+          fi
+
+      - name: Generate and force fork icon
+        run: |
+          dart run flutter_launcher_icons
+          chmod +x build-utils/force_ios_fork_icon.sh
+          build-utils/force_ios_fork_icon.sh
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Configure Flutter build
+        run: |
+          flutter build ios \
+            --release \
+            --no-codesign \
+            --config-only \
+            --dart-define-from-file=.env
+
+      - name: Build unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/ios/DerivedData build/ios/unsigned
+          mkdir -p build/ios
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee build/ios/xcodebuild-neosync-v2.log
+
+          APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -n "$APP_PATH"
+          mkdir -p build/ios/unsigned/Payload
+          cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
+          (cd build/ios/unsigned && zip -r ../../../NeoStation-NeoSync-v2-iOS-preview.ipa Payload)
+
+      - name: Upload preview IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-NeoSync-v2-iOS-preview
+          path: |
+            NeoStation-NeoSync-v2-iOS-preview.ipa
+            build/ios/xcodebuild-neosync-v2.log
+          if-no-files-found: warn
+
+      - name: Cleanup secret file
+        if: always()
+        run: rm -f .env
