@@ -14,7 +14,7 @@ class ImageUtils {
   /// Local video formats supported by custom system backgrounds.
   ///
   /// MP4/M4V/MOV map cleanly to the native Apple/Android media stacks used by
-  /// video_player/fvp and cover the MPEG-4 use case without accepting arbitrary
+  /// video_player and cover the MPEG-4 use case without accepting arbitrary
   /// containers that may not decode consistently across NeoStation targets.
   static const List<String> videoExtensions = ['mp4', 'm4v', 'mov'];
 
