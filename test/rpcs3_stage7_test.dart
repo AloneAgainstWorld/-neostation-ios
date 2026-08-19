@@ -32,7 +32,7 @@ void main() {
     expect(service, contains('rpcs3_automation_launch_debug.txt'));
     expect(service, isNot(contains('buildRunUri')));
     expect(service, isNot(contains('rpcs3ShortcutName')));
-    expect(service, isNot(contains('openUrlAfterJitPreflight('));
+    expect(service, isNot(contains('openUrlAfterJitPreflight(')));
     expect(service, isNot(contains('openJitRequest')));
     expect(service, isNot(contains('rpcs3_stikdebug_launch.js')));
     expect(service, isNot(contains('bootGameOffset')));
