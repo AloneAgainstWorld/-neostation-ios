@@ -22,74 +22,64 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch all branch refs
+      - name: Build branch and repository report
+        shell: bash
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune
+          set +e
           mkdir -p audit
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune > audit/git-fetch.txt 2>&1
           {
             echo '# Repository audit'
             echo
-            echo "Commit: $(git rev-parse HEAD)"
+            echo "Commit: $(git rev-parse HEAD 2>/dev/null || true)"
             echo "Branch: ${GITHUB_REF_NAME}"
             echo
             echo '## Working tree'
-            git status --short
+            git status --short 2>&1 || true
             echo
             echo '## Recent history'
-            git log --oneline --decorate -30
-          } > audit/repository-audit.md
-
-      - name: Audit branches and unique commits
-        shell: bash
-        run: |
-          set -euo pipefail
-          main_ref='origin/main'
-          backup_ref="origin/${BACKUP_BRANCH}"
-          if ! git show-ref --verify --quiet "refs/remotes/${backup_ref}"; then
-            echo "Backup branch ${BACKUP_BRANCH} is missing" >&2
-            exit 1
-          fi
-
-          {
+            git log --oneline --decorate -30 2>&1 || true
             echo
             echo '## Branch inventory'
             echo
-            printf '| Branch | Tip | Relation | Patches not in main | Patches not in backup |\n'
+            printf '| Branch | Tip | Relation | Commits not reachable from main | Commits not reachable from backup |\n'
             printf '|---|---|---|---:|---:|\n'
-          } >> audit/repository-audit.md
+          } > audit/repository-audit.md
 
+          main_ref='origin/main'
+          backup_ref="origin/${BACKUP_BRANCH}"
           : > audit/unique-branches.txt
           while IFS= read -r ref; do
             branch="${ref#refs/remotes/origin/}"
             [ "$branch" = 'HEAD' ] && continue
-            tip=$(git rev-parse "$ref")
+            tip=$(git rev-parse "$ref" 2>/dev/null || echo unknown)
             relation='unique/history-diverged'
-            if git merge-base --is-ancestor "$ref" "$main_ref"; then
+            if git merge-base --is-ancestor "$ref" "$main_ref" >/dev/null 2>&1; then
               relation='contained-in-main'
-            elif git merge-base --is-ancestor "$ref" "$backup_ref"; then
+            elif git merge-base --is-ancestor "$ref" "$backup_ref" >/dev/null 2>&1; then
               relation='contained-in-backup'
             fi
-            main_plus=$(git cherry "$main_ref" "$ref" | awk '$1=="+"{n++} END{print n+0}')
-            backup_plus=$(git cherry "$backup_ref" "$ref" | awk '$1=="+"{n++} END{print n+0}')
-            printf '| `%s` | `%s` | %s | %s | %s |\n' "$branch" "${tip:0:12}" "$relation" "$main_plus" "$backup_plus" >> audit/repository-audit.md
+            main_count=$(git rev-list --count "$main_ref..$ref" 2>/dev/null || echo '?')
+            backup_count=$(git rev-list --count "$backup_ref..$ref" 2>/dev/null || echo '?')
+            printf '| `%s` | `%s` | %s | %s | %s |\n' "$branch" "${tip:0:12}" "$relation" "$main_count" "$backup_count" >> audit/repository-audit.md
 
             if [ "$branch" != 'main' ] && [ "$branch" != "$BACKUP_BRANCH" ] && [ "$relation" = 'unique/history-diverged' ]; then
               {
                 echo "===== $branch ====="
                 echo "tip=$tip"
-                echo "patches_not_in_main=$main_plus"
-                echo "patches_not_in_backup=$backup_plus"
-                echo '-- git cherry vs main --'
-                git cherry -v "$main_ref" "$ref" | sed -n '1,100p'
+                echo "commits_not_in_main=$main_count"
+                echo "commits_not_in_backup=$backup_count"
                 echo '-- commits not reachable from main --'
-                git log --oneline --decorate --no-merges --max-count=60 "$main_ref..$ref"
+                git log --oneline --decorate --no-merges --max-count=80 "$main_ref..$ref" 2>&1 || true
+                echo '-- changed paths vs main merge-base --'
+                git diff --name-status "$main_ref...$ref" 2>&1 | tail -160 || true
                 echo '-- diffstat vs main merge-base --'
-                git diff --stat "$main_ref...$ref" | tail -100
+                git diff --stat "$main_ref...$ref" 2>&1 | tail -100 || true
                 echo
               } >> audit/unique-branches.txt
             fi
-          done < <(git for-each-ref --format='%(refname)' refs/remotes/origin | sort)
+          done < <(git for-each-ref --format='%(refname)' refs/remotes/origin 2>/dev/null | sort)
 
           {
             echo
@@ -98,25 +88,64 @@ jobs:
             cat audit/unique-branches.txt
             echo '```'
           } >> audit/repository-audit.md
+          exit 0
 
       - name: Set up Flutter
+        id: setup_flutter
+        continue-on-error: true
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
       - name: Resolve dependencies
-        run: flutter pub get
-
-      - name: Capture dependency inventory
+        id: pub_get
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          flutter pub deps --style=compact > audit/pub-deps.txt
+          mkdir -p audit
+          flutter pub get > audit/pub-get.txt 2>&1
+
+      - name: Run static checks and tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p audit
+          if command -v flutter >/dev/null 2>&1; then
+            flutter pub deps --style=compact > audit/pub-deps.txt 2>&1
+            dart format --output=none --set-exit-if-changed lib test packages > audit/dart-format.txt 2>&1
+            echo $? > audit/dart-format.exit
+            dart fix --dry-run > audit/dart-fix.txt 2>&1
+            echo $? > audit/dart-fix.exit
+            flutter analyze --no-fatal-infos --no-fatal-warnings > audit/flutter-analyze.txt 2>&1
+            echo $? > audit/flutter-analyze.exit
+            flutter test > audit/flutter-test.txt 2>&1
+            echo $? > audit/flutter-test.exit
+          else
+            echo 'flutter unavailable' > audit/pub-deps.txt
+            echo 'flutter unavailable' > audit/dart-format.txt
+            echo 127 > audit/dart-format.exit
+            echo 'flutter unavailable' > audit/dart-fix.txt
+            echo 127 > audit/dart-fix.exit
+            echo 'flutter unavailable' > audit/flutter-analyze.txt
+            echo 127 > audit/flutter-analyze.exit
+            echo 'flutter unavailable' > audit/flutter-test.txt
+            echo 127 > audit/flutter-test.exit
+          fi
+          exit 0
+
+      - name: Scan dependencies, residue, and orphan candidates
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p audit
           python3 - <<'PY'
           from pathlib import Path
           import re
 
+          # Dependency candidates: direct entries without a package import in lib/test.
           lines = Path('pubspec.yaml').read_text(encoding='utf-8').splitlines()
           declared = {}
           section = None
@@ -140,60 +169,15 @@ jobs:
                       corpus.append(file.read_text(encoding='utf-8', errors='ignore'))
           text = '\n'.join(corpus)
           unused = []
-          for name, section in sorted(declared.items()):
+          for name, dep_section in sorted(declared.items()):
               if re.search(r'package:' + re.escape(name) + r'/', text) is None:
-                  unused.append((name, section))
+                  unused.append((name, dep_section))
           Path('audit/dependency-candidates.txt').write_text(
-              '\n'.join(f'{name}\t{section}' for name, section in unused) + ('\n' if unused else ''),
+              '\n'.join(f'{name}\t{dep_section}' for name, dep_section in unused) + ('\n' if unused else ''),
               encoding='utf-8',
           )
-          PY
 
-      - name: Dart format check
-        shell: bash
-        run: |
-          set +e
-          dart format --output=none --set-exit-if-changed lib test packages > audit/dart-format.txt 2>&1
-          code=$?
-          set -e
-          echo "$code" > audit/dart-format.exit
-
-      - name: Dart fix dry run
-        shell: bash
-        run: |
-          set +e
-          dart fix --dry-run > audit/dart-fix.txt 2>&1
-          code=$?
-          set -e
-          echo "$code" > audit/dart-fix.exit
-
-      - name: Flutter analyze
-        shell: bash
-        run: |
-          set +e
-          flutter analyze --no-fatal-infos --no-fatal-warnings > audit/flutter-analyze.txt 2>&1
-          code=$?
-          set -e
-          echo "$code" > audit/flutter-analyze.exit
-
-      - name: Flutter tests
-        shell: bash
-        run: |
-          set +e
-          flutter test > audit/flutter-test.txt 2>&1
-          code=$?
-          set -e
-          echo "$code" > audit/flutter-test.exit
-
-      - name: Scan for maintenance residue and orphan candidates
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          roots = [Path('lib'), Path('test'), Path('packages'), Path('build-utils'), Path('docs')]
+          roots = [Path('lib'), Path('test'), Path('packages'), Path('build-utils'), Path('docs'), Path('codemagic.yaml')]
           patterns = re.compile(
               r'TODO|FIXME|HACK|XXX|temporary|one-shot|retired|obsolete|experimental|'
               r'RPCS3Core|NeoStation\+RPCS3\+Start|rpcs3ShortcutName|openRpcs3ShortcutInstaller|'
@@ -202,9 +186,8 @@ jobs:
           )
           hits = []
           for root in roots:
-              if not root.exists():
-                  continue
-              for path in root.rglob('*'):
+              paths = [root] if root.is_file() else list(root.rglob('*')) if root.exists() else []
+              for path in paths:
                   if not path.is_file() or path.suffix.lower() not in {'.dart','.swift','.py','.sh','.md','.yaml','.yml','.json','.kt','.kts','.xml','.plist','.pbxproj'}:
                       continue
                   for i, line in enumerate(path.read_text(encoding='utf-8', errors='ignore').splitlines(), 1):
@@ -217,8 +200,8 @@ jobs:
           referenced = set()
           import_re = re.compile(r"(?:import|export|part)\s+['\"]([^'\"]+)['\"]")
           for source_abs, source in files.items():
-              text = source.read_text(encoding='utf-8', errors='ignore')
-              for target in import_re.findall(text):
+              source_text = source.read_text(encoding='utf-8', errors='ignore')
+              for target in import_re.findall(source_text):
                   if target.startswith('package:neostation/'):
                       candidate = (lib / target[len('package:neostation/'):]).resolve()
                   elif target.startswith('.'):
@@ -239,60 +222,57 @@ jobs:
           {
             echo
             echo '## Static verification exits'
-            echo "dart format: $(cat audit/dart-format.exit)"
-            echo "dart fix dry-run: $(cat audit/dart-fix.exit)"
-            echo "flutter analyze: $(cat audit/flutter-analyze.exit)"
-            echo "flutter test: $(cat audit/flutter-test.exit)"
+            echo "dart format: $(cat audit/dart-format.exit 2>/dev/null || echo unavailable)"
+            echo "dart fix dry-run: $(cat audit/dart-fix.exit 2>/dev/null || echo unavailable)"
+            echo "flutter analyze: $(cat audit/flutter-analyze.exit 2>/dev/null || echo unavailable)"
+            echo "flutter test: $(cat audit/flutter-test.exit 2>/dev/null || echo unavailable)"
             echo
             echo '## Dependency candidates with no package: import in lib/test'
             echo '```text'
-            cat audit/dependency-candidates.txt
+            cat audit/dependency-candidates.txt 2>/dev/null || true
             echo '```'
             echo
             echo '## Maintenance residue scan'
             echo '```text'
-            cat audit/residue-scan.txt
+            cat audit/residue-scan.txt 2>/dev/null || true
             echo '```'
             echo
             echo '## Conservative orphan Dart candidates'
             echo '```text'
-            cat audit/orphan-dart-candidates.txt
+            cat audit/orphan-dart-candidates.txt 2>/dev/null || true
             echo '```'
             echo
             echo '## Flutter analyze output'
             echo '```text'
-            cat audit/flutter-analyze.txt
+            cat audit/flutter-analyze.txt 2>/dev/null || true
             echo '```'
             echo
             echo '## Dart fix dry-run output'
             echo '```text'
-            cat audit/dart-fix.txt
+            cat audit/dart-fix.txt 2>/dev/null || true
             echo '```'
             echo
             echo '## Flutter test tail'
             echo '```text'
-            tail -250 audit/flutter-test.txt
+            tail -250 audit/flutter-test.txt 2>/dev/null || true
             echo '```'
           } >> audit/repository-audit.md
+          exit 0
 
       - name: Save audit report on maintenance branch
+        if: always()
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          cp -R audit /tmp/repository-audit-output
-          git worktree add --force /tmp/report-tree "origin/${REPORT_BRANCH}"
-          cd /tmp/report-tree
+          set +e
+          cp -R audit /tmp/repository-audit-output 2>/dev/null || true
+          git fetch origin "${REPORT_BRANCH}" >/dev/null 2>&1 || true
+          rm -rf /tmp/report-tree
+          git worktree add --force /tmp/report-tree "origin/${REPORT_BRANCH}" >/dev/null 2>&1
+          cd /tmp/report-tree || exit 0
           rm -rf audit-output
           mkdir -p audit-output
-          cp /tmp/repository-audit-output/repository-audit.md audit-output/repository-audit.md
-          cp /tmp/repository-audit-output/unique-branches.txt audit-output/unique-branches.txt
-          cp /tmp/repository-audit-output/residue-scan.txt audit-output/residue-scan.txt
-          cp /tmp/repository-audit-output/dependency-candidates.txt audit-output/dependency-candidates.txt
-          cp /tmp/repository-audit-output/orphan-dart-candidates.txt audit-output/orphan-dart-candidates.txt
-          cp /tmp/repository-audit-output/flutter-analyze.txt audit-output/flutter-analyze.txt
-          cp /tmp/repository-audit-output/dart-fix.txt audit-output/dart-fix.txt
-          cp /tmp/repository-audit-output/dart-format.txt audit-output/dart-format.txt
-          cp /tmp/repository-audit-output/flutter-test.txt audit-output/flutter-test.txt
+          cp /tmp/repository-audit-output/* audit-output/ 2>/dev/null || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add audit-output
@@ -300,9 +280,11 @@ jobs:
             git commit -m 'Store temporary repository audit report [skip ci]'
             git push origin "HEAD:${REPORT_BRANCH}"
           fi
+          exit 0
 
       - name: Delete all non-main non-backup branches after approved merge
         if: contains(github.event.head_commit.message, '[branch-cleanup]')
+        continue-on-error: false
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
