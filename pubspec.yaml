@@ -74,6 +74,8 @@ flutter_launcher_icons:
   image_path_ios: "assets/images/fork-icon-valid.jpg"
 
 flutter:
+  config:
+    enable-swift-package-manager: false
   uses-material-design: true
   assets:
     - assets/images/
