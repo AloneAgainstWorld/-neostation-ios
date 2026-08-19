@@ -293,14 +293,14 @@ class GamepadEventTranslator {
     String gamepadId,
     KeyType eventType,
   ) {
-    // WINDOWS: The GameInput backend emits standardized, named keys
-    // (a/b/x/y, dpadUp, leftShoulder, leftThumbstickX, leftTrigger, ...) with a
-    // consistent layout across all XInput-class controllers, so we map them
-    // directly and skip the WinMM positional/POV heuristics entirely.
-    if (Platform.isWindows) {
-      final gameInput = _translateGameInputKey(key);
-      if (gameInput != null) {
-        return gameInput;
+    // Windows GameInput and the iOS GameController bridge both emit this same
+    // stable, named vocabulary (a/b/x/y, dpadUp, leftShoulder,
+    // leftThumbstickX, leftTrigger, ...). Map it before platform-specific
+    // legacy paths so iOS does not fall through to the empty default mapping.
+    if (Platform.isWindows || Platform.isIOS) {
+      final namedInput = _translateNamedGamepadKey(key);
+      if (namedInput != null) {
+        return namedInput;
       }
     }
 
@@ -335,14 +335,9 @@ class GamepadEventTranslator {
     return GamepadInputType.unknown;
   }
 
-  /// Maps a Windows GameInput named key to a [GamepadInputType].
-  ///
-  /// GameInput reports a standardized Xbox-style layout, so this mapping is the
-  /// same for every controller regardless of vendor/VID/PID. Keys arrive
-  /// lower-cased. Returns null for keys that aren't part of the GameInput
-  /// gamepad vocabulary. Note: GameInput's standard gamepad state has no guide
-  /// button, so there is no Home mapping on Windows.
-  GamepadInputType? _translateGameInputKey(String key) {
+  /// Maps the canonical named gamepad vocabulary emitted by Windows GameInput
+  /// and NeoStation's iOS GameController bridge.
+  GamepadInputType? _translateNamedGamepadKey(String key) {
     switch (key) {
       // Face buttons.
       case 'a':
@@ -380,6 +375,8 @@ class GamepadEventTranslator {
         return GamepadInputType.buttonStart;
       case 'view':
         return GamepadInputType.buttonSelect;
+      case 'home':
+        return GamepadInputType.buttonHome;
 
       // Stick clicks.
       case 'leftthumbstick':
@@ -810,12 +807,12 @@ class GamepadEventTranslator {
 
   /// Determines if a D-pad or analog input should be considered "pressed" based on platform-specific thresholds.
   bool _isDpadPressed(double value, {bool isAnalog = false}) {
-    if (Platform.isWindows) {
-      // GameInput reports normalized values: analog sticks in [-1, 1] centered
-      // at 0, and digital D-pad buttons as 0.0 (released) / 1.0 (pressed).
+    if (Platform.isWindows || Platform.isIOS) {
+      // Windows GameInput and iOS GameController both report normalized
+      // digital values in [0, 1] and thumbstick axes in [-1, 1].
       if (isAnalog) {
         // Deadzone for the press/release edge; the nav layer applies its own
-        // (larger) directional threshold for the actual action.
+        // directional threshold for the actual action.
         return value.abs() > 0.5;
       }
       return value > 0.5;
