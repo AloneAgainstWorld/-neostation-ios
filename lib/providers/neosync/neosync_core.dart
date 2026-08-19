@@ -372,6 +372,10 @@ extension NeoSyncCore on NeoSyncProvider {
   /// Detecta automáticamente archivos de guardado para un juego específico
   /// y realiza sincronización automática cuando es apropiado
   Future<void> detectGameSaveFiles(GameModel game) async {
+    // A shared PS2/DC card may have changed since the previous game session.
+    // Never carry the processed marker across independent detections.
+    _processedMultiEmulatorFilesInSession.clear();
+
     if (!isNeoSyncAuthenticated) {
       return;
     }
@@ -972,10 +976,8 @@ extension NeoSyncCore on NeoSyncProvider {
               ),
             );
 
-            // Marcar como procesado si es compartido para evitar re-comprobación en esta sesión
-            if (isSharedSystem) {
-              _processedMultiEmulatorFilesInSession.add(file.path);
-            }
+            // Do not mark shared cards as processed while merely discovering them.
+            // The upload/check loop owns that marker after a real sync decision.
           }
         } catch (e) {
           NeoSyncProvider._log.e('Error matching file: $e');

@@ -66,7 +66,16 @@ extension NeoSyncPathResolver on NeoSyncProvider {
       return paths;
     }
 
-    // 2. Placeholder {NETHERSX2_MEMCARDS} (AetherSX2/NetherSX2 memcards)
+    // 2. iOS ARMSX2 NeoSync root. This never falls back to Android paths.
+    if (pathStr == '{ARMSX2_IOS_SAVES}' && Platform.isIOS) {
+      final root = ConfigService.linkedArmsx2SaveFolderPath;
+      if (root != null && root.isNotEmpty) {
+        if (!ensureExists || Directory(root).existsSync()) return [root];
+      }
+      return [];
+    }
+
+    // 3. Placeholder {NETHERSX2_MEMCARDS} (AetherSX2/NetherSX2 memcards)
     if (pathStr == '{NETHERSX2_MEMCARDS}' && Platform.isAndroid) {
       final possiblePaths = [
         '/storage/emulated/0/Android/data/xyz.aethersx2.android/files/memcards',
