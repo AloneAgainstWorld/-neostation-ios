@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:neostation/repositories/config_repository.dart';
 import 'package:neostation/services/config_service.dart';
