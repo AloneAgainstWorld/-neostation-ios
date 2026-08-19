@@ -88,7 +88,7 @@ if [ ! -d "$PLUGIN_DIR" ]; then
         unsquashfs -d squashfs-root sqfs >/dev/null 2>&1
         rm -f sqfs
     }
-    mv squashfs-root linuxdeploy
+    mv squashfs-root linuxdeploy-plugin-appimage
     rm -f plugin.AppImage
 fi
 
