@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 env:
   SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
@@ -14,10 +15,43 @@ env:
 
 jobs:
   build:
-    if: github.event.head_commit.message == 'Build test IPA'
+    if: github.event.head_commit.message == 'Build test IPA final'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Publish build run locator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo = os.environ['REPO']
+          sha = os.environ['SHA']
+          run_id = os.environ['RUN_ID']
+          payload = json.dumps({
+              'state': 'pending',
+              'context': 'neostation/test-ipa',
+              'description': f'run_id={run_id}',
+              'target_url': f'https://github.com/{repo}/actions/runs/{run_id}',
+          }).encode()
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/statuses/{sha}',
+              data=payload,
+              method='POST',
+              headers={
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+              },
+          )
+          urllib.request.urlopen(req, timeout=30).read()
+          PY
 
       - uses: subosito/flutter-action@v2
         with:
@@ -141,3 +175,39 @@ jobs:
           name: NeoStation-test-unsigned-ipa
           path: NeoStation-test-unsigned.ipa
           if-no-files-found: error
+
+      - name: Publish final build status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo = os.environ['REPO']
+          sha = os.environ['SHA']
+          run_id = os.environ['RUN_ID']
+          state = 'success' if os.environ['JOB_STATUS'] == 'success' else 'failure'
+          payload = json.dumps({
+              'state': state,
+              'context': 'neostation/test-ipa',
+              'description': f'run_id={run_id}',
+              'target_url': f'https://github.com/{repo}/actions/runs/{run_id}',
+          }).encode()
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/statuses/{sha}',
+              data=payload,
+              method='POST',
+              headers={
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+              },
+          )
+          urllib.request.urlopen(req, timeout=30).read()
+          PY
