@@ -1,0 +1,135 @@
+name: Temporary complete NeoSync iOS source validation
+
+on:
+  push:
+    branches:
+      - feature/neosync-v2-ios-complete
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: neosync-ios-complete-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.event.head_commit.message == 'Run complete NeoSync iOS source port'
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feature/neosync-v2-ios-complete
+          fetch-depth: 0
+
+      - name: Publish run locator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          payload = json.dumps({
+              'state': 'pending',
+              'context': 'neostation/neosync-ios-complete-source',
+              'description': f"run_id={os.environ['RUN_ID']}",
+              'target_url': f"https://github.com/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']}",
+          }).encode()
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/statuses/{os.environ['SHA']}",
+              data=payload,
+              method='POST',
+              headers={
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'Accept': 'application/vnd.github+json',
+                  'Content-Type': 'application/json',
+              },
+          )
+          urllib.request.urlopen(req, timeout=30).read()
+          PY
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply complete NeoSync iOS port
+        run: python3 build-utils/patch_neosync_ios_complete.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/utils/app_config.dart \
+            lib/services/config_service.dart \
+            lib/main.dart \
+            lib/services/neosync/legacy_neo_sync_service.dart \
+            lib/providers/neo_sync_provider.dart \
+            lib/providers/neosync/neosync_status.dart \
+            lib/providers/neosync/neosync_download.dart \
+            lib/providers/neosync/neosync_path_resolver.dart \
+            lib/providers/neosync/neosync_upload.dart \
+            lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
+            lib/screens/neo_sync_screen/login_screen/neo_sync_content.dart
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify integration contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path('lib/utils/app_config.dart').read_text()
+          config = Path('lib/services/config_service.dart').read_text()
+          legacy = Path('lib/services/neosync/legacy_neo_sync_service.dart').read_text()
+          status = Path('lib/providers/neosync/neosync_status.dart').read_text()
+          upload = Path('lib/providers/neosync/neosync_upload.dart').read_text()
+          settings = Path('lib/screens/settings_screen/new_settings_options/directories_settings_content.dart').read_text()
+          assert 'legacyNeoSyncBaseUrl' in app
+          assert '/api/v1/files' in legacy
+          assert '_migrateLegacyFilesToV2' in status
+          assert 'linkedArmsx2SaveFolderPath' in config
+          assert 'linkedMelonxSaveFolderPath' in config
+          assert "emulatorSlug: 'armsx2'" in upload
+          assert "emulatorSlug: 'melonx'" in upload
+          assert 'armsx2NeoSyncBookmarkKey' in settings
+          assert 'melonxNeoSyncBookmarkKey' in settings
+          print('Complete NeoSync iOS integration contract verified')
+          PY
+
+      - name: Analyze NeoSync integration
+        run: |
+          flutter analyze \
+            lib/utils/app_config.dart \
+            lib/services/config_service.dart \
+            lib/main.dart \
+            lib/services/neosync/legacy_neo_sync_service.dart \
+            lib/providers/neo_sync_provider.dart \
+            lib/providers/neosync/neosync_status.dart \
+            lib/providers/neosync/neosync_download.dart \
+            lib/providers/neosync/neosync_path_resolver.dart \
+            lib/providers/neosync/neosync_upload.dart \
+            lib/screens/settings_screen/new_settings_options/directories_settings_content.dart \
+            lib/screens/neo_sync_screen/login_screen/neo_sync_content.dart
+
+      - name: Run focused regression tests
+        run: flutter test test/game_repository_test.dart
+
+      - name: Commit validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'NeoStation Build Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib
+          if ! git diff --cached --quiet; then
+            git commit -m 'Complete NeoSync v2 integration for iOS'
+            git push origin HEAD:feature/neosync-v2-ios-complete
+          fi
