@@ -120,9 +120,6 @@ workflows:
       - name: Resolve Flutter dependencies
         script: flutter pub get
 
-      - name: Remove retired RPCS3 Shortcut UI
-        script: python3 build-utils/remove_rpcs3_shortcut_ui.py
-
       - name: Scaffold iOS platform if missing
         script: |
           set -euo pipefail

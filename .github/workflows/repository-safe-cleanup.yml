@@ -1,4 +1,4 @@
-name: Temporary cleanup branch verifier
+name: Final repository verification and branch cleanup
 
 on:
   push:
@@ -9,141 +9,42 @@ permissions:
   contents: write
 
 env:
-  CLEANUP_BRANCH: maintenance/final-repository-cleanup
+  BACKUP_BRANCH: backup/pre-hard-reset-2026-08-17
 
 jobs:
-  verify-cleanup:
+  verify:
+    name: Flutter analyze and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: maintenance/final-repository-cleanup
           fetch-depth: 0
-
-      - name: Apply final narrow cleanup fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          settings = Path('lib/screens/settings_screen/new_settings_options/directories_settings_content.dart')
-          text = settings.read_text(encoding='utf-8')
-          old = '''      trailingAction: SizedBox(
-        height: 32,
-        child: OutlinedButton.icon(
-          onPressed: _linkingFolderKey == null ? _syncWithRpcs3 : null,
-          icon: const Icon(Symbols.sync_rounded, size: 16),
-          label: Text(Rpcs3LibraryLocale.sync(context)),
-        ),
-      ),
-'''
-          new = '''      trailingAction: SizedBox(
-        height: 48.r,
-        child: FilledButton.icon(
-          onPressed: !isLinked || _linkingFolderKey != null
-              ? null
-              : _syncWithRpcs3,
-          icon: Icon(Symbols.bolt_rounded, size: 20.r),
-          label: Text(
-            hasSynced
-                ? AppLocale.iosEmuResync.getString(context)
-                : AppLocale.iosEmuSync.getString(context),
-            style: TextStyle(fontSize: 14.r),
-          ),
-        ),
-      ),
-'''
-          if old in text:
-              settings.write_text(text.replace(old, new, 1), encoding='utf-8')
-          elif 'Rpcs3LibraryLocale.sync(context)' in text:
-              raise SystemExit('RPCS3 sync label remains but expected block shape changed')
-
-          for transient in (
-              '.cleanup-verify-trigger', '.cleanup-verify-trigger-2',
-              '.cleanup-verify-trigger-3', '.cleanup-verify-trigger-4',
-              '.cleanup-trigger', '.cleanup-trigger-2', '.cleanup-trigger-3',
-              'cleanup-executor-error.txt', 'cleanup-verification-error.txt',
-              'cleanup-ios-build-error.txt',
-          ):
-              p = Path(transient)
-              if p.exists():
-                  p.unlink()
-          PY
-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
-      - name: Resolve dependencies and apply safe analyzer fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter pub get
-          dart fix --apply
-          mapfile -t dart_files < <(git diff --name-only -- '*.dart')
-          if [ "${#dart_files[@]}" -gt 0 ]; then
-            dart format "${dart_files[@]}"
-          fi
-
-      - name: Verify retired RPCS3 experiment residue
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -RInE 'NeoStation\+RPCS3\+Start|rpcs3ShortcutName|openRpcs3ShortcutInstaller|openUrlAfterJitPreflight|openAppWithTwoPassJit|remove_rpcs3_shortcut_ui|RPCS3Core' \
-            lib test packages build-utils docs codemagic.yaml 2>/dev/null; then
-            echo 'Retired RPCS3 experiment residue remains.' >&2
-            exit 1
-          fi
-
-      - name: Flutter analyze
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Flutter tests
+      - name: Test
         run: flutter test
 
-      - name: Commit verified cleanup state
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -f cleanup-verification-error.txt
-          git add -A
-          git diff --cached --check
-          if ! git diff --cached --quiet; then
-            git commit -m 'Apply verified repository cleanup fixes'
-          else
-            git commit --allow-empty -m 'Repository analysis and tests passed'
-          fi
-          git push origin HEAD:${CLEANUP_BRANCH}
-
   ios-build:
-    needs: verify-cleanup
+    name: Unsigned iOS compile verification
+    needs: verify
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: maintenance/final-repository-cleanup
           fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
-      - name: Fast-forward to verified cleanup head
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin ${CLEANUP_BRANCH}
-          git checkout ${CLEANUP_BRANCH}
-          git reset --hard origin/${CLEANUP_BRANCH}
-
       - name: Resolve dependencies
         run: flutter pub get
-
-      - name: Scaffold iOS platform and set iOS 18
+      - name: Scaffold iOS and configure iOS 18
         shell: bash
         run: |
           set -euo pipefail
@@ -152,23 +53,88 @@ jobs:
           fi
           sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' ios/Runner.xcodeproj/project.pbxproj
-
-      - name: CocoaPods
+      - name: Install CocoaPods dependencies
         shell: bash
         run: |
           cd ios
           pod install --repo-update
-
       - name: Compile iOS without signing
         run: flutter build ios --release --no-codesign
 
-      - name: Record successful iOS compile
+  branch-cleanup:
+    name: Delete obsolete branches
+    needs:
+      - verify
+      - ios-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete every branch except main and backup
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin ${CLEANUP_BRANCH}
-          git reset --hard origin/${CLEANUP_BRANCH}
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit --allow-empty -m 'iOS compile verification passed'
-          git push origin HEAD:${CLEANUP_BRANCH}
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ['GITHUB_REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          keep = {'main', os.environ['BACKUP_BRANCH']}
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'NeoStation final repository cleanup',
+          }
+
+          branches = []
+          page = 1
+          while True:
+              req = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/branches?per_page=100&page={page}',
+                  headers=headers,
+              )
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  payload = json.load(response)
+              if not payload:
+                  break
+              branches.extend(item['name'] for item in payload)
+              if len(payload) < 100:
+                  break
+              page += 1
+
+          doomed = sorted(set(branches) - keep)
+          print('Keeping:', ', '.join(sorted(keep)))
+          print('Deleting:', ', '.join(doomed) if doomed else '(none)')
+
+          for branch in doomed:
+              encoded = urllib.parse.quote(branch, safe='')
+              req = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/git/refs/heads/{encoded}',
+                  method='DELETE',
+                  headers=headers,
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      print(f'deleted {branch}: HTTP {response.status}')
+              except urllib.error.HTTPError as error:
+                  if error.code in (404, 422):
+                      print(f'skipped {branch}: HTTP {error.code}')
+                  else:
+                      raise
+
+          # Verify the final branch set.
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/branches?per_page=100',
+              headers=headers,
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              remaining = {item['name'] for item in json.load(response)}
+          if remaining != keep:
+              raise SystemExit(f'Unexpected remaining branches: {sorted(remaining)}')
+          print('Final branch set:', ', '.join(sorted(remaining)))
+          PY

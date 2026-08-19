@@ -974,31 +974,6 @@ class Rpcs3LibraryService {
     return null;
   }
 
-  static Future<Map<String, String>> _parseGamesYml(File file) async {
-    final result = <String, String>{};
-    try {
-      final lines = await file.readAsLines();
-      for (final rawLine in lines) {
-        final line = rawLine.trim();
-        if (line.isEmpty ||
-            line.startsWith('#') ||
-            line == '---' ||
-            line == '...') {
-          continue;
-        }
-
-        final colon = line.indexOf(':');
-        if (colon <= 0) continue;
-        final key = _decodeYamlScalar(line.substring(0, colon));
-        final value = _decodeYamlScalar(line.substring(colon + 1));
-        if (key.isNotEmpty && value.isNotEmpty) result[key] = value;
-      }
-    } catch (e) {
-      _log.w('Rpcs3LibraryService: could not parse ${file.path}: $e');
-    }
-    return result;
-  }
-
   @visibleForTesting
   static Map<String, String> parseGamesYmlTextForTesting(String text) {
     final result = <String, String>{};
@@ -1031,62 +1006,6 @@ class Rpcs3LibraryService {
       text = text.substring(1, text.length - 1).replaceAll("''", "'");
     }
     return text.trim();
-  }
-
-  static Future<String?> _resolveRegisteredPath(
-    String dataRoot,
-    String registeredPath,
-  ) async {
-    var value = registeredPath.trim();
-    if (value.isEmpty) return null;
-    value = value.replaceAll(
-      r'$(EmulatorDir)',
-      '${path.normalize(dataRoot)}${path.separator}',
-    );
-
-    if (value.startsWith('/dev_hdd0/')) {
-      value = path.join(
-        dataRoot,
-        'dev_hdd0',
-        value.substring('/dev_hdd0/'.length),
-      );
-    } else if (value.startsWith('/games/')) {
-      value = path.join(dataRoot, 'games', value.substring('/games/'.length));
-    }
-
-    if (await FileSystemEntity.type(value) != FileSystemEntityType.notFound) {
-      return path.normalize(value);
-    }
-
-    // Absolute iOS container paths can contain a previous app-container UUID.
-    // Remap the stable suffix following /Data/ onto the currently bookmarked
-    // Data root.
-    final slashNormalized = value.replaceAll('\\', '/');
-    final lower = slashNormalized.toLowerCase();
-    final marker = lower.lastIndexOf('/data/');
-    if (marker >= 0) {
-      final relative = slashNormalized.substring(marker + '/data/'.length);
-      final remapped = path.joinAll(<String>[dataRoot, ...relative.split('/')]);
-      if (await FileSystemEntity.type(remapped) !=
-          FileSystemEntityType.notFound) {
-        return path.normalize(remapped);
-      }
-    }
-
-    final basename = path.basename(value);
-    if (basename.isEmpty) return null;
-    for (final relativeRoot in <String>[
-      path.join('games', 'DiscImages'),
-      path.join('games', 'ExtractedGames'),
-    ]) {
-      final found = await _findEntityByBasename(
-        Directory(path.join(dataRoot, relativeRoot)),
-        basename,
-        maxDepth: 4,
-      );
-      if (found != null) return found;
-    }
-    return null;
   }
 
   static Future<String?> _findEntityByBasename(

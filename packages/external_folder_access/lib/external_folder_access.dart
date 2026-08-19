@@ -125,8 +125,8 @@ class ExternalFolderAccess {
   }
 
   /// Opens one StikDebug `enable-jit` request immediately while NeoStation is
-  /// foregrounded. Unlike the legacy preflight helper, this method schedules no
-  /// UIApplication work after NeoStation is backgrounded.
+  /// foregrounded. It schedules no UIApplication work after NeoStation is
+  /// backgrounded.
   static Future<bool?> openJitRequest({
     required String targetBaseBundleId,
     String scriptName = 'universal.js',
@@ -139,127 +139,6 @@ class ExternalFolderAccess {
         'targetBaseBundleId': targetBaseBundleId,
         'scriptName': scriptName,
         if (scriptDataBase64Url != null) 'scriptData': scriptDataBase64Url,
-        'debugFileName': debugFileName,
-      });
-    } on PlatformException {
-      return false;
-    }
-  }
-
-  /// Opens [url] immediately, then asks the native iOS layer to open the same
-  /// URL again after [retryDelay]. The retry is kept alive with a short
-  /// UIApplication background task so it has a chance to fire after the first
-  /// launch moves NeoStation to the background.
-  ///
-  /// This is used for JIT-dependent emulators such as MeloNX and ARMSX2. Their
-  /// first direct-launch request can trigger the emulator's normal StikDebug
-  /// flow; the delayed second request then retries the exact game launch after
-  /// JIT has had time to become available.
-  ///
-  /// [debugFileName] is written by the native plugin into NeoStation's Documents
-  /// folder so the timing can be diagnosed on-device without Xcode.
-  static Future<bool?> openUrlWithDelayedRetry(
-    String url, {
-    Duration retryDelay = const Duration(seconds: 7),
-    String debugFileName = 'jit_launch_debug.txt',
-  }) async {
-    if (!Platform.isIOS) return null;
-    try {
-      return await _channel.invokeMethod<bool>('openUrlWithDelayedRetry', {
-        'url': url,
-        'delayMs': retryDelay.inMilliseconds,
-        'debugFileName': debugFileName,
-      });
-    } on PlatformException {
-      return false;
-    }
-  }
-
-  /// Starts StikDebug explicitly for [targetBaseBundleId], asking it to use
-  /// [scriptName], then opens [launchUrl] after [warmupDelay].
-  ///
-  /// The native iOS layer derives the current signing Team ID and adapts the
-  /// target bundle identifier to SideStore/AltStore-style resigning when the
-  /// current NeoStation bundle itself carries that Team-ID suffix. This keeps
-  /// the integration usable by other users without hard-coding one person's
-  /// Apple Developer Team ID.
-  static Future<bool?> openUrlAfterJitPreflight(
-    String launchUrl, {
-    required String targetBaseBundleId,
-    Duration warmupDelay = const Duration(seconds: 8),
-    String scriptName = 'universal.js',
-    String debugFileName = 'jit_preflight_debug.txt',
-  }) async {
-    if (!Platform.isIOS) return null;
-    try {
-      return await _channel.invokeMethod<bool>('openUrlAfterJitPreflight', {
-        'launchUrl': launchUrl,
-        'targetBaseBundleId': targetBaseBundleId,
-        'delayMs': warmupDelay.inMilliseconds,
-        'scriptName': scriptName,
-        'debugFileName': debugFileName,
-      });
-    } on PlatformException {
-      return false;
-    }
-  }
-
-  /// Starts StikDebug with an optional custom script, then asks StikDebug to
-  /// foreground the target application after the JIT warm-up delay.
-  ///
-  /// This variant is used when the target app has no public URL scheme of its
-  /// own. The native layer applies the same SideStore/AltStore Team-ID suffix
-  /// adaptation to both the JIT request and the delayed `launch-app` request.
-  static Future<bool?> openAppAfterJitPreflight({
-    required String targetBaseBundleId,
-    Duration warmupDelay = const Duration(seconds: 14),
-    String scriptName = 'universal.js',
-    String? scriptDataBase64Url,
-    String debugFileName = 'jit_app_preflight_debug.txt',
-  }) async {
-    if (!Platform.isIOS) return null;
-    try {
-      return await _channel.invokeMethod<bool>('openUrlAfterJitPreflight', {
-        'launchUrl': '',
-        'openTargetApp': true,
-        'targetBaseBundleId': targetBaseBundleId,
-        'delayMs': warmupDelay.inMilliseconds,
-        'scriptName': scriptName,
-        if (scriptDataBase64Url != null) 'scriptData': scriptDataBase64Url,
-        'debugFileName': debugFileName,
-      });
-    } on PlatformException {
-      return false;
-    }
-  }
-
-  /// Runs a two-pass StikDebug sequence for an emulator that exposes neither
-  /// a game deeplink nor a way to bypass its native startup gate.
-  ///
-  /// Pass one runs StikDebug's Universal script and foregrounds the target app.
-  /// After [postLaunchDelay], pass two reattaches with a caller-provided script
-  /// (for RPCS3, a fingerprinted direct Title-ID boot call), then returns to the
-  /// target app after [returnDelay]. The native layer keeps the sequence alive
-  /// with a bounded UIApplication background task and writes every transition
-  /// to [debugFileName].
-  static Future<bool?> openAppWithTwoPassJit({
-    required String targetBaseBundleId,
-    required String secondScriptName,
-    required String secondScriptDataBase64Url,
-    Duration initialWarmupDelay = const Duration(seconds: 11),
-    Duration postLaunchDelay = const Duration(seconds: 10),
-    Duration returnDelay = const Duration(seconds: 6),
-    String debugFileName = 'jit_two_pass_debug.txt',
-  }) async {
-    if (!Platform.isIOS) return null;
-    try {
-      return await _channel.invokeMethod<bool>('openAppWithTwoPassJit', {
-        'targetBaseBundleId': targetBaseBundleId,
-        'initialDelayMs': initialWarmupDelay.inMilliseconds,
-        'postLaunchDelayMs': postLaunchDelay.inMilliseconds,
-        'returnDelayMs': returnDelay.inMilliseconds,
-        'secondScriptName': secondScriptName,
-        'secondScriptData': secondScriptDataBase64Url,
         'debugFileName': debugFileName,
       });
     } on PlatformException {
