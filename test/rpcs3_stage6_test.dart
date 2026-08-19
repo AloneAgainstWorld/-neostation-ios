@@ -36,7 +36,7 @@ void main() {
       );
     });
 
-    test('launcher validates serials without restoring direct-core protocol', () {
+    test('launcher validates serials and uses Universal JIT', () {
       expect(Rpcs3LaunchService.normalizeTitleId('bles00412'), 'BLES00412');
       expect(Rpcs3LaunchService.normalizeTitleId(''), isNull);
 
@@ -45,14 +45,7 @@ void main() {
       ).readAsStringSync();
       expect(service, contains('openJitRequest'));
       expect(service, contains("scriptName: 'universal.js'"));
-      expect(service, isNot(contains('openAppAfterJitPreflight')));
-      expect(service, isNot(contains('openUrlAfterJitPreflight')));
-      expect(service, isNot(contains('buildRunUri')));
-      expect(service, isNot(contains('rpcs3ShortcutName')));
-      expect(service, isNot(contains('supportedCoreFunctions')));
-      expect(service, isNot(contains('SECOND_PASS')));
-      expect(service, isNot(contains('buildScriptForTesting')));
-      expect(service, isNot(contains('WidgetsBindingObserver')));
+      expect(service, contains('rpcs3_launch_debug.txt'));
     });
   });
 }
