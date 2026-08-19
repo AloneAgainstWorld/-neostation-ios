@@ -1,0 +1,164 @@
+name: Build RPCS3 foreground test IPA
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+      SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Validate ScreenScraper environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SCREENSCRAPER_DEV_ID:-}" ] || [ -z "${SCREENSCRAPER_DEV_PASSWORD:-}" ]; then
+            echo "Missing SCREENSCRAPER_DEV_ID or SCREENSCRAPER_DEV_PASSWORD GitHub Actions secret."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          values = {
+              'SCREENSCRAPER_DEV_ID': os.environ['SCREENSCRAPER_DEV_ID'],
+              'SCREENSCRAPER_DEV_PASSWORD': os.environ['SCREENSCRAPER_DEV_PASSWORD'],
+          }
+          Path('.env').write_text('\n'.join(f'{k}={v}' for k, v in values.items()) + '\n', encoding='utf-8')
+          PY
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Scaffold iOS platform if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d ios ]; then
+            flutter create --platforms=ios --org com.neogamelab --project-name neostation .
+          fi
+
+      - name: Configure iOS 18 and URL schemes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile || true
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' ios/Runner.xcodeproj/project.pbxproj || true
+
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:1 string UIInterfaceOrientationLandscapeRight" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || true
+
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.neogamelab.neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string shortcuts" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:2 string armsx2" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:3 string melonx" "$PLIST"
+          plutil -lint "$PLIST"
+
+      - name: Patch device_info_plus for runner SDK compatibility
+        shell: bash
+        run: |
+          DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" -path "*device_info_plus*/FPPDeviceInfoPlusPlugin.m" 2>/dev/null | head -1)
+          if [ -n "$DEVICE_INFO_FILE" ]; then
+            sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"
+          fi
+
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+
+      - name: Install CocoaPods dependencies
+        shell: bash
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Run RPCS3 regression tests
+        run: flutter test test/rpcs3_stage3_test.dart test/rpcs3_stage6_test.dart test/rpcs3_stage7_test.dart
+
+      - name: Configure Flutter build with ScreenScraper defines
+        run: flutter build ios --release --no-codesign --config-only --dart-define-from-file=.env
+
+      - name: Build unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/ios/DerivedData build/ios/unsigned
+          mkdir -p build/ios
+
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee build/ios/xcodebuild-unsigned.log
+
+          APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Unsigned Runner.app was not produced."
+            exit 1
+          fi
+
+          mkdir -p build/ios/unsigned/Payload
+          cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
+          (
+            cd build/ios/unsigned
+            zip -r ../../../NeoStation-RPCS3-Foreground-unsigned.ipa Payload
+          )
+
+      - name: Remove temporary environment file
+        if: always()
+        run: rm -f .env
+
+      - name: Upload IPA artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-RPCS3-Foreground-unsigned-ipa
+          path: |
+            NeoStation-RPCS3-Foreground-unsigned.ipa
+            build/ios/xcodebuild-unsigned.log
+          if-no-files-found: error
+          retention-days: 7
