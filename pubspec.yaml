@@ -79,6 +79,7 @@ flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   image_path: "assets/images/logo.png"
+  image_path_ios: "assets/images/fork-icon-valid.jpg"
   adaptive_icon_background: "assets/images/logo-background.png"
   adaptive_icon_foreground: "assets/images/logo-foreground.png"
   adaptive_icon_monochrome: "assets/images/logo-monochrome.png"
