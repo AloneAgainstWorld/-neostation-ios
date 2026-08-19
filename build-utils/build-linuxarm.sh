@@ -88,7 +88,7 @@ if [ ! -d "$PLUGIN_DIR" ]; then
         unsquashfs -d squashfs-root sqfs >/dev/null 2>&1
         rm -f sqfs
     }
-    mv squashfs-root linuxdeploy-plugin-appimage
+    mv squashfs-root linuxdeploy
     rm -f plugin.AppImage
 fi
 
@@ -102,31 +102,6 @@ flutter clean
 # Get dependencies
 echo "Getting Flutter dependencies..."
 flutter pub get
-
-# WORKAROUND: Download and extract mdk-sdk manually to avoid LZMA error in CMake
-# The error "Lzma library error: No progress is possible" occurs when cmake extracts inside Docker
-# For native builds this may not be needed, but we include it for safety
-MDK_SDK_URL="https://sourceforge.net/projects/mdk-sdk/files/nightly/mdk-sdk-linux.tar.xz"
-MDK_FILE="$CACHE_DIR/mdk-sdk-linux.tar.xz"
-
-FVP_LINUX_DIR="$PROJECT_ROOT/linux/flutter/ephemeral/.plugin_symlinks/fvp/linux"
-if [ -d "$FVP_LINUX_DIR" ]; then
-    if [ ! -f "$MDK_FILE" ]; then
-        echo "Downloading mdk-sdk..."
-        wget -q --show-progress "$MDK_SDK_URL" -O "$MDK_FILE" || { echo "Download failed"; exit 1; }
-    else
-        echo "Using cached mdk-sdk"
-    fi
-
-    echo "Extracting mdk-sdk into fvp plugin..."
-    tar -xf "$MDK_FILE" -C "$FVP_LINUX_DIR"
-
-    if [ -d "$FVP_LINUX_DIR/mdk-sdk-linux" ]; then
-        echo "Adjusting mdk-sdk structure..."
-        mv "$FVP_LINUX_DIR/mdk-sdk-linux/"* "$FVP_LINUX_DIR/"
-        rmdir "$FVP_LINUX_DIR/mdk-sdk-linux"
-    fi
-fi
 
 # Build release
 echo "Building Linux release..."
@@ -320,8 +295,8 @@ export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/s
 # Setting LD_LIBRARY_PATH can shadow system GL/EGL libs and break video rendering.
 #
 # NOTE: Do NOT force GPU selection (e.g. DRI_PRIME, __NV_PRIME_RENDER_OFFLOAD).
-# The app and mdk/fvp must use the same GPU. Forcing PRIME offload can cause
-# mdk to render on a different GPU than Flutter, resulting in black video.
+# Keep Flutter and media rendering on the same GPU. Forcing PRIME offload can
+# move media rendering to a different GPU and result in black video.
 
 if [ "$DEBUG_APPIMAGE" = "1" ]; then
   echo "HERE: $HERE"
