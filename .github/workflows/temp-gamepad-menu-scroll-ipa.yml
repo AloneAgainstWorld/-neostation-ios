@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: gamepad-menu-scroll-${{ github.ref }}
@@ -18,7 +19,7 @@ env:
 
 jobs:
   build:
-    if: github.event.head_commit.message == 'Apply gamepad menu scroll pacing'
+    if: github.event.head_commit.message == 'Run observable gamepad menu scroll build'
     runs-on: macos-14
     timeout-minutes: 120
 
@@ -28,6 +29,36 @@ jobs:
         with:
           ref: agent/gamepad-menu-scroll
           fetch-depth: 0
+
+      - name: Publish run locator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          payload = json.dumps({
+              'state': 'pending',
+              'context': 'neostation/gamepad-menu-scroll',
+              'description': f"run_id={os.environ['RUN_ID']}",
+              'target_url': f"https://github.com/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']}",
+          }).encode()
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['REPO']}/statuses/{os.environ['SHA']}",
+              data=payload,
+              method='POST',
+              headers={
+                  'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+              },
+          )
+          urllib.request.urlopen(request, timeout=30).read()
+          PY
 
       - name: Select latest stable Xcode
         uses: maxim-lobanov/setup-xcode@v1
