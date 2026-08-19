@@ -9,6 +9,7 @@ import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/widgets/custom_notification.dart';
 import 'package:neostation/services/logger_service.dart';
 import 'package:neostation/repositories/scraper_repository.dart';
+import 'package:neostation/utils/adaptive_scroll.dart';
 
 import 'scraper_contents/account_content.dart';
 import 'scraper_contents/language_content.dart';
@@ -47,6 +48,21 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
   static final _log = LoggerService.instance;
 
   final List<ScraperMenuItem> _menuItems = [];
+
+  /// Key attached to the selected ScreenScraper category so gamepad
+  /// navigation can keep it visible on shorter displays.
+  final GlobalKey _selectedMenuItemKey = GlobalKey();
+
+  /// Uses the same adaptive scrolling behavior as the main Settings menu.
+  final AdaptiveScroller _menuScroller = AdaptiveScroller();
+
+  void _scrollMenuToSelected() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final selectedContext = _selectedMenuItemKey.currentContext;
+      if (selectedContext == null) return;
+      _menuScroller.ensureVisible(selectedContext);
+    });
+  }
 
   // GlobalKeys for content widgets
   final GlobalKey<ScrapingContentState> _scrapingKey =
@@ -212,6 +228,7 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
       _focusOnMenu = true;
       _selectedContentIndex = 0;
     });
+    _scrollMenuToSelected();
   }
 
   // Navigation methods for gamepad
@@ -221,6 +238,7 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
         _selectedMenuIndex =
             (_selectedMenuIndex - 1 + _menuItems.length) % _menuItems.length;
       });
+      _scrollMenuToSelected();
     } else {
       final selectedKey = _menuItems[_selectedMenuIndex].localeKey;
       if (selectedKey == AppLocale.systems) {
@@ -249,6 +267,7 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
       setState(() {
         _selectedMenuIndex = (_selectedMenuIndex + 1) % _menuItems.length;
       });
+      _scrollMenuToSelected();
     } else {
       // Delegar navegación a Systems/Region si está seleccionado
       final selectedKey = _menuItems[_selectedMenuIndex].localeKey;
@@ -504,6 +523,9 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
         ),
       ),
       child: ListView.builder(
+        // Only seven categories exist; caching the whole side menu guarantees
+        // the newly selected item has a context before ensureVisible runs.
+        cacheExtent: 1000.r,
         itemCount: _menuItems.length,
         itemBuilder: (context, index) {
           final item = _menuItems[index];
@@ -512,6 +534,7 @@ class _NewScraperOptionsScreenState extends State<NewScraperOptionsScreen> {
           final isSelected = _selectedMenuIndex == index;
 
           return Material(
+            key: isSelected ? _selectedMenuItemKey : null,
             color: Colors.transparent,
             child: InkWell(
               onTap: () {
