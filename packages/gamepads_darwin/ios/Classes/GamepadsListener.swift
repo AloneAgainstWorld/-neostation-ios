@@ -18,37 +18,57 @@ class GamepadsListener {
             name: .GCControllerDidDisconnect,
             object: nil
         )
+
+        // A controller may already be connected before Flutter registers this
+        // plugin. GCControllerDidConnect is not replayed for those devices, so
+        // relying on notifications alone leaves the app with an empty list and
+        // no valueChangedHandler until the user disconnects/reconnects the pad.
+        // Register the controllers iOS already knows about immediately.
+        for controller in GCController.controllers() {
+            register(controller)
+        }
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
- 
+
     @objc private func joystickDidConnect(notification: NSNotification) {
-        if let controller = notification.object as? GCController {
-            if let gamepad = controller.extendedGamepad {
-                gamepads.append(gamepad)
-                let gamepadId = getAndSetPlayerId(of: gamepad)
-
-                gamepad.valueChangedHandler = { gamepad, element in
-                    if let listener = self.listener {
-                        listener(gamepadId, gamepad, element);
-                    }
-                }
-            }
-        }
+        guard let controller = notification.object as? GCController else { return }
+        register(controller)
     }
- 
+
     @objc private func joystickDidDisconnect(notification: NSNotification) {
-        if let controller = notification.object as? GCController {
-            gamepads.removeAll(where: { $0 == controller.extendedGamepad })
+        guard let controller = notification.object as? GCController,
+              let disconnected = controller.extendedGamepad else { return }
+
+        gamepads.removeAll(where: { $0 == disconnected })
+        refreshPlayerIndices()
+    }
+
+    private func register(_ controller: GCController) {
+        guard let gamepad = controller.extendedGamepad else { return }
+        guard !gamepads.contains(where: { $0 == gamepad }) else { return }
+
+        gamepads.append(gamepad)
+        refreshPlayerIndices()
+
+        // Resolve the index at event time instead of capturing the connection
+        // index forever. If controller 1 disconnects, the remaining controllers
+        // are re-indexed and continue reporting the same IDs as listGamepads().
+        gamepad.valueChangedHandler = { [weak self] gamepad, element in
+            guard let self,
+                  let gamepadId = self.gamepads.firstIndex(of: gamepad) else {
+                return
+            }
+            self.listener?(gamepadId, gamepad, element)
         }
     }
 
-    private func getAndSetPlayerId(of gamepad: GCExtendedGamepad) -> Int {
-        let gamepadId = gamepads.firstIndex(of: gamepad) ?? -1
-        gamepad.controller?.playerIndex = toPlayerIndex(index: gamepadId)
-        return gamepadId
+    private func refreshPlayerIndices() {
+        for (index, gamepad) in gamepads.enumerated() {
+            gamepad.controller?.playerIndex = toPlayerIndex(index: index)
+        }
     }
 
     private func toPlayerIndex(index: Int) -> GCControllerPlayerIndex {
