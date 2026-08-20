@@ -10,6 +10,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/services/gamepad/gamepad_navigation_manager.dart';
 import 'package:neostation/services/library_addon_service.dart';
+import 'package:neostation/services/library_aidoku_native_service.dart';
 import 'package:neostation/services/library_catalog_service.dart';
 import 'package:neostation/services/library_mangadex_service.dart';
 import 'package:neostation/services/sfx_service.dart';
@@ -55,12 +56,12 @@ class _NativeLibraryEntry {
   final LibraryCatalogItem item;
 
   bool get isMangaDex => providerId == LibraryMangaDexService.providerId;
-
-  bool get isSourceCard => item.raw['neoStationSourceCard'] == true;
 }
 
 class LibraryScreenState extends State<LibraryScreen> {
   final LibraryAddonService _addonService = LibraryAddonService.instance;
+  final LibraryAidokuNativeService _aidokuNativeService =
+      LibraryAidokuNativeService.instance;
   final LibraryCatalogService _catalogService = LibraryCatalogService.instance;
   final LibraryMangaDexService _mangaDexService = LibraryMangaDexService.instance;
 
@@ -183,42 +184,6 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _refreshNativeLibrary(addons);
   }
 
-  _NativeLibraryEntry _sourceEntryForAddon(LibraryAddon addon) {
-    final isAnime =
-        addon.androidPackage?.contains('animeextension') == true;
-    final runtimeLabel = addon.isAidokuRepositorySource
-        ? 'Aidoku'
-        : (isAnime ? 'Aniyomi' : 'Tachiyomi / Mihon');
-    final language = addon.language?.trim().toLowerCase();
-    final languageLabel = language == null || language.isEmpty
-        ? 'ALL'
-        : language.toUpperCase();
-
-    return _NativeLibraryEntry(
-      providerId: addon.id,
-      source: addon,
-      item: LibraryCatalogItem(
-        id: 'source:${addon.id}',
-        title: addon.name,
-        mediaType: isAnime ? LibraryMediaType.anime : LibraryMediaType.manga,
-        subtitle: '$runtimeLabel • $languageLabel',
-        description: Localizations.localeOf(context).languageCode == 'fr'
-            ? 'Source installée depuis un dépôt externe. Ouvrez-la pour afficher ses informations.'
-            : 'Source installed from an external repository. Open it to view its details.',
-        coverUrl: addon.iconUrl,
-        content: null,
-        contentUrl: null,
-        pageUrls: const [],
-        raw: <String, dynamic>{
-          'neoStationSourceCard': true,
-          'language': language,
-          'repositoryOrigin': addon.repositoryOrigin,
-          'runtime': runtimeLabel,
-        },
-      ),
-    );
-  }
-
   Future<void> _refreshNativeLibrary([List<LibraryAddon>? installed]) async {
     final addons = installed ?? _addons;
     if (mounted) {
@@ -246,10 +211,24 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
 
     for (final addon in addons) {
-      if (addon.isRepositorySource && addon.isMetadataOnlyOnIos) {
-        entries.add(_sourceEntryForAddon(addon));
+      if (addon.isAidokuRepositorySource && _aidokuNativeService.supports(addon)) {
+        try {
+          final items = await _aidokuNativeService.loadCatalog(addon);
+          for (final item in items) {
+            entries.add(
+              _NativeLibraryEntry(
+                providerId: addon.id,
+                source: addon,
+                item: item,
+              ),
+            );
+          }
+        } catch (_) {
+          failures++;
+        }
         continue;
       }
+
       if (!addon.canBrowseOnIos) continue;
       try {
         final items = await _catalogService.loadCatalog(addon);
@@ -1015,7 +994,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 if (addon.isAidokuRepositorySource) ...[
                   SizedBox(height: 10.r),
                   Text(
-                    'Aidoku • ${addon.language ?? 'all'} • iOS source metadata',
+                    _aidokuNativeService.supports(addon)
+                        ? 'Aidoku • ${addon.language ?? 'all'} • catalogue natif NeoStation'
+                        : 'Aidoku • ${addon.language ?? 'all'} • métadonnées de source',
                     style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
                       color: Theme.of(dialogContext).colorScheme.primary,
                       fontWeight: FontWeight.w600,
@@ -1069,8 +1050,8 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
-    if (entry.isSourceCard && entry.source != null) {
-      await _showAddonDetails(entry.source!);
+    if (entry.source != null && _aidokuNativeService.supports(entry.source!)) {
+      await _openAidokuTitle(entry);
       return;
     }
 
@@ -1124,6 +1105,7 @@ class LibraryScreenState extends State<LibraryScreen> {
     String title,
     List<String> pages, {
     String subtitle = '',
+    Map<String, String>? imageHeaders,
   }) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -1131,9 +1113,172 @@ class LibraryScreenState extends State<LibraryScreen> {
           title: title,
           subtitle: subtitle,
           pages: pages,
+          imageHeaders: imageHeaders,
           bookmarkId: 'pages:$title:$subtitle',
         ),
       ),
+    );
+  }
+
+  Future<void> _openAidokuTitle(_NativeLibraryEntry entry) async {
+    final addon = entry.source!;
+    final locale = Localizations.localeOf(context).languageCode;
+    var item = entry.item;
+
+    _showMessage(
+      locale == 'fr' ? 'Chargement des chapitres…' : 'Loading chapters…',
+    );
+
+    try {
+      item = await _aidokuNativeService.loadDetails(addon, item);
+    } catch (_) {
+      // Catalog cards already contain enough data to continue if details fail.
+    }
+
+    List<LibraryAidokuChapter> chapters;
+    try {
+      chapters = await _aidokuNativeService.loadChapters(addon, item);
+    } on LibraryAddonException catch (error) {
+      _showMessage(error.message);
+      return;
+    }
+
+    if (!mounted || chapters.isEmpty) {
+      if (mounted) {
+        _showMessage(
+          locale == 'fr'
+              ? 'Aucun chapitre disponible pour ce manga.'
+              : 'No chapters are available for this manga.',
+        );
+      }
+      return;
+    }
+
+    const layerId = 'library_aidoku_chapters';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    LibraryAidokuChapter? selectedChapter;
+    try {
+      selectedChapter = await showDialog<LibraryAidokuChapter>(
+        context: context,
+        builder: (dialogContext) {
+          final size = MediaQuery.sizeOf(dialogContext);
+          final theme = Theme.of(dialogContext);
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.symmetric(horizontal: 24.r, vertical: 18.r),
+            child: NeoGlass(
+              role: GlassSurfaceRole.card,
+              borderRadius: BorderRadius.circular(18.r),
+              enableBackdropBlur: true,
+              showSheen: false,
+              child: SizedBox(
+                width: size.width * 0.92,
+                height: size.height * 0.86,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(18.r, 14.r, 8.r, 8.r),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  addon.name,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: const Icon(Symbols.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (item.description.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(18.r, 0, 18.r, 10.r),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            item.description,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: EdgeInsets.fromLTRB(12.r, 4.r, 12.r, 20.r),
+                        itemCount: chapters.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, index) {
+                          final chapter = chapters[index];
+                          final details = <String>[
+                            if (chapter.chapter.isNotEmpty)
+                              'Ch. ${chapter.chapter}',
+                            chapter.language.toUpperCase(),
+                          ].join(' • ');
+                          return ListTile(
+                            title: Text(chapter.displayTitle),
+                            subtitle: details.isEmpty ? null : Text(details),
+                            trailing: const Icon(Symbols.menu_book_rounded),
+                            onTap: () =>
+                                Navigator.of(dialogContext).pop(chapter),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      GamepadNavigationManager.popLayer(layerId);
+    }
+
+    if (!mounted || selectedChapter == null) return;
+    _showMessage(locale == 'fr' ? 'Chargement des pages…' : 'Loading pages…');
+    List<String> pages;
+    try {
+      pages = await _aidokuNativeService.loadPages(
+        addon,
+        item,
+        selectedChapter,
+      );
+    } on LibraryAddonException catch (error) {
+      _showMessage(error.message);
+      return;
+    }
+    if (!mounted) return;
+    await _showPageReader(
+      '${item.title} — ${selectedChapter.displayTitle}',
+      pages,
+      subtitle: '${addon.name} • ${selectedChapter.language.toUpperCase()}',
+      imageHeaders: _aidokuNativeService.imageHeaders(addon),
     );
   }
 
@@ -1528,8 +1673,8 @@ class LibraryScreenState extends State<LibraryScreen> {
     final locale = Localizations.localeOf(context).languageCode;
     final visible = _visibleLibraryItems;
     final countLabel = locale == 'fr'
-        ? '${visible.length} élément${visible.length > 1 ? 's' : ''}'
-        : '${visible.length} item${visible.length == 1 ? '' : 's'}';
+        ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
+        : '${visible.length} title${visible.length == 1 ? '' : 's'}';
 
     return Row(
       children: [
@@ -1702,7 +1847,6 @@ class LibraryScreenState extends State<LibraryScreen> {
                             child: _LibraryCatalogCard(
                               item: entry.item,
                               languageLabel: languageLabel,
-                              isSourceCard: entry.isSourceCard,
                               selected:
                                   _hubFocus == _HubFocus.books &&
                                   _librarySelectedIndex == index,
@@ -2063,16 +2207,26 @@ class _LibraryCatalogCard extends StatelessWidget {
   const _LibraryCatalogCard({
     required this.item,
     required this.languageLabel,
-    required this.isSourceCard,
     required this.selected,
     required this.onTap,
   });
 
   final LibraryCatalogItem item;
   final String languageLabel;
-  final bool isSourceCard;
   final bool selected;
   final VoidCallback onTap;
+
+  Map<String, String>? get _imageHeaders {
+    final raw = item.raw['imageHeaders'];
+    if (raw is! Map) return null;
+    final result = <String, String>{};
+    for (final entry in raw.entries) {
+      final key = entry.key?.toString().trim() ?? '';
+      final value = entry.value?.toString().trim() ?? '';
+      if (key.isNotEmpty && value.isNotEmpty) result[key] = value;
+    }
+    return result.isEmpty ? null : result;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2121,24 +2275,21 @@ class _LibraryCatalogCard extends StatelessWidget {
                             ? ColoredBox(
                                 color: theme.colorScheme.primary.withValues(alpha: 0.10),
                                 child: Icon(
-                                  isSourceCard
-                                      ? Symbols.extension_rounded
-                                      : Symbols.menu_book_rounded,
+                                  Symbols.menu_book_rounded,
                                   color: theme.colorScheme.primary,
                                   size: 34.r,
                                 ),
                               )
                             : Image.network(
                                 item.coverUrl!,
+                                headers: _imageHeaders,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => ColoredBox(
                                   color: theme.colorScheme.primary.withValues(
                                     alpha: 0.10,
                                   ),
                                   child: Icon(
-                                    isSourceCard
-                                        ? Symbols.extension_rounded
-                                        : Symbols.menu_book_rounded,
+                                    Symbols.menu_book_rounded,
                                     color: theme.colorScheme.primary,
                                     size: 34.r,
                                   ),

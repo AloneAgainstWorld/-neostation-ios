@@ -27,6 +27,7 @@ class LibraryReaderScreen extends StatefulWidget {
     this.coverUrl,
     this.text,
     this.pages = const [],
+    this.imageHeaders,
     this.bookmarkId,
   });
 
@@ -35,9 +36,10 @@ class LibraryReaderScreen extends StatefulWidget {
   final String? coverUrl;
   final String? text;
   final List<String> pages;
+  final Map<String, String>? imageHeaders;
 
-  /// Stable identity used to persist a bookmark. When omitted, the reader
-  /// derives one from the visible title/subtitle and content type.
+  /// Stable identity used to persist a bookmark.
+  /// When omitted, the reader derives one from the visible title/subtitle and content type.
   final String? bookmarkId;
 
   bool get hasPages => pages.isNotEmpty;
@@ -388,6 +390,7 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
                     height: pageHeight,
                     child: Image.network(
                       widget.pages[index],
+                      headers: widget.imageHeaders,
                       fit: BoxFit.contain,
                       loadingBuilder: (context, child, progress) {
                         if (progress == null) return child;
