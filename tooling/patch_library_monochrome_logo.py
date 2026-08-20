@@ -8,3 +8,5 @@ if old not in source:
     raise SystemExit('Library artwork block not found; refusing unsafe patch')
 path.write_text(source.replace(old, new, 1), encoding='utf-8')
 print('Replaced Library artwork with monochrome book icon')
+
+# Explicit trigger after workflow registration.
