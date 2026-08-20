@@ -692,6 +692,15 @@ extension NeoSyncCore on NeoSyncProvider {
         return false;
       }
 
+      final rpcs3Root = Rpcs3LibraryService.linkedDataPath;
+      if (Platform.isIOS &&
+          system.folderName.toLowerCase() == 'ps3' &&
+          rpcs3Root != null &&
+          rpcs3Root.isNotEmpty &&
+          path.isWithin(rpcs3Root, file.path)) {
+        return await _uploadRpcs3File(file, rpcs3Root, preferredGame: game);
+      }
+
       final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
       if (Platform.isIOS &&
           system.folderName.toLowerCase() == 'ps2' &&
@@ -827,6 +836,10 @@ extension NeoSyncCore on NeoSyncProvider {
           Platform.isIOS && system.folderName.toLowerCase() == 'ps2'
           ? ConfigService.linkedArmsx2SaveFolderPath
           : null;
+      final rpcs3ScanRoot =
+          Platform.isIOS && system.folderName.toLowerCase() == 'ps3'
+          ? Rpcs3LibraryService.linkedDataPath
+          : null;
 
       // Execute heavy listing and filtering in background
       final List<String> filePaths = await Isolate.run(() {
@@ -842,7 +855,11 @@ extension NeoSyncCore on NeoSyncProvider {
                       armsx2ScanRoot != null &&
                       (path.isWithin(armsx2ScanRoot, file.path) ||
                           path.equals(armsx2ScanRoot, file.parent.path));
-                  return inArmsx2Root || size <= maxFileSize;
+                  final inRpcs3Root =
+                      rpcs3ScanRoot != null &&
+                      (path.isWithin(rpcs3ScanRoot, file.path) ||
+                          path.equals(rpcs3ScanRoot, file.parent.path));
+                  return inArmsx2Root || inRpcs3Root || size <= maxFileSize;
                 } catch (e) {
                   return false;
                 }
@@ -873,7 +890,19 @@ extension NeoSyncCore on NeoSyncProvider {
           final fileName = path.basename(file.path).toLowerCase();
           bool isMatch = false;
 
-          if (isSharedSystem) {
+          final rpcs3Root = Rpcs3LibraryService.linkedDataPath;
+          if (Platform.isIOS &&
+              system.folderName.toLowerCase() == 'ps3' &&
+              rpcs3Root != null &&
+              rpcs3Root.isNotEmpty &&
+              path.isWithin(rpcs3Root, file.path)) {
+            final rpcs3 = await _resolveRpcs3FileForCloud(
+              file,
+              rpcs3Root,
+              preferredGame: game,
+            );
+            isMatch = rpcs3 != null;
+          } else if (isSharedSystem) {
             final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
             if (Platform.isIOS &&
                 system.folderName.toLowerCase() == 'ps2' &&
@@ -938,8 +967,21 @@ extension NeoSyncCore on NeoSyncProvider {
             }
 
             String relativePath;
+            final rpcs3Root = Rpcs3LibraryService.linkedDataPath;
             final armsx2Root = ConfigService.linkedArmsx2SaveFolderPath;
             if (Platform.isIOS &&
+                system.folderName.toLowerCase() == 'ps3' &&
+                rpcs3Root != null &&
+                rpcs3Root.isNotEmpty &&
+                path.isWithin(rpcs3Root, file.path)) {
+              final rpcs3 = await _resolveRpcs3FileForCloud(
+                file,
+                rpcs3Root,
+                preferredGame: game,
+              );
+              if (rpcs3 == null) continue;
+              relativePath = rpcs3.cloudPath;
+            } else if (Platform.isIOS &&
                 system.folderName.toLowerCase() == 'ps2' &&
                 armsx2Root != null &&
                 armsx2Root.isNotEmpty &&
@@ -1053,7 +1095,38 @@ extension NeoSyncCore on NeoSyncProvider {
           }
         } else {
           final parsed = CloudPathBuilder.parse(cloudFile.fileName);
-          if (system.folderName.toLowerCase() == 'switch' &&
+          if (system.folderName.toLowerCase() == 'ps3' &&
+              parsed?.emulatorSlug == 'rpcs3' &&
+              parsed?.gameName != null) {
+            var expectedTitleId = game.titleId?.trim().toUpperCase();
+            if (expectedTitleId == null || expectedTitleId.isEmpty) {
+              expectedTitleId = (await GameRepository.getTitleIdForGame(
+                game.romname,
+                game.name,
+              ))?.trim().toUpperCase();
+            }
+            final parts = parsed!.filePath.split('/');
+            final cloudSaveDirectory = parts.length >= 2 ? parts[1] : '';
+            final cloudTitleId = _rpcs3TitleIdFromSaveDirectory(
+              cloudSaveDirectory,
+            );
+            final expectedNames = <String>{
+              CloudPathBuilder.sanitizeGameName(game.name).toLowerCase(),
+              if (game.titleName != null && game.titleName!.trim().isNotEmpty)
+                CloudPathBuilder.sanitizeGameName(game.titleName!)
+                    .toLowerCase(),
+            };
+            final cloudGameName = parsed.gameName!.toLowerCase();
+            if ((expectedTitleId != null &&
+                    expectedTitleId.isNotEmpty &&
+                    cloudTitleId == expectedTitleId) ||
+                expectedNames.contains(cloudGameName)) {
+              isMatch = true;
+            }
+          }
+
+          if (!isMatch &&
+              system.folderName.toLowerCase() == 'switch' &&
               parsed?.emulatorSlug == 'melonx' &&
               parsed?.gameName != null) {
             final expectedNames = <String>{

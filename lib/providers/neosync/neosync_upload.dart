@@ -89,6 +89,27 @@ extension NeoSyncUpload on NeoSyncProvider {
             ));
           }
         }
+
+        final rpcs3Root = Rpcs3LibraryService.linkedDataPath;
+        if (rpcs3Root != null && Directory(rpcs3Root).existsSync()) {
+          final home = Directory(path.join(rpcs3Root, 'dev_hdd0', 'home'));
+          if (home.existsSync()) {
+            for (final userDir
+                in home.listSync(followLinks: false).whereType<Directory>()) {
+              final savedata = Directory(path.join(userDir.path, 'savedata'));
+              if (!savedata.existsSync()) continue;
+              for (final file in await _getSaveFiles(savedata.path)) {
+                customSaveFiles.add((
+                  file: file,
+                  root: rpcs3Root,
+                  system: 'ps3',
+                  emulatorSlug: 'rpcs3',
+                  isState: false,
+                ));
+              }
+            }
+          }
+        }
       }
 
       // 2. Collect Switch NAND files
@@ -323,6 +344,11 @@ extension NeoSyncUpload on NeoSyncProvider {
         return;
       }
 
+      if (customSystem == 'ps3' && customEmulatorSlug == 'rpcs3') {
+        await _uploadRpcs3File(file, basePath);
+        return;
+      }
+
       if (customSystem != null && customEmulatorSlug != null) {
         final relativeFile = path
             .relative(file.path, from: basePath)
@@ -501,6 +527,54 @@ extension NeoSyncUpload on NeoSyncProvider {
         } catch (_) {}
       }
     }
+  }
+
+  /// Uploads one constituent file from a native RPCS3 PS3 save-data folder.
+  /// The technical PS3 profile/save directory is preserved in the cloud path,
+  /// while NeoSync exposes the human-readable game title.
+  Future<bool> _uploadRpcs3File(
+    File file,
+    String dataRoot, {
+    GameModel? preferredGame,
+  }) async {
+    final resolved = await _resolveRpcs3FileForCloud(
+      file,
+      dataRoot,
+      preferredGame: preferredGame,
+    );
+    if (resolved == null) {
+      _skippedFiles++;
+      return false;
+    }
+
+    final result = await _neoSyncService.syncFile(
+      file,
+      resolved.gameName,
+      customFilename: resolved.cloudPath,
+      systemId: 'ps3',
+      emulatorId: 'rpcs3',
+      isState: false,
+      scope: 'game',
+    );
+
+    if (result['success'] == true) {
+      if (result['skipped'] == true) {
+        _skippedFiles++;
+      } else {
+        _uploadedFiles++;
+        _resetQuotaAttempts();
+      }
+      _processedItems.add('NeoSync RPCS3: ${resolved.gameName}');
+      return true;
+    }
+
+    final errorMessage = result['message']?.toString() ?? '';
+    _processedItems.add('Failed to upload ${resolved.gameName}: $errorMessage');
+    if (_checkQuotaExceeded(errorMessage)) {
+      _quotaExceededActive = true;
+      throw QuotaExceededException(errorMessage, _quotaExceededAttempts);
+    }
+    return false;
   }
 
   /// Uploads one MeloNX file using Title ID only to identify the local game.

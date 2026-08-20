@@ -75,6 +75,28 @@ extension NeoSyncPathResolver on NeoSyncProvider {
       return [];
     }
 
+    // RPCS3 iOS native PS3 save-data roots. Reuse the existing security-
+    // scoped bookmark for RPCS3 > Data; no second folder picker is required.
+    if (pathStr == '{RPCS3_IOS_SAVEDATA}' && Platform.isIOS) {
+      final dataRoot = Rpcs3LibraryService.linkedDataPath;
+      if (dataRoot == null || dataRoot.isEmpty) return [];
+      final home = Directory(path.join(dataRoot, 'dev_hdd0', 'home'));
+      if (!home.existsSync()) return [];
+      final paths = <String>[];
+      try {
+        for (final userDir
+            in home.listSync(followLinks: false).whereType<Directory>()) {
+          final savedata = path.join(userDir.path, 'savedata');
+          if (Directory(savedata).existsSync()) paths.add(savedata);
+        }
+      } catch (e) {
+        NeoSyncProvider._log.w(
+          'Could not enumerate RPCS3 savedata profiles: $e',
+        );
+      }
+      return paths;
+    }
+
     // 3. Placeholder {NETHERSX2_MEMCARDS} (AetherSX2/NetherSX2 memcards)
     if (pathStr == '{NETHERSX2_MEMCARDS}' && Platform.isAndroid) {
       final possiblePaths = [
@@ -287,6 +309,161 @@ extension NeoSyncPathResolver on NeoSyncProvider {
       return path.join(root, internalPath);
     }
     return path.join(root, category, internalPath);
+  }
+
+  ({String profileId, String saveDirectory, String internalPath})?
+  _parseRpcs3SaveLocation(File file, String dataRoot) {
+    final relative = path
+        .relative(file.path, from: dataRoot)
+        .replaceAll('\\', '/');
+    if (relative == '..' || relative.startsWith('../')) return null;
+    final segments = relative
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (segments.length < 6 ||
+        segments[0].toLowerCase() != 'dev_hdd0' ||
+        segments[1].toLowerCase() != 'home' ||
+        segments[3].toLowerCase() != 'savedata') {
+      return null;
+    }
+    if (segments.any((part) => part == '.' || part == '..')) return null;
+    return (
+      profileId: segments[2],
+      saveDirectory: segments[4],
+      internalPath: segments.sublist(5).join('/'),
+    );
+  }
+
+  String? _rpcs3TitleIdFromSaveDirectory(String value) {
+    final match = RegExp(r'^([A-Za-z]{4}[0-9]{5})').firstMatch(value.trim());
+    return match?.group(1)?.toUpperCase();
+  }
+
+  Future<({String cloudPath, String gameName, String titleId})?>
+  _resolveRpcs3FileForCloud(
+    File file,
+    String dataRoot, {
+    GameModel? preferredGame,
+  }) async {
+    final location = _parseRpcs3SaveLocation(file, dataRoot);
+    if (location == null) return null;
+
+    var saveTitleId = _rpcs3TitleIdFromSaveDirectory(location.saveDirectory);
+    String? sfoTitle;
+    final sfo = File(
+      path.join(
+        dataRoot,
+        'dev_hdd0',
+        'home',
+        location.profileId,
+        'savedata',
+        location.saveDirectory,
+        'PARAM.SFO',
+      ),
+    );
+    if (sfo.existsSync()) {
+      try {
+        // ignore: invalid_use_of_visible_for_testing_member
+        final values = Rpcs3LibraryService.parseParamSfoBytes(
+          await sfo.readAsBytes(),
+        );
+        final sfoId = values['TITLE_ID']?.toString().trim() ?? '';
+        if ((saveTitleId == null || saveTitleId.isEmpty) && sfoId.isNotEmpty) {
+          saveTitleId = sfoId.toUpperCase();
+        }
+        sfoTitle = values['TITLE']?.toString().trim();
+      } catch (e) {
+        NeoSyncProvider._log.w('Could not parse RPCS3 save PARAM.SFO: $e');
+      }
+    }
+
+    String? preferredTitleId = preferredGame?.titleId?.trim().toUpperCase();
+    if (preferredGame != null &&
+        (preferredTitleId == null || preferredTitleId.isEmpty)) {
+      final dbId = await GameRepository.getTitleIdForGame(
+        preferredGame.romname,
+        preferredGame.name,
+      );
+      preferredTitleId = dbId?.trim().toUpperCase();
+      preferredTitleId ??= _rpcs3TitleIdFromSaveDirectory(
+        preferredGame.romname,
+      );
+    }
+
+    if (preferredGame != null &&
+        preferredTitleId != null &&
+        preferredTitleId.isNotEmpty &&
+        saveTitleId != null &&
+        saveTitleId.isNotEmpty &&
+        preferredTitleId != saveTitleId) {
+      return null;
+    }
+
+    final cached = Rpcs3LibraryService.cachedGameForTitleId(saveTitleId);
+    var canonicalName = cached?.title.trim() ?? '';
+    if (canonicalName.isEmpty) {
+      canonicalName = sfoTitle ?? '';
+    }
+    if (canonicalName.isEmpty) {
+      canonicalName = saveTitleId ?? location.saveDirectory;
+    }
+
+    if (preferredGame != null &&
+        (preferredTitleId == null || preferredTitleId.isEmpty)) {
+      final expected = <String>{
+        CloudPathBuilder.sanitizeGameName(preferredGame.name).toLowerCase(),
+        if (preferredGame.titleName != null &&
+            preferredGame.titleName!.trim().isNotEmpty)
+          CloudPathBuilder.sanitizeGameName(preferredGame.titleName!)
+              .toLowerCase(),
+      };
+      final actual = CloudPathBuilder.sanitizeGameName(canonicalName)
+          .toLowerCase();
+      if (!expected.contains(actual)) return null;
+    }
+
+    final gameName = preferredGame?.name.trim().isNotEmpty == true
+        ? preferredGame!.name.trim()
+        : canonicalName;
+    final cloudPath = CloudPathBuilder.build(
+      system: 'ps3',
+      emulatorSlug: 'rpcs3',
+      scope: 'game',
+      gameName: gameName,
+      filePath:
+          '${location.profileId}/${location.saveDirectory}/${location.internalPath}',
+      isState: false,
+    );
+    return (
+      cloudPath: cloudPath,
+      gameName: gameName,
+      titleId: saveTitleId ?? '',
+    );
+  }
+
+  String? _resolveRpcs3CloudFileToLocal(String dataRoot, String cloudFilePath) {
+    final segments = cloudFilePath
+        .replaceAll('\\', '/')
+        .split('/')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (segments.length < 3 ||
+        segments.any((part) => part == '.' || part == '..')) {
+      return null;
+    }
+    final profileId = segments[0];
+    final saveDirectory = segments[1];
+    final internal = segments.sublist(2).join(Platform.pathSeparator);
+    return path.join(
+      dataRoot,
+      'dev_hdd0',
+      'home',
+      profileId,
+      'savedata',
+      saveDirectory,
+      internal,
+    );
   }
 
   bool _isMeloNXTitleId(String value) {
@@ -602,6 +779,12 @@ extension NeoSyncPathResolver on NeoSyncProvider {
         final root = ConfigService.linkedArmsx2SaveFolderPath;
         if (root != null && root.isNotEmpty) {
           final local = _resolveArmsx2CloudFileToLocal(root, v2Path.filePath);
+          return local == null ? [] : [local];
+        }
+      } else if (v2Path.emulatorSlug == 'rpcs3') {
+        final root = Rpcs3LibraryService.linkedDataPath;
+        if (root != null && root.isNotEmpty) {
+          final local = _resolveRpcs3CloudFileToLocal(root, v2Path.filePath);
           return local == null ? [] : [local];
         }
       } else if (v2Path.emulatorSlug == 'melonx') {
