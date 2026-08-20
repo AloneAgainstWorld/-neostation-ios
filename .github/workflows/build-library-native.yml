@@ -28,6 +28,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Apply direct imported manga catalog patch
+        run: |
+          set -euo pipefail
+          python3 tooling/patch_library_direct_aidoku.py
+          mkdir -p build/ci/patched-source/lib/screens/library_screen
+          cp lib/screens/library_screen/library_screen.dart build/ci/patched-source/lib/screens/library_screen/library_screen.dart
+          cp lib/screens/library_screen/library_reader_screen.dart build/ci/patched-source/lib/screens/library_screen/library_reader_screen.dart
+
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -93,6 +101,7 @@ jobs:
           set -o pipefail
           flutter test test/library_addon_service_test.dart 2>&1 | tee build/ci/test-addon.log
           flutter test test/library_catalog_service_test.dart 2>&1 | tee build/ci/test-catalog.log
+          flutter test test/library_aidoku_native_service_test.dart 2>&1 | tee build/ci/test-aidoku-native.log
 
       - name: Scaffold iOS platform if missing
         run: |
@@ -212,6 +221,7 @@ jobs:
           path: |
             NeoStation-Library-Native-unsigned.ipa
             build/ci/*.log
+            build/ci/patched-source/**
             build/ios/xcodebuild-unsigned.log
           if-no-files-found: warn
 
@@ -233,4 +243,4 @@ jobs:
             -f description="$description" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-# Explicit rebuild trigger for Keiyoushi v2 + Gallica/BnF integration.
+# Direct imported manga catalog validation.
