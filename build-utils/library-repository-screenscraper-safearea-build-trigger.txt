@@ -1,1 +1,0 @@
-NeoStation iOS validation: explicit Library repository/source removal + generic iPhone safe-area protection for ScreenScraper.
