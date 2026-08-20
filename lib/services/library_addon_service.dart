@@ -456,7 +456,7 @@ class LibraryAddonService {
     if ((host == 'raw.githubusercontent.com' || host == 'github.com') &&
         lowerPath.contains('/komikku-app/extensions')) {
       add(
-        'https://raw.githubusercontent.com/cuong-tran/manga-repo/repo/index.json',
+        'https://raw.githubusercontent.com/yuzono/manga-repo/repo/index.min.json',
       );
     }
     if ((host == 'raw.githubusercontent.com' || host == 'github.com') &&
