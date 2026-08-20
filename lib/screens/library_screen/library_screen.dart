@@ -46,7 +46,7 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   bool _moveSelection(int delta) {
-    final next = (_selectedIndex + delta).clamp(0, 1);
+    final next = (_selectedIndex + delta).clamp(0, 1).toInt();
     if (next == _selectedIndex) return false;
     setState(() => _selectedIndex = next);
     return true;
@@ -124,7 +124,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                     selected: _selectedIndex == 0,
                     icon: Symbols.extension_rounded,
                     title: AppLocale.libraryAddons.getString(context),
-                    subtitle: AppLocale.libraryAddonsSubtitle.getString(context),
+                    subtitle: AppLocale.libraryAddonsSubtitle.getString(
+                      context,
+                    ),
                     onTap: () => _tapCard(0),
                   ),
                 ),
@@ -149,7 +151,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                     Icon(
                       Symbols.collections_bookmark_rounded,
                       size: 38.r,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.35,
+                      ),
                     ),
                     SizedBox(height: 10.r),
                     Text(
@@ -163,7 +167,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                       AppLocale.libraryEmptySubtitle.getString(context),
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.55,
+                        ),
                       ),
                     ),
                   ],
@@ -202,9 +208,7 @@ class _LibraryEntryCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: radius,
         border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : Colors.transparent,
+          color: selected ? theme.colorScheme.primary : Colors.transparent,
           width: selected ? 2.r : 0,
         ),
         boxShadow: selected
@@ -254,7 +258,9 @@ class _LibraryEntryCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.62,
+                        ),
                       ),
                     ),
                   ],
