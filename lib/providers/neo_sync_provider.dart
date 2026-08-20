@@ -208,33 +208,44 @@ class NeoSyncProvider extends ChangeNotifier {
     _quotaExceededActive = false;
   }
 
+  /// Downloads one cloud save for an explicit user export.
+  ///
+  /// NeoSync stores some payloads as `.neosync.gz`; exports must contain the
+  /// original emulator save bytes so the archive is independently recoverable.
+  Future<List<int>> downloadOnlineFileBytes(NeoSyncFile cloudFile) async {
+    final result = await _neoSyncService.downloadFile(cloudFile.id);
+    if (result['success'] != true || result['data'] == null) {
+      throw Exception(result['message'] ?? 'Failed to download file');
+    }
+    final rawData = result['data'];
+    if (rawData is! List) {
+      throw const FormatException('NeoSync returned invalid file data');
+    }
+    final bytes = List<int>.from(rawData);
+    return cloudFile.fileName.toLowerCase().endsWith('.neosync.gz')
+        ? gzip.decode(bytes)
+        : bytes;
+  }
+
   /// Downloads a file from NeoSync storage and writes it to the local filesystem.
   ///
   /// Upon successful download, it synchronizes the local database sync state
   /// to match the cloud version.
   Future<void> _downloadCloudFile(NeoSyncFile cloudFile, File localFile) async {
-    final result = await _neoSyncService.downloadFile(cloudFile.id);
-    if (result['success'] == true && result['data'] != null) {
-      final bytes = result['data'] as List<int>;
-      final payload = cloudFile.fileName.toLowerCase().endsWith('.neosync.gz')
-          ? gzip.decode(bytes)
-          : bytes;
-      await localFile.writeAsBytes(payload);
+    final payload = await downloadOnlineFileBytes(cloudFile);
+    await localFile.writeAsBytes(payload);
 
-      try {
-        final stat = await localFile.stat();
-        await SyncRepository.saveSyncState(
-          localFile.path,
-          stat.modified.millisecondsSinceEpoch,
-          cloudFile.fileModifiedAtTimestamp ?? 0,
-          stat.size,
-          fileHash: cloudFile.checksum,
-        );
-      } catch (e) {
-        _log.w('Could not save sync state for ${localFile.path}: $e');
-      }
-    } else {
-      throw Exception(result['message'] ?? 'Failed to download file');
+    try {
+      final stat = await localFile.stat();
+      await SyncRepository.saveSyncState(
+        localFile.path,
+        stat.modified.millisecondsSinceEpoch,
+        cloudFile.fileModifiedAtTimestamp ?? 0,
+        stat.size,
+        fileHash: cloudFile.checksum,
+      );
+    } catch (e) {
+      _log.w('Could not save sync state for ${localFile.path}: $e');
     }
   }
 

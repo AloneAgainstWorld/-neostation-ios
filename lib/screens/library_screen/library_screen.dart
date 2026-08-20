@@ -555,55 +555,76 @@ class LibraryScreenState extends State<LibraryScreen> {
       if (value is num) return value > 0;
       final raw = value?.toString().trim().toLowerCase() ?? '';
       if (raw.isEmpty) return false;
-      return raw == 'true' ||
-          raw == 'yes' ||
-          raw == '1' ||
-          raw.contains('nsfw') ||
-          raw.contains('adult') ||
-          raw.contains('explicit') ||
-          raw.contains('porn') ||
-          raw.contains('hentai');
+      if (raw == 'true' || raw == 'yes' || raw == '1' || raw == '2' || raw == '3') {
+        return true;
+      }
+      return _strictAdultPattern.hasMatch(raw);
     }
 
     final provider = entry.source?.manifest['provider'];
     if (provider is Map) {
-      if (explicitFlag(provider['nsfw']) ||
-          explicitFlag(provider['adult']) ||
-          explicitFlag(provider['explicit'])) {
-        return true;
-      }
-      final rating = provider['contentRating']?.toString().toLowerCase() ?? '';
-      if (RegExp(
-        r'(nsfw|porn|hentai|adult|explicit|mature|erotic|smut|18\+|r-?18)',
-        caseSensitive: false,
-      ).hasMatch(rating)) {
-        return true;
+      // Repository/source metadata has priority. A source that declares any
+      // non-zero NSFW level is excluded as a whole in strict safe mode.
+      for (final key in const [
+        'nsfw',
+        'adult',
+        'explicit',
+        'isAdult',
+        'contentWarning',
+        'contentRating',
+        'rating',
+        'ageRating',
+      ]) {
+        if (explicitFlag(provider[key])) return true;
       }
     }
 
     final raw = entry.item.raw;
-    if (explicitFlag(raw['explicitContent']) ||
-        explicitFlag(raw['nsfw']) ||
-        explicitFlag(raw['adult']) ||
-        explicitFlag(raw['isAdult'])) {
-      return true;
+    for (final key in const [
+      'explicitContent',
+      'nsfw',
+      'adult',
+      'isAdult',
+      'contentWarning',
+      'contentRating',
+      'rating',
+      'ageRating',
+      'genres',
+      'genre',
+      'categories',
+      'tags',
+      'labels',
+    ]) {
+      final value = raw[key];
+      if (value is bool || value is num) {
+        if (explicitFlag(value)) return true;
+      } else if (value != null && _strictAdultPattern.hasMatch(value.toString())) {
+        return true;
+      }
     }
 
     String metadata = <String>[
       entry.item.title,
       entry.item.subtitle,
       entry.item.description,
+      entry.item.coverUrl ?? '',
       entry.source?.name ?? '',
+      entry.source?.description ?? '',
     ].join(' ').toLowerCase();
     try {
       metadata = '$metadata ${jsonEncode(raw).toLowerCase()}';
+      if (provider is Map) {
+        metadata = '$metadata ${jsonEncode(provider).toLowerCase()}';
+      }
     } catch (_) {}
 
-    return RegExp(
-      r'(^|[^a-z0-9])(hentai|doujinshi|doujin|porn|pornographic|xxx|nsfw|r-?18|18\+|adult(?:s)?[ -]?only|explicit|uncensored|smut|erotic|erotica|ecchi|sexual[ -]?content|hardcore|fetish)([^a-z0-9]|$)',
-      caseSensitive: false,
-    ).hasMatch(metadata);
+    return _strictAdultPattern.hasMatch(metadata);
   }
+
+  static final RegExp _strictAdultPattern = RegExp(
+    r'(^|[^a-z0-9])(hentai|doujinshi|doujin|porn|porno|pornographic|pornography|xxx|nsfw|r[ -]?18|18\+|18 plus|adult(?:s)?(?:[ -]?only|[ -]?content)?|mature(?:[ -]?content)?|explicit(?:[ -]?content)?|uncensored|smut|erotic|erotica|ecchi|sexual(?:[ -]?content)?|sex|hardcore|fetish|bdsm|ahegao|futanari|lolicon|shotacon|oppai|netorare|ntr|incest|rape|non[ -]?consensual|tentacle|milf|nudity|nude)([^a-z0-9]|$)',
+    caseSensitive: false,
+  );
 
   String _contentFilterLabel() {
     final fr = Localizations.localeOf(context).languageCode == 'fr';

@@ -1,3 +1,9 @@
+import 'dart:io';
+
+import 'package:archive/archive_io.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_localization/flutter_localization.dart';
@@ -43,6 +49,7 @@ class NeoSyncContentState extends State<NeoSyncContent>
   final GlobalKey<OnlineSavesListViewState> _onlineSavesListKey =
       GlobalKey<OnlineSavesListViewState>();
   bool _isNavigatingFast = false;
+  bool _isExportingSaves = false;
 
   // Throttling para evitar eventos duplicados muy rápidos
   DateTime? _lastSelectTime;
@@ -722,6 +729,7 @@ class NeoSyncContentState extends State<NeoSyncContent>
         _navigateSavesDown();
       },
       onSelectItem: _selectSaveItem,
+      onXButton: _exportSelectedSaveGroup,
       onPreviousTab: () {
         // Ignorar LB cuando estamos en un dialog modal
         if (_isDialogMode) return;
@@ -892,6 +900,178 @@ class NeoSyncContentState extends State<NeoSyncContent>
     setState(() {
       _selectedSaveIndex = newIndex;
     });
+  }
+
+  Future<void> _exportSelectedSaveGroup() async {
+    if (_isDialogMode || _isExportingSaves) return;
+    final neoSyncProvider = Provider.of<NeoSyncProvider>(context, listen: false);
+    final groups = _groupedOnlineSaves(neoSyncProvider);
+    if (groups.isEmpty || _selectedSaveIndex < 0 || _selectedSaveIndex >= groups.length) {
+      return;
+    }
+    await _exportSaveGroups(
+      <_OnlineSaveGroup>[groups[_selectedSaveIndex]],
+      label: groups[_selectedSaveIndex].displayName,
+    );
+  }
+
+  Future<void> _exportAllCloudSaves() async {
+    if (_isExportingSaves) return;
+    final neoSyncProvider = Provider.of<NeoSyncProvider>(context, listen: false);
+    final groups = _groupedOnlineSaves(neoSyncProvider);
+    if (groups.isEmpty) return;
+    await _exportSaveGroups(groups, label: 'NeoSync-All-Saves');
+  }
+
+  String _safeExportComponent(String value) {
+    var result = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+    result = result.replaceAll(RegExp(r'_+'), '_');
+    result = result.replaceAll(RegExp(r'^[_\.]+|[_\.]+$'), '');
+    return result.isEmpty ? 'save' : result;
+  }
+
+  List<String> _safeCloudPathSegments(String cloudPath) {
+    var value = cloudPath.replaceAll('\\', '/').trim();
+    if (value.toLowerCase().endsWith('.neosync.gz')) {
+      value = value.substring(0, value.length - '.neosync.gz'.length);
+    }
+    final result = <String>[];
+    for (final segment in value.split('/')) {
+      final trimmed = segment.trim();
+      if (trimmed.isEmpty || trimmed == '.' || trimmed == '..') continue;
+      result.add(_safeExportComponent(trimmed));
+    }
+    return result.isEmpty ? <String>['save.bin'] : result;
+  }
+
+  File _uniqueExportFile(Directory root, List<String> segments) {
+    final directorySegments = segments.length > 1
+        ? segments.sublist(0, segments.length - 1)
+        : const <String>[];
+    final baseName = segments.last;
+    final dot = baseName.lastIndexOf('.');
+    final stem = dot > 0 ? baseName.substring(0, dot) : baseName;
+    final extension = dot > 0 ? baseName.substring(dot) : '';
+    var candidate = File(p.join(root.path, ...directorySegments, baseName));
+    var suffix = 2;
+    while (candidate.existsSync()) {
+      candidate = File(
+        p.join(root.path, ...directorySegments, '$stem-$suffix$extension'),
+      );
+      suffix++;
+    }
+    return candidate;
+  }
+
+  Rect _neoSyncShareOrigin() {
+    final renderObject = context.findRenderObject();
+    if (renderObject is RenderBox && renderObject.hasSize) {
+      return renderObject.localToGlobal(Offset.zero) & renderObject.size;
+    }
+    return const Rect.fromLTWH(0, 0, 1, 1);
+  }
+
+  Future<void> _exportSaveGroups(
+    List<_OnlineSaveGroup> groups, {
+    required String label,
+  }) async {
+    if (_isExportingSaves || groups.isEmpty) return;
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    final neoSyncProvider = Provider.of<NeoSyncProvider>(context, listen: false);
+    Directory? exportRoot;
+    File? zipFile;
+
+    setState(() => _isExportingSaves = true);
+    _savesGamepadNav.deactivate();
+    custom.AppNotification.showNotification(
+      context,
+      fr ? 'Préparation de l’archive NeoSync…' : 'Preparing NeoSync archive…',
+      type: custom.NotificationType.info,
+    );
+
+    try {
+      final temp = await getTemporaryDirectory();
+      final stamp = DateTime.now().microsecondsSinceEpoch;
+      exportRoot = Directory(p.join(temp.path, 'neosync_export_$stamp'));
+      await exportRoot.create(recursive: true);
+
+      var exportedFiles = 0;
+      for (final group in groups) {
+        for (final cloudFile in group.files) {
+          final bytes = await neoSyncProvider.downloadOnlineFileBytes(cloudFile);
+          final target = _uniqueExportFile(
+            exportRoot,
+            _safeCloudPathSegments(cloudFile.fileName),
+          );
+          await target.parent.create(recursive: true);
+          await target.writeAsBytes(bytes, flush: true);
+          exportedFiles++;
+        }
+      }
+
+      if (exportedFiles == 0) {
+        throw StateError('No NeoSync files were exported');
+      }
+
+      final safeLabel = _safeExportComponent(label);
+      zipFile = File(p.join(temp.path, 'NeoSync-$safeLabel-$stamp.zip'));
+      final encoder = ZipFileEncoder();
+      encoder.create(zipFile.path);
+      await encoder.addDirectory(exportRoot, includeDirName: false);
+      await encoder.close();
+
+      if (await exportRoot.exists()) {
+        await exportRoot.delete(recursive: true);
+        exportRoot = null;
+      }
+
+      if (!mounted) return;
+      custom.AppNotification.showNotification(
+        context,
+        fr
+            ? 'Archive prête — choisissez « Enregistrer dans Fichiers » pour la conserver sur l’iPhone.'
+            : 'Archive ready — choose “Save to Files” to keep it on this iPhone.',
+        type: custom.NotificationType.success,
+      );
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: <XFile>[
+            XFile(zipFile.path, mimeType: 'application/zip'),
+          ],
+          subject: 'NeoSync backup - $label',
+          sharePositionOrigin: _neoSyncShareOrigin(),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        custom.AppNotification.showNotification(
+          context,
+          fr
+              ? 'Impossible d’exporter les sauvegardes NeoSync : $e'
+              : 'Could not export NeoSync saves: $e',
+          type: custom.NotificationType.error,
+        );
+      }
+    } finally {
+      try {
+        if (exportRoot != null && await exportRoot.exists()) {
+          await exportRoot.delete(recursive: true);
+        }
+      } catch (_) {}
+      // The native share sheet has finished using the temp file when the await
+      // above returns. Keeping no stale backups in the app cache avoids storage
+      // growth across repeated exports.
+      try {
+        if (zipFile != null && await zipFile.exists()) {
+          await zipFile.delete();
+        }
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _isExportingSaves = false);
+        _savesGamepadNav.activate();
+      }
+    }
   }
 
   void _selectSaveItem() async {
@@ -1284,6 +1464,21 @@ class NeoSyncContentState extends State<NeoSyncContent>
                   ),
                   Spacer(),
                   IconButton(
+                    onPressed: (groups.isEmpty || _isExportingSaves)
+                        ? null
+                        : _exportAllCloudSaves,
+                    icon: _isExportingSaves
+                        ? SizedBox(
+                            width: 12.r,
+                            height: 12.r,
+                            child: CircularProgressIndicator(strokeWidth: 2.r),
+                          )
+                        : Icon(Symbols.download_rounded, size: 16.r),
+                    tooltip: Localizations.localeOf(context).languageCode == 'fr'
+                        ? 'Exporter toutes les sauvegardes vers Fichiers'
+                        : 'Export all saves to Files',
+                  ),
+                  IconButton(
                     onPressed: (_isRefreshingOnlineFiles || _refreshCompleted)
                         ? null
                         : () async {
@@ -1327,9 +1522,14 @@ class NeoSyncContentState extends State<NeoSyncContent>
                         groups: groups,
                         selectedIndex: _selectedSaveIndex,
                         isNavigatingFast: _isNavigatingFast,
+                        onExportRequest: (group, index) async {
+                          setState(() => _selectedSaveIndex = index);
+                          await _exportSaveGroups(
+                            <_OnlineSaveGroup>[group],
+                            label: group.displayName,
+                          );
+                        },
                         onDeleteRequest: (group, index) async {
-                          // This logic can be simplified but essentially it's the same
-                          // we can trigger the deletion logic here or move it to a method
                           setState(() => _selectedSaveIndex = index);
                           _selectSaveItem();
                         },
@@ -2959,6 +3159,7 @@ class _OnlineSaveGroup {
 class OnlineSavesListView extends StatefulWidget {
   final List<_OnlineSaveGroup> groups;
   final int selectedIndex;
+  final Function(_OnlineSaveGroup, int) onExportRequest;
   final Function(_OnlineSaveGroup, int) onDeleteRequest;
   final Function(int) onSelectionChanged;
   final bool isNavigatingFast;
@@ -2967,6 +3168,7 @@ class OnlineSavesListView extends StatefulWidget {
     super.key,
     required this.groups,
     required this.selectedIndex,
+    required this.onExportRequest,
     required this.onDeleteRequest,
     required this.onSelectionChanged,
     this.isNavigatingFast = false,
@@ -3229,9 +3431,27 @@ class OnlineSavesListViewState extends State<OnlineSavesListView>
             ),
           ),
           IconButton(
+            constraints: BoxConstraints.tightFor(width: 30.r, height: 30.r),
+            padding: EdgeInsets.zero,
+            onPressed: () => widget.onExportRequest(group, index),
+            icon: Icon(
+              Symbols.download_rounded,
+              size: 17.r,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.onSecondary
+                  : Theme.of(context).colorScheme.primary,
+            ),
+            tooltip: Localizations.localeOf(context).languageCode == 'fr'
+                ? 'Exporter vers Fichiers'
+                : 'Export to Files',
+          ),
+          IconButton(
+            constraints: BoxConstraints.tightFor(width: 30.r, height: 30.r),
+            padding: EdgeInsets.zero,
             onPressed: () => widget.onDeleteRequest(group, index),
             icon: Icon(
               Symbols.delete_rounded,
+              size: 17.r,
               color: isSelected
                   ? Theme.of(context).colorScheme.onSecondary
                   : Theme.of(context).colorScheme.error,

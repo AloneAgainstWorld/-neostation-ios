@@ -203,7 +203,10 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
     unawaited(_fixRetroarchAndroidDefault());
 
     // App update check (network) — runs alongside the scan, no longer blocking it.
-    if (configProvider.config.autoUpdateApp) {
+    // The iOS fork is sideloaded and owns its platform integrations. Desktop
+    // update manifests must never prompt, download, or replace iOS assets, even
+    // when a legacy config migrated from PC still has these booleans enabled.
+    if (!Platform.isIOS && configProvider.config.autoUpdateApp) {
       final appUpdateResult = await _checkAndShowAppUpdate();
       if (appUpdateResult == true) {
         // User chose Update Now and will restart; nothing more to do here.
@@ -212,7 +215,7 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
     }
 
     // Systems/emulator config update check (network).
-    if (configProvider.config.autoUpdateSystems) {
+    if (!Platform.isIOS && configProvider.config.autoUpdateSystems) {
       final systemsUpdated = await _checkAndShowSystemsUpdate(configProvider);
       if (systemsUpdated && mounted) {
         // New definitions were applied — re-scan to reflect them. Wait for the

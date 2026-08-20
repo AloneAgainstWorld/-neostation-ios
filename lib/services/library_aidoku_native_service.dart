@@ -903,7 +903,9 @@ class LibraryAidokuNativeService {
     final categories = <String>{};
     for (final element in node.querySelectorAll(
       '.genres a, .mgen a, .seriestugenre a, [class*="genre"] a, '
-      '.post-content_item .summary-content a',
+      '.post-content_item .summary-content a, [class*="tag"] a, '
+      'a[href*="/genre/"], a[href*="/genres/"], a[href*="/tag/"], '
+      'a[href*="/tags/"], .badge, .label, .tag, .genre',
     )) {
       final value = element.text.trim();
       if (value.isNotEmpty && value.length <= 80) categories.add(value);
@@ -914,18 +916,30 @@ class LibraryAidokuNativeService {
   bool _listingLooksExplicit(Element node, List<String> categories) {
     if (node.querySelector(
           '.adult, .nsfw, .manga-title-badges.adult, [class*="adult"], '
-          '[class*="nsfw"], [data-content-rating="adult"]',
+          '[class*="nsfw"], [class*="explicit"], [class*="hentai"], '
+          '[class*="doujin"], [class*="mature"], [data-content-rating="adult"], '
+          '[data-nsfw="true"], [data-adult="true"]',
         ) !=
         null) {
       return true;
     }
+    final image = node.querySelector('img');
+    final link = node.querySelector('a[href]');
     final metadata = <String>[
       node.attributes['class'] ?? '',
+      node.attributes['data-content-rating'] ?? '',
+      node.attributes['data-nsfw'] ?? '',
+      node.attributes['data-adult'] ?? '',
+      link?.attributes['href'] ?? '',
+      link?.attributes['title'] ?? '',
+      image?.attributes['alt'] ?? '',
+      image?.attributes['title'] ?? '',
+      image?.attributes['src'] ?? '',
       node.text,
       ...categories,
     ].join(' ');
     return RegExp(
-      r'(^|[^a-z0-9])(hentai|doujinshi|doujin|porn|pornographic|xxx|nsfw|r-?18|18\+|adult(?:s)?[ -]?only|explicit|uncensored|smut|erotic|erotica|ecchi|sexual[ -]?content|hardcore|fetish)([^a-z0-9]|$)',
+      r'(^|[^a-z0-9])(hentai|doujinshi|doujin|porn|porno|pornographic|pornography|xxx|nsfw|r[ -]?18|18\+|18 plus|adult(?:s)?(?:[ -]?only|[ -]?content)?|mature(?:[ -]?content)?|explicit(?:[ -]?content)?|uncensored|smut|erotic|erotica|ecchi|sexual(?:[ -]?content)?|sex|hardcore|fetish|bdsm|ahegao|futanari|lolicon|shotacon|oppai|netorare|ntr|incest|rape|non[ -]?consensual|tentacle|milf|nudity|nude)([^a-z0-9]|$)',
       caseSensitive: false,
     ).hasMatch(metadata);
   }
