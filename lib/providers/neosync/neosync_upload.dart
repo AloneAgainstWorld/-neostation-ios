@@ -427,12 +427,22 @@ extension NeoSyncUpload on NeoSyncProvider {
   /// Uploads ARMSX2 memory cards and states from the three supported iOS
   /// folders. The rest of the ARMSX2 root (BIOS, cache, covers, logs, etc.) is
   /// deliberately excluded from NeoSync.
-  Future<bool> _uploadArmsx2File(File file, String root) async {
+  Future<bool> _uploadArmsx2File(
+    File file,
+    String root, {
+    GameModel? preferredGame,
+  }) async {
     final resolved = _resolveArmsx2FileForCloud(file, root);
     if (resolved == null) {
       _skippedFiles++;
       return false;
     }
+
+    final preferredGameName = preferredGame?.name.trim();
+    final displayGameName =
+        preferredGameName != null && preferredGameName.isNotEmpty
+        ? '$preferredGameName — ${resolved.isState ? 'Save State' : 'Memory Card'}'
+        : resolved.gameName;
 
     final isMemoryCard =
         resolved.category == 'memcards' &&
@@ -457,7 +467,7 @@ extension NeoSyncUpload on NeoSyncProvider {
 
       final result = await _neoSyncService.syncFile(
         uploadFile,
-        resolved.gameName,
+        displayGameName,
         customFilename: resolved.cloudPath,
         systemId: 'ps2',
         emulatorId: 'armsx2',
@@ -473,14 +483,12 @@ extension NeoSyncUpload on NeoSyncProvider {
           _uploadedFiles++;
           _resetQuotaAttempts();
         }
-        _processedItems.add('NeoSync: ${resolved.gameName}');
+        _processedItems.add('NeoSync: $displayGameName');
         return true;
       }
 
       final errorMessage = result['message']?.toString() ?? '';
-      _processedItems.add(
-        'Failed to upload ${resolved.gameName}: $errorMessage',
-      );
+      _processedItems.add('Failed to upload $displayGameName: $errorMessage');
       if (_checkQuotaExceeded(errorMessage)) {
         _quotaExceededActive = true;
         throw QuotaExceededException(errorMessage, _quotaExceededAttempts);

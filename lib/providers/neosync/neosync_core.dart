@@ -698,7 +698,7 @@ extension NeoSyncCore on NeoSyncProvider {
           armsx2Root != null &&
           armsx2Root.isNotEmpty &&
           path.isWithin(armsx2Root, file.path)) {
-        return await _uploadArmsx2File(file, armsx2Root);
+        return await _uploadArmsx2File(file, armsx2Root, preferredGame: game);
       }
 
       // MeloNX on iOS stores saves below a Title-ID directory. Use that ID
