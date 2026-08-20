@@ -6,6 +6,10 @@ on:
       - feature/library-native
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  statuses: write
+
 concurrency:
   group: ios-library-native-${{ github.ref }}
   cancel-in-progress: true
@@ -35,6 +39,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Prepare CI logs
+        run: mkdir -p build/ci
+
       - name: Validate ScreenScraper environment
         run: |
           set -euo pipefail
@@ -60,13 +67,19 @@ jobs:
           PY
 
       - name: Resolve Flutter dependencies
-        run: flutter pub get
-
-      - name: Run Library regression tests
         run: |
-          flutter test \
-            test/library_addon_service_test.dart \
-            test/library_catalog_service_test.dart
+          set -o pipefail
+          flutter pub get 2>&1 | tee build/ci/pub-get.log
+
+      - name: Test Library add-on service
+        run: |
+          set -o pipefail
+          flutter test test/library_addon_service_test.dart 2>&1 | tee build/ci/test-addon.log
+
+      - name: Test Library catalog service
+        run: |
+          set -o pipefail
+          flutter test test/library_catalog_service_test.dart 2>&1 | tee build/ci/test-catalog.log
 
       - name: Scaffold iOS platform if missing
         run: |
@@ -124,25 +137,30 @@ jobs:
           fi
 
       - name: Generate app icons
-        run: dart run flutter_launcher_icons
+        run: |
+          set -o pipefail
+          dart run flutter_launcher_icons 2>&1 | tee build/ci/icons.log
 
       - name: Force NeoStation fork iOS icon
         run: |
+          set -o pipefail
           chmod +x build-utils/force_ios_fork_icon.sh
-          build-utils/force_ios_fork_icon.sh
+          build-utils/force_ios_fork_icon.sh 2>&1 | tee build/ci/fork-icon.log
 
       - name: Install CocoaPods dependencies
         run: |
-          cd ios
-          pod install --repo-update
+          set -o pipefail
+          (cd ios && pod install --repo-update) 2>&1 | tee build/ci/pods.log
 
       - name: Configure Flutter release build
         run: |
+          set -o pipefail
           flutter build ios \
             --release \
             --no-codesign \
             --config-only \
-            --dart-define-from-file=.env
+            --dart-define-from-file=.env \
+            2>&1 | tee build/ci/flutter-build.log
 
       - name: Build unsigned IPA
         run: |
@@ -163,7 +181,7 @@ jobs:
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            build | tee build/ios/xcodebuild-unsigned.log
+            build 2>&1 | tee build/ios/xcodebuild-unsigned.log
 
           APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos \
             -maxdepth 1 -type d -name '*.app' -print -quit)
@@ -190,7 +208,72 @@ jobs:
           name: NeoStation-Library-Native-unsigned-ipa
           path: |
             NeoStation-Library-Native-unsigned.ipa
+            build/ci/*.log
             build/ios/xcodebuild-unsigned.log
           if-no-files-found: warn
 
-# Rebuild requested 2026-08-20T13:43+02:00
+      - name: Report exact failure on commit
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          import pathlib
+          import re
+
+          candidates = [
+              pathlib.Path('build/ci/pub-get.log'),
+              pathlib.Path('build/ci/test-addon.log'),
+              pathlib.Path('build/ci/test-catalog.log'),
+              pathlib.Path('build/ci/icons.log'),
+              pathlib.Path('build/ci/fork-icon.log'),
+              pathlib.Path('build/ci/pods.log'),
+              pathlib.Path('build/ci/flutter-build.log'),
+              pathlib.Path('build/ios/xcodebuild-unsigned.log'),
+          ]
+          pattern = re.compile(
+              r'(error:|\berror\b|failed|failure|exception|could not|not found|undefined|requires|missing)',
+              re.IGNORECASE,
+          )
+          summary = 'Build failed before a detailed log was captured.'
+          for file in candidates:
+              if not file.exists() or file.stat().st_size == 0:
+                  continue
+              lines = file.read_text(encoding='utf-8', errors='replace').splitlines()
+              matches = [line.strip() for line in lines if pattern.search(line)]
+              if matches:
+                  summary = matches[-1]
+              elif lines:
+                  summary = lines[-1].strip()
+          for name in ('SCREENSCRAPER_DEV_ID', 'SCREENSCRAPER_DEV_PASSWORD'):
+              secret = os.environ.get(name, '')
+              if not secret:
+                  continue
+              summary = summary.replace(secret, '[redacted]')
+              encoded = base64.b64encode(secret.encode()).decode()
+              summary = summary.replace(encoded, '[redacted]')
+          summary = ' '.join(summary.split())
+          pathlib.Path('/tmp/library-native-diagnostic.txt').write_text(
+              (summary[:125] or 'Build failed'),
+              encoding='utf-8',
+          )
+          PY
+          description=$(cat /tmp/library-native-diagnostic.txt)
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=failure \
+            -f context=library-native-diagnostic \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Report IPA success on commit
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context=library-native-diagnostic \
+            -f description="IPA build succeeded" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
