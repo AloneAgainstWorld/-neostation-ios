@@ -2217,22 +2217,32 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   Widget _buildInlineTitleSearchHub(BuildContext context) {
     final theme = Theme.of(context);
-    return CustomScrollView(
-      controller: _libraryScrollController,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      slivers: [
-        SliverToBoxAdapter(child: _buildInlineTitleSearchRow(context, theme)),
+    // Match the standard game-search architecture: the query band remains
+    // fixed and only the results region scrolls. This also guarantees that the
+    // iOS keyboard can never cover the field the user is actively typing in.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildInlineTitleSearchRow(context, theme),
         if (_titleSearchFiltersExpanded) ...[
-          SliverToBoxAdapter(child: SizedBox(height: 8.r)),
-          SliverToBoxAdapter(child: _buildFilters(context, includeSearch: false)),
+          SizedBox(height: 8.r),
+          _buildFilters(context, includeSearch: false),
         ],
-        SliverToBoxAdapter(child: SizedBox(height: 10.r)),
-        _buildNativeLibrarySliver(context, theme),
-        _buildCatalogProgressSliver(context),
-        SliverToBoxAdapter(child: SizedBox(height: 42.r)),
+        SizedBox(height: 10.r),
+        Expanded(
+          child: CustomScrollView(
+            controller: _libraryScrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              _buildNativeLibrarySliver(context, theme),
+              _buildCatalogProgressSliver(context),
+              SliverToBoxAdapter(child: SizedBox(height: 42.r)),
+            ],
+          ),
+        ),
       ],
     );
   }
