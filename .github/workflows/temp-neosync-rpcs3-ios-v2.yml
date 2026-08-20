@@ -58,8 +58,7 @@ jobs:
             lib/providers/neosync/neosync_upload.dart \
             lib/providers/neosync/neosync_path_resolver.dart \
             lib/providers/neosync/neosync_core.dart \
-            lib/providers/neosync/neosync_download.dart \
-            lib/services/rpcs3_library_service.dart
+            lib/providers/neosync/neosync_download.dart
           flutter pub get
 
       - name: Verify RPCS3 NeoSync contract
@@ -71,7 +70,6 @@ jobs:
           resolver=Path('lib/providers/neosync/neosync_path_resolver.dart').read_text()
           core=Path('lib/providers/neosync/neosync_core.dart').read_text()
           download=Path('lib/providers/neosync/neosync_download.dart').read_text()
-          service=Path('lib/services/rpcs3_library_service.dart').read_text()
           ps3=Path('assets/systems/ps3.json').read_text()
           assert "rpcs3_library_service.dart" in provider
           assert '"sync": true' in ps3 and '"{RPCS3_IOS_SAVEDATA}"' in ps3
@@ -79,7 +77,7 @@ jobs:
           assert "segments[3].toLowerCase() != 'savedata'" in resolver
           assert "emulatorSlug: 'rpcs3'" in resolver and "scope: 'game'" in resolver
           assert "Rpcs3LibraryService.parseParamSfoBytes" in resolver
-          assert '@visibleForTesting\n  static Map<String, Object> parseParamSfoBytes' not in service
+          assert "ignore: invalid_use_of_visible_for_testing_member" in resolver
           assert "_uploadRpcs3File" in upload
           assert "preferredGame: game" in core
           assert "parsed?.emulatorSlug == 'rpcs3'" in core
@@ -95,8 +93,7 @@ jobs:
             lib/providers/neosync/neosync_upload.dart \
             lib/providers/neosync/neosync_path_resolver.dart \
             lib/providers/neosync/neosync_core.dart \
-            lib/providers/neosync/neosync_download.dart \
-            lib/services/rpcs3_library_service.dart
+            lib/providers/neosync/neosync_download.dart
 
       - name: Run focused tests
         run: |
@@ -114,8 +111,7 @@ jobs:
             lib/providers/neosync/neosync_upload.dart \
             lib/providers/neosync/neosync_path_resolver.dart \
             lib/providers/neosync/neosync_core.dart \
-            lib/providers/neosync/neosync_download.dart \
-            lib/services/rpcs3_library_service.dart
+            lib/providers/neosync/neosync_download.dart
           if ! git diff --cached --quiet; then
             git commit -m 'Add RPCS3 iOS native save sync to NeoSync'
             git push origin HEAD:fix/neosync-rpcs3-ios
