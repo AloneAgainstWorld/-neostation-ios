@@ -22,8 +22,13 @@ replace_once(
 resolver = 'lib/providers/neosync/neosync_path_resolver.dart'
 replace_once(
     resolver,
-    '''    if (canonicalName.isEmpty) canonicalName = sfoTitle ?? '';\n    if (canonicalName.isEmpty)\n      canonicalName = saveTitleId ?? location.saveDirectory;''',
-    '''    if (canonicalName.isEmpty) {\n      canonicalName = sfoTitle ?? '';\n    }\n    if (canonicalName.isEmpty) {\n      canonicalName = saveTitleId ?? location.saveDirectory;\n    }''',
+    "    if (canonicalName.isEmpty) canonicalName = sfoTitle ?? '';",
+    "    if (canonicalName.isEmpty) {\n      canonicalName = sfoTitle ?? '';\n    }",
+)
+replace_once(
+    resolver,
+    '    if (canonicalName.isEmpty) canonicalName = saveTitleId ?? location.saveDirectory;',
+    '    if (canonicalName.isEmpty) {\n      canonicalName = saveTitleId ?? location.saveDirectory;\n    }',
 )
 
 print('RPCS3 NeoSync analyzer fixes applied')
