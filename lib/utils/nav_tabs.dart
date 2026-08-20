@@ -32,7 +32,6 @@ class NavTabSpec {
   final IconData? iconData;
 
   /// Whether the asset should inherit the active foreground color.
-  /// Full-color artwork such as the Library manga icon opts out.
   final bool tintIcon;
 
   /// [AppLocale] key for the tab's display name.
@@ -109,9 +108,9 @@ const Map<NavTab, NavTabSpec> navTabSpecs = {
     labelKey: AppLocale.settings,
   ),
   NavTab.library: NavTabSpec(
-    icon: 'assets/images/icons/library-manga.webp',
+    icon: '',
     labelKey: AppLocale.library,
-    tintIcon: false,
+    iconData: Symbols.menu_book_rounded,
   ),
 };
 
