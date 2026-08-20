@@ -818,10 +818,12 @@ class NeoSyncContentState extends State<NeoSyncContent>
             : _readableGameNameFromV2Path(file.fileName);
         key = 'melonx:${label.toLowerCase()}';
       } else if (isRpcs3) {
-        label = file.gameName.trim().isNotEmpty
-            ? file.gameName.trim()
-            : _readableGameNameFromV2Path(file.fileName);
-        key = 'rpcs3:${label.toLowerCase()}';
+        // RPCS3 saves are made of many constituent files. The backend's
+        // gameName metadata can vary between those files, so grouping must
+        // use the canonical game segment embedded in the v2 cloud path.
+        final pathGameName = _readableGameNameFromV2Path(file.fileName);
+        label = pathGameName;
+        key = 'rpcs3:${pathGameName.toLowerCase()}';
       } else if (isArmsx2Save || isArmsx2State) {
         label = file.gameName.trim().isNotEmpty
             ? file.gameName.trim()
