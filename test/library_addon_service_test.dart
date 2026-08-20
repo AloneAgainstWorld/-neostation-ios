@@ -58,13 +58,64 @@ void main() {
     test('imports repository array and expands nested sources', () async {
       final raw = jsonEncode([
         {
+          'name': 'Example One',
+          'pkg': 'eu.kanade.tachiyomi.extension.en.exampleone',
+          'apk': 'tachiyomi-en.exampleone-v1.0.0.apk',
+          'lang': 'en',
+          'code': 1,
+          'version': '1.0.0',
+          'nsfw': 0,
+          'sources': [
+            {
+              'name': 'Example One',
+              'lang': 'en',
+              'id': '101',
+              'baseUrl': 'https://one.example.com',
+            },
+          ],
+        },
+        {
+          'name': 'Example Two',
+          'pkg': 'eu.kanade.tachiyomi.extension.fr.exampletwo',
+          'apk': 'tachiyomi-fr.exampletwo-v2.0.0.apk',
+          'lang': 'fr',
+          'code': 2,
+          'version': '2.0.0',
+          'nsfw': 0,
+          'sources': [
+            {
+              'name': 'Example Two',
+              'lang': 'fr',
+              'id': '202',
+              'baseUrl': 'https://two.example.com',
+            },
+          ],
+        },
+      ]);
+
+      final result = await LibraryAddonService.instance.installDocumentFromJson(
+        raw,
+        origin: 'https://example.com/index.json',
+      );
+
+      expect(result.format, LibraryAddonDocumentFormat.tachiyomiRepository);
+      expect(result.totalCount, 2);
+      expect(result.addedCount, 2);
+      expect(result.updatedCount, 0);
+      expect(result.addons.first.isTachiyomiRepositorySource, isTrue);
+      expect(result.addons.first.isMetadataOnlyOnIos, isTrue);
+      expect(result.addons.first.androidApk, isNotEmpty);
+      expect(result.addons.map((item) => item.id).toSet().length, 2);
+    });
+
+    test('does not install Keiyoushi migration-warning pseudo sources', () async {
+      final raw = jsonEncode([
+        {
           'name': 'Outdated App',
           'pkg': 'eu.kanade.tachiyomi.extension.all.keiyoushi',
           'apk': 'tachiyomi-all.keiyoushi-v1.4.1.apk',
           'lang': 'all',
-          'code': 1,
           'version': '1.4.1',
-          'nsfw': 0,
           'sources': [
             {
               'name': 'Outdated App',
@@ -79,9 +130,7 @@ void main() {
           'pkg': 'eu.kanade.tachiyomi.extension.all.mihon',
           'apk': 'tachiyomi-all.mihon-v1.4.1.apk',
           'lang': 'all',
-          'code': 1,
           'version': '1.4.1',
-          'nsfw': 0,
           'sources': [
             {
               'name': 'Update to Mihon 0.20.1+',
@@ -93,20 +142,13 @@ void main() {
         },
       ]);
 
-      final result = await LibraryAddonService.instance.installDocumentFromJson(
-        raw,
-        origin: 'https://example.com/index.min.json',
+      expect(
+        () => LibraryAddonService.instance.installDocumentFromJson(
+          raw,
+          origin: 'https://example.com/index.min.json',
+        ),
+        throwsA(isA<LibraryAddonException>()),
       );
-
-      expect(result.format, LibraryAddonDocumentFormat.tachiyomiRepository);
-      expect(result.totalCount, 2);
-      expect(result.addedCount, 2);
-      expect(result.updatedCount, 0);
-      expect(result.addons.first.isTachiyomiRepositorySource, isTrue);
-      expect(result.addons.first.isMetadataOnlyOnIos, isTrue);
-      expect(result.addons.first.language, 'all');
-      expect(result.addons.first.androidApk, isNotEmpty);
-      expect(result.addons.map((item) => item.id).toSet().length, 2);
     });
 
     test('ignores non-HTTPS repository sources', () async {
