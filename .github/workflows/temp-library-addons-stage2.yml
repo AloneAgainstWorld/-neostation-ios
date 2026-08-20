@@ -15,7 +15,7 @@ env:
 
 jobs:
   build:
-    if: github.event.head_commit.message == 'Run Library add-ons stage 2 IPA'
+    if: github.event.head_commit.message == 'Run Library add-ons stage 2 IPA v2'
     runs-on: macos-14
     timeout-minutes: 120
     steps:
@@ -33,7 +33,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, urllib.request
-          payload=json.dumps({'state':'pending','context':'neostation/library-addons-stage2','description':f"run_id={os.environ['RUN_ID']}",'target_url':f"https://github.com/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']}"}).encode()
+          payload=json.dumps({'state':'pending','context':'neostation/library-addons-stage2-v2','description':f"run_id={os.environ['RUN_ID']}",'target_url':f"https://github.com/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']}"}).encode()
           req=urllib.request.Request(f"https://api.github.com/repos/{os.environ['REPO']}/statuses/{os.environ['SHA']}",data=payload,method='POST',headers={'Authorization':f"Bearer {os.environ['GH_TOKEN']}",'Accept':'application/vnd.github+json','Content-Type':'application/json'})
           urllib.request.urlopen(req,timeout=30).read()
           PY
@@ -47,8 +47,10 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Apply Library add-ons stage 2 patch
-        run: python3 build-utils/patch_library_addons_stage2.py
+      - name: Apply Library add-ons stage 2 patches
+        run: |
+          python3 build-utils/patch_library_addons_stage2.py
+          python3 build-utils/patch_library_stage2_visual_fix.py
 
       - name: Format and resolve
         run: |
@@ -56,6 +58,7 @@ jobs:
             lib/screens/library_screen/library_screen.dart \
             lib/services/library_addon_service.dart \
             lib/screens/app_screen.dart \
+            lib/utils/nav_tabs.dart \
             lib/l10n/app_locale.dart \
             lib/l10n/app_locale_*.dart \
             test/library_addon_service_test.dart
@@ -68,10 +71,14 @@ jobs:
           screen=Path('lib/screens/library_screen/library_screen.dart').read_text()
           service=Path('lib/services/library_addon_service.dart').read_text()
           app=Path('lib/screens/app_screen.dart').read_text()
+          nav=Path('lib/utils/nav_tabs.dart').read_text()
           locale=Path('lib/l10n/app_locale.dart').read_text()
           assert "Alignment(0, -0.72)" in screen
           assert 'LibraryAddonService.instance' in screen
-          assert 'FilePicker.platform.pickFiles' in screen
+          assert 'FilePicker.pickFiles' in screen
+          assert 'FilePicker.platform.pickFiles' not in screen
+          assert 'BoxFit.contain' in screen
+          assert 'FilterQuality.high' in screen
           assert '_installFromUrl' in screen and '_installFromLocalManifest' in screen
           assert 'static void backCurrent()' in screen and 'static void deleteCurrent()' in screen
           assert "schemaV1 = 'neostation.library.v1'" in service
@@ -79,12 +86,15 @@ jobs:
           assert "uri.scheme != 'https'" in service
           assert 'LibraryScreen.backCurrent();' in app
           assert 'LibraryScreen.deleteCurrent();' in app
+          assert 'NavTab.library: NavTabSpec(' in nav
+          assert 'iconData: Symbols.menu_book_rounded' in nav
+          assert "icon: 'assets/images/icons/library-manga.webp'" not in nav
           assert 'libraryAddonAddUrl' in locale and 'libraryAddonCount' in locale
           for lang in ['en','es','ru','zh','zh_hant','pt','fr','de','it','id','ja','ko']:
               text=Path(f'lib/l10n/app_locale_{lang}.dart').read_text()
               assert 'AppLocale.libraryAddonAddUrl:' in text, lang
               assert 'AppLocale.libraryAddonRemoved:' in text, lang
-          print('Library add-ons stage 2 contract verified')
+          print('Library add-ons stage 2 v2 contract verified')
           PY
 
       - name: Analyze changed source
@@ -93,6 +103,7 @@ jobs:
             lib/screens/library_screen/library_screen.dart \
             lib/services/library_addon_service.dart \
             lib/screens/app_screen.dart \
+            lib/utils/nav_tabs.dart \
             lib/l10n/app_locale.dart
 
       - name: Run focused tests
@@ -110,6 +121,7 @@ jobs:
             lib/screens/library_screen/library_screen.dart \
             lib/services/library_addon_service.dart \
             lib/screens/app_screen.dart \
+            lib/utils/nav_tabs.dart \
             lib/l10n/app_locale.dart \
             lib/l10n/app_locale_en.dart \
             lib/l10n/app_locale_es.dart \
@@ -194,21 +206,21 @@ jobs:
           set -euo pipefail
           rm -rf build/ios/DerivedData build/ios/unsigned
           mkdir -p build/ios
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" COMPILER_INDEX_STORE_ENABLE=NO build | tee build/ios/xcodebuild-library-addons-stage2.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" COMPILER_INDEX_STORE_ENABLE=NO build | tee build/ios/xcodebuild-library-addons-stage2-v2.log
           APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)
           test -n "$APP_PATH"
           mkdir -p build/ios/unsigned/Payload
           cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
-          (cd build/ios/unsigned && zip -r ../../../NeoStation-Library-Addons-Stage2.ipa Payload)
+          (cd build/ios/unsigned && zip -r ../../../NeoStation-Library-Addons-Stage2-v2.ipa Payload)
 
       - name: Upload IPA
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NeoStation-Library-Addons-Stage2
+          name: NeoStation-Library-Addons-Stage2-v2
           path: |
-            NeoStation-Library-Addons-Stage2.ipa
-            build/ios/xcodebuild-library-addons-stage2.log
+            NeoStation-Library-Addons-Stage2-v2.ipa
+            build/ios/xcodebuild-library-addons-stage2-v2.log
           if-no-files-found: warn
 
       - if: always()
