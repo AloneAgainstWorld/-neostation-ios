@@ -28,3 +28,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "feat(library): merge Aidoku manga into native catalog"
           git push origin HEAD:feature/library-native
+
+# Explicit trigger after native source bridge landed.
