@@ -1,1 +1,0 @@
-NeoStation iOS validation: disable desktop updates + NeoSync export to Files + stricter adult content filtering.
