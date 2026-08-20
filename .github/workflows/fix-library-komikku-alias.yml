@@ -1,0 +1,39 @@
+name: Fix Library Komikku Alias
+
+on:
+  push:
+    branches:
+      - feature/library-native
+    paths:
+      - .github/workflows/fix-library-komikku-alias.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/library-native
+      - name: Point legacy Komikku URL at Yuzono repository
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/services/library_addon_service.dart')
+          text = path.read_text()
+          old = 'https://raw.githubusercontent.com/cuong-tran/manga-repo/repo/index.json'
+          new = 'https://raw.githubusercontent.com/yuzono/manga-repo/repo/index.min.json'
+          if old not in text:
+              raise SystemExit('Komikku alias anchor not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit alias correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- lib/services/library_addon_service.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(library): resolve legacy Komikku repository"
+          git push origin HEAD:feature/library-native
