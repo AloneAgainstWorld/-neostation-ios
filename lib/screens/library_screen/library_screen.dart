@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -95,6 +96,7 @@ class LibraryScreenState extends State<LibraryScreen> {
   final Set<String> _aidokuLoading = <String>{};
   int _aidokuRoundRobinCursor = 0;
   String _titleQuery = '';
+  bool _hideAdultContent = true;
   bool _searchingTitles = false;
   int _searchGeneration = 0;
 
@@ -116,6 +118,9 @@ class LibraryScreenState extends State<LibraryScreen> {
       if (!seen.add(_entryIdentity(entry))) continue;
       if (query.isNotEmpty &&
           !entry.item.title.toLowerCase().contains(query)) {
+        continue;
+      }
+      if (_hideAdultContent && _isAdultOrDoujinshi(entry)) {
         continue;
       }
       if (_languageFilter != 'all' &&
@@ -254,30 +259,69 @@ class LibraryScreenState extends State<LibraryScreen> {
       failures++;
     }
 
-    for (final addon in addons) {
-      if (addon.isAidokuRepositorySource && _aidokuNativeService.supports(addon)) {
-        try {
-          final page = await _aidokuNativeService.loadCatalogPage(addon, page: 1);
-          for (final item in page.items) {
-            entries.add(
-              _NativeLibraryEntry(
-                providerId: addon.id,
-                source: addon,
-                item: item,
-              ),
+    final aidokuAddons = addons
+        .where(
+          (addon) =>
+              addon.isAidokuRepositorySource &&
+              _aidokuNativeService.supports(addon),
+        )
+        .toList();
+    const initialCatalogConcurrency = 3;
+    for (var offset = 0;
+        offset < aidokuAddons.length;
+        offset += initialCatalogConcurrency) {
+      final batch = aidokuAddons
+          .skip(offset)
+          .take(initialCatalogConcurrency)
+          .toList();
+      final results = await Future.wait(
+        batch.map((addon) async {
+          try {
+            final page = await _aidokuNativeService.loadCatalogPage(
+              addon,
+              page: 1,
+            );
+            return MapEntry<LibraryAddon, LibraryAidokuCatalogPage?>(
+              addon,
+              page,
+            );
+          } catch (_) {
+            return MapEntry<LibraryAddon, LibraryAidokuCatalogPage?>(
+              addon,
+              null,
             );
           }
-          _aidokuNextPage[addon.id] = 2;
-          if (!page.hasMore || page.items.isEmpty) {
-            _aidokuExhausted.add(addon.id);
-          }
-        } catch (_) {
+        }),
+      );
+      for (final result in results) {
+        final addon = result.key;
+        final page = result.value;
+        if (page == null) {
           failures++;
           _aidokuExhausted.add(addon.id);
+          continue;
         }
+        for (final item in page.items) {
+          entries.add(
+            _NativeLibraryEntry(
+              providerId: addon.id,
+              source: addon,
+              item: item,
+            ),
+          );
+        }
+        _aidokuNextPage[addon.id] = 2;
+        if (!page.hasMore || page.items.isEmpty) {
+          _aidokuExhausted.add(addon.id);
+        }
+      }
+    }
+
+    for (final addon in addons) {
+      if (addon.isAidokuRepositorySource &&
+          _aidokuNativeService.supports(addon)) {
         continue;
       }
-
       if (!addon.canBrowseOnIos) continue;
       try {
         final items = await _catalogService.loadCatalog(addon);
@@ -419,6 +463,9 @@ class LibraryScreenState extends State<LibraryScreen> {
           if (index >= 0) _librarySelectedIndex = index;
         }
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onLibraryScroll();
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -500,6 +547,44 @@ class LibraryScreenState extends State<LibraryScreen> {
       final visible = _visibleLibraryItems;
       _librarySelectedIndex = visible.isEmpty ? 0 : 0;
     });
+  }
+
+  bool _isAdultOrDoujinshi(_NativeLibraryEntry entry) {
+    final provider = entry.source?.manifest['provider'];
+    if (provider is Map) {
+      final nsfw = provider['nsfw'];
+      if (nsfw == true) return true;
+      if (nsfw is num) {
+        final isAidoku = entry.source?.isAidokuRepositorySource == true;
+        if ((isAidoku && nsfw >= 2) || (!isAidoku && nsfw > 0)) {
+          return true;
+        }
+      }
+      final rating = provider['contentRating']?.toString().toLowerCase() ?? '';
+      if (rating.contains('nsfw') ||
+          rating.contains('pornographic') ||
+          rating.contains('hentai') ||
+          rating == 'adult') {
+        return true;
+      }
+    }
+
+    String metadata = entry.item.title.toLowerCase();
+    try {
+      metadata = '$metadata ${jsonEncode(entry.item.raw).toLowerCase()}';
+    } catch (_) {}
+    return RegExp(
+      r'\b(hentai|doujinshi|doujin|pornographic)\b',
+      caseSensitive: false,
+    ).hasMatch(metadata);
+  }
+
+  String _contentFilterLabel() {
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    if (_hideAdultContent) {
+      return fr ? 'Sans Hentai/Doujinshi' : 'Hide Hentai/Doujinshi';
+    }
+    return fr ? 'Tout afficher' : 'Show all';
   }
 
   Set<String> _itemLanguageCodes(_NativeLibraryEntry entry) {
@@ -634,7 +719,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         setState(() => _hubSelectedIndex = next);
         return true;
       case _HubFocus.filters:
-        final next = (_filterSelectedIndex + delta).clamp(0, 4).toInt();
+        final next = (_filterSelectedIndex + delta).clamp(0, 5).toInt();
         if (next == _filterSelectedIndex) return false;
         setState(() => _filterSelectedIndex = next);
         return true;
@@ -724,6 +809,8 @@ class LibraryScreenState extends State<LibraryScreen> {
           _openIndexMenu();
         } else if (_filterSelectedIndex == 3) {
           _openSourceMenu();
+        } else if (_filterSelectedIndex == 4) {
+          _openContentMenu();
         } else {
           _openTitleSearchDialog();
         }
@@ -1009,8 +1096,69 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  Future<void> _openContentMenu() async {
+    final selected = await showMenu<bool>(
+      context: context,
+      position: _popupPosition(),
+      items: [
+        PopupMenuItem<bool>(
+          value: true,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28.r,
+                child: _hideAdultContent
+                    ? Icon(Symbols.check_rounded, size: 18.r)
+                    : null,
+              ),
+              Flexible(
+                child: Text(
+                  Localizations.localeOf(context).languageCode == 'fr'
+                      ? 'Masquer Hentai / Doujinshi'
+                      : 'Hide Hentai / Doujinshi',
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<bool>(
+          value: false,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28.r,
+                child: !_hideAdultContent
+                    ? Icon(Symbols.check_rounded, size: 18.r)
+                    : null,
+              ),
+              Text(
+                Localizations.localeOf(context).languageCode == 'fr'
+                    ? 'Tout afficher'
+                    : 'Show all',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _hideAdultContent = selected;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+  }
+
+  Future<void> _dismissSystemKeyboard() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    } catch (_) {}
+  }
+
   Future<void> _openTitleSearchDialog() async {
     final controller = TextEditingController(text: _titleQuery);
+    final focusNode = FocusNode(debugLabel: 'library_title_search');
     const layerId = 'library_title_search_dialog';
     GamepadNavigationManager.pushLayer(
       layerId,
@@ -1022,55 +1170,132 @@ class LibraryScreenState extends State<LibraryScreen> {
     try {
       result = await showDialog<String>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(
-            Localizations.localeOf(dialogContext).languageCode == 'fr'
-                ? 'Rechercher un titre'
-                : 'Search titles',
-          ),
-          content: SizedBox(
-            width: 520.r,
-            child: TextField(
-              controller: controller,
-              autofocus: true,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Symbols.search_rounded),
-                hintText: Localizations.localeOf(dialogContext).languageCode == 'fr'
-                    ? 'Livre, manga…'
-                    : 'Book, manga…',
-              ),
-              onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-            ),
-          ),
-          actions: [
-            if (_titleQuery.isNotEmpty)
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(''),
-                child: Text(
-                  Localizations.localeOf(dialogContext).languageCode == 'fr'
-                      ? 'Effacer'
-                      : 'Clear',
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          final theme = Theme.of(dialogContext);
+          final fr = Localizations.localeOf(dialogContext).languageCode == 'fr';
+
+          Future<void> closeWith(String? value) async {
+            focusNode.unfocus();
+            await _dismissSystemKeyboard();
+            if (dialogContext.mounted) {
+              Navigator.of(dialogContext).pop(value);
+            }
+          }
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.symmetric(horizontal: 34.r, vertical: 24.r),
+            child: NeoGlass(
+              role: GlassSurfaceRole.card,
+              borderRadius: BorderRadius.circular(18.r),
+              enableBackdropBlur: true,
+              showSheen: false,
+              padding: EdgeInsets.fromLTRB(22.r, 20.r, 22.r, 18.r),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 720.r),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fr ? 'Rechercher un titre' : 'Search titles',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 5.r),
+                    Text(
+                      fr
+                          ? 'Livre ou manga — la recherche interroge aussi les sources installées.'
+                          : 'Book or manga — installed sources are searched too.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                      ),
+                    ),
+                    SizedBox(height: 16.r),
+                    TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.38),
+                        prefixIcon: Icon(
+                          Symbols.search_rounded,
+                          color: theme.colorScheme.primary,
+                        ),
+                        hintText: fr ? 'Livre, manga…' : 'Book, manga…',
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14.r,
+                          vertical: 16.r,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(13.r),
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.26),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(13.r),
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.24),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(13.r),
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.primary,
+                            width: 2.r,
+                          ),
+                        ),
+                      ),
+                      onSubmitted: (value) => closeWith(value.trim()),
+                    ),
+                    SizedBox(height: 17.r),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (_titleQuery.isNotEmpty) ...[
+                          TextButton(
+                            onPressed: () => closeWith(''),
+                            child: Text(fr ? 'Effacer' : 'Clear'),
+                          ),
+                          SizedBox(width: 6.r),
+                        ],
+                        TextButton(
+                          onPressed: () => closeWith(null),
+                          child: Text(AppLocale.cancel.getString(dialogContext)),
+                        ),
+                        SizedBox(width: 8.r),
+                        FilledButton.icon(
+                          onPressed: () => closeWith(controller.text.trim()),
+                          icon: const Icon(Symbols.search_rounded),
+                          label: Text(fr ? 'Rechercher' : 'Search'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(AppLocale.cancel.getString(dialogContext)),
             ),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-              icon: const Icon(Symbols.search_rounded),
-              label: Text(
-                Localizations.localeOf(dialogContext).languageCode == 'fr'
-                    ? 'Rechercher'
-                    : 'Search',
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       );
     } finally {
+      focusNode.unfocus();
+      await _dismissSystemKeyboard();
+      await Future<void>.delayed(const Duration(milliseconds: 90));
+      await _dismissSystemKeyboard();
       controller.dispose();
+      focusNode.dispose();
       GamepadNavigationManager.popLayer(layerId);
     }
     if (!mounted || result == null) return;
@@ -1153,6 +1378,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         ),
       );
     } finally {
+      await _dismissSystemKeyboard();
       controller.dispose();
       GamepadNavigationManager.popLayer(layerId);
     }
@@ -2053,6 +2279,14 @@ class LibraryScreenState extends State<LibraryScreen> {
             SizedBox(width: 8.r),
             control(
               index: 4,
+              icon: Symbols.visibility_off_rounded,
+              label: locale == 'fr' ? 'Contenu' : 'Content',
+              value: _contentFilterLabel(),
+              action: _openContentMenu,
+            ),
+            SizedBox(width: 8.r),
+            control(
+              index: 5,
               icon: Symbols.search_rounded,
               label: locale == 'fr' ? 'Recherche' : 'Search',
               value: _titleQuery.isEmpty

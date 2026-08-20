@@ -57,6 +57,8 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
 
   bool _hasBookmark = false;
   double? _pendingBookmarkProgress;
+  int _pageIndex = 0;
+  bool _pageByPage = true;
 
   String get _bookmarkKey {
     final identity = widget.bookmarkId?.trim().isNotEmpty == true
@@ -76,6 +78,12 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
     _gamepadNav = GamepadNavigation(
       onBack: _close,
       onFavorite: () => _saveBookmark(),
+      onNavigateLeft: () {
+        if (widget.hasPages && _pageByPage) _previousPage();
+      },
+      onNavigateRight: () {
+        if (widget.hasPages && _pageByPage) _nextPage();
+      },
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -107,16 +115,68 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
     _transformationController.value = Matrix4.identity();
   }
 
+  double get _currentScale =>
+      _transformationController.value.getMaxScaleOnAxis();
+
+  void _setPageIndex(int value) {
+    if (!widget.hasPages) return;
+    final next = value.clamp(0, widget.pages.length - 1).toInt();
+    if (next == _pageIndex) return;
+    setState(() => _pageIndex = next);
+    _fitToScreen();
+  }
+
+  void _previousPage() => _setPageIndex(_pageIndex - 1);
+
+  void _nextPage() => _setPageIndex(_pageIndex + 1);
+
+  void _handlePageTap(TapUpDetails details, double width) {
+    if (!_pageByPage || _currentScale > 1.05 || width <= 0) return;
+    final x = details.localPosition.dx;
+    if (x <= width * 0.42) {
+      _previousPage();
+    } else if (x >= width * 0.58) {
+      _nextPage();
+    }
+  }
+
+  void _togglePageMode() {
+    if (!widget.hasPages) return;
+    var nextIndex = _pageIndex;
+    if (!_pageByPage && _scrollController.hasClients && widget.pages.length > 1) {
+      final max = _scrollController.position.maxScrollExtent;
+      if (max > 0) {
+        final progress = (_scrollController.offset / max).clamp(0.0, 1.0);
+        nextIndex = (progress * (widget.pages.length - 1)).round();
+      }
+    }
+    setState(() {
+      _pageByPage = !_pageByPage;
+      _pageIndex = nextIndex.clamp(0, widget.pages.length - 1).toInt();
+      if (!_pageByPage && widget.pages.length > 1) {
+        _pendingBookmarkProgress = _pageIndex / (widget.pages.length - 1);
+      }
+    });
+    _fitToScreen();
+    if (!_pageByPage) _scheduleBookmarkRestore();
+  }
+
   Future<void> _saveBookmark() async {
     final maxScrollExtent = _scrollController.hasClients
         ? _scrollController.position.maxScrollExtent
         : 0.0;
-    final progress = _scrollController.hasClients && maxScrollExtent > 0
-        ? (_scrollController.offset / maxScrollExtent).clamp(0.0, 1.0)
-        : 0.0;
+    final progress = widget.hasPages && _pageByPage
+        ? (widget.pages.length <= 1
+              ? 0.0
+              : _pageIndex / (widget.pages.length - 1))
+        : (_scrollController.hasClients && maxScrollExtent > 0
+              ? (_scrollController.offset / maxScrollExtent).clamp(0.0, 1.0)
+              : 0.0);
 
     final payload = <String, dynamic>{
       'progress': progress,
+      'pageIndex': _pageIndex,
+      'pageByPage': _pageByPage,
       'matrix': _transformationController.value.storage.toList(),
       'savedAt': DateTime.now().toIso8601String(),
     };
@@ -151,6 +211,25 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
       if (progressValue is num) {
         _pendingBookmarkProgress = progressValue.toDouble().clamp(0.0, 1.0);
       }
+      final pageModeValue = decoded['pageByPage'];
+      if (pageModeValue is bool && widget.hasPages) {
+        _pageByPage = pageModeValue;
+      }
+      final pageIndexValue = decoded['pageIndex'];
+      if (pageIndexValue is num && widget.hasPages) {
+        _pageIndex = pageIndexValue
+            .toInt()
+            .clamp(0, widget.pages.length - 1)
+            .toInt();
+      } else if (widget.hasPages &&
+          _pageByPage &&
+          _pendingBookmarkProgress != null &&
+          widget.pages.length > 1) {
+        _pageIndex = (_pendingBookmarkProgress! * (widget.pages.length - 1))
+            .round()
+            .clamp(0, widget.pages.length - 1)
+            .toInt();
+      }
 
       setState(() => _hasBookmark = true);
       _scheduleBookmarkRestore();
@@ -173,6 +252,17 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
 
   void _applyBookmarkProgress() {
     if (!mounted || _pendingBookmarkProgress == null) return;
+    if (widget.hasPages && _pageByPage) {
+      if (widget.pages.length > 1) {
+        final index = (_pendingBookmarkProgress! * (widget.pages.length - 1))
+            .round()
+            .clamp(0, widget.pages.length - 1)
+            .toInt();
+        if (index != _pageIndex) setState(() => _pageIndex = index);
+      }
+      _pendingBookmarkProgress = null;
+      return;
+    }
     if (!_scrollController.hasClients) return;
     final maxScrollExtent = _scrollController.position.maxScrollExtent;
     if (maxScrollExtent <= 0) return;
@@ -304,6 +394,32 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
             ),
             SizedBox(width: 6.r),
           ],
+          if (widget.hasPages) ...[
+            if (_pageByPage)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 5.r),
+                child: Text(
+                  '${_pageIndex + 1} / ${widget.pages.length}',
+                  style: TextStyle(
+                    fontSize: 9.r,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            IconButton(
+              tooltip: _pageByPage
+                  ? (_isFrench ? 'Défilement continu' : 'Continuous scroll')
+                  : (_isFrench ? 'Page par page' : 'Page by page'),
+              onPressed: _togglePageMode,
+              icon: Icon(
+                _pageByPage
+                    ? Symbols.view_stream_rounded
+                    : Symbols.view_carousel_rounded,
+                size: 18.r,
+              ),
+            ),
+          ],
           IconButton(
             tooltip: _isFrench
                 ? (_hasBookmark
@@ -359,6 +475,123 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
   }
 
   Widget _buildPageReader(ThemeData theme) {
+    return _pageByPage
+        ? _buildPagedPageReader(theme)
+        : _buildContinuousPageReader(theme);
+  }
+
+  Widget _buildPagedPageReader(ThemeData theme) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final currentPage = widget.pages[_pageIndex];
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: (details) =>
+                    _handlePageTap(details, constraints.maxWidth),
+                child: InteractiveViewer(
+                  transformationController: _transformationController,
+                  minScale: 0.35,
+                  maxScale: 5.0,
+                  boundaryMargin: EdgeInsets.all(360.r),
+                  alignment: Alignment.center,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(18.r, 66.r, 18.r, 24.r),
+                      child: Image.network(
+                        currentPage,
+                        headers: widget.imageHeaders,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        },
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Icon(
+                            Symbols.broken_image_rounded,
+                            size: 42.r,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.45),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (_pageIndex > 0)
+              Positioned(
+                left: 5.r,
+                top: constraints.maxHeight * 0.48,
+                child: IconButton(
+                  tooltip: _isFrench ? 'Page précédente' : 'Previous page',
+                  onPressed: _previousPage,
+                  icon: Icon(
+                    Symbols.chevron_left_rounded,
+                    size: 28.r,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+            if (_pageIndex + 1 < widget.pages.length)
+              Positioned(
+                right: 5.r,
+                top: constraints.maxHeight * 0.48,
+                child: IconButton(
+                  tooltip: _isFrench ? 'Page suivante' : 'Next page',
+                  onPressed: _nextPage,
+                  icon: Icon(
+                    Symbols.chevron_right_rounded,
+                    size: 28.r,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+            Positioned(
+              bottom: 7.r,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 9.r,
+                      vertical: 4.r,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface
+                          .withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(9.r),
+                    ),
+                    child: Text(
+                      '${_pageIndex + 1} / ${widget.pages.length}',
+                      style: TextStyle(
+                        fontSize: 9.r,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildContinuousPageReader(ThemeData theme) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableHeight = constraints.maxHeight - 96.r;
@@ -400,7 +633,8 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
                         child: Icon(
                           Symbols.broken_image_rounded,
                           size: 42.r,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.45),
                         ),
                       ),
                     ),
@@ -414,4 +648,5 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
       },
     );
   }
+
 }
