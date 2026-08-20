@@ -108,6 +108,57 @@ void main() {
       expect(result.addons.map((item) => item.id).toSet().length, 2);
     });
 
+    test('imports current Keiyoushi extensionList repository object', () async {
+      final raw = jsonEncode({
+        'name': 'Keiyoushi',
+        'extensionList': {
+          'extensions': [
+            {
+              'name': 'Example Modern',
+              'packageName':
+                  'eu.kanade.tachiyomi.extension.fr.examplemodern',
+              'resources': {
+                'apkUrl':
+                    'https://github.com/example/releases/example-modern.apk',
+                'iconUrl': 'https://example.com/icon.png',
+              },
+              'extensionLib': '1.4',
+              'versionCode': '7',
+              'versionName': '1.4.7',
+              'contentWarning': 'CONTENT_WARNING_NONE',
+              'sources': [
+                {
+                  'id': '7001',
+                  'name': 'Example Modern FR',
+                  'language': 'fr',
+                  'homeUrl': 'https://modern.example.com',
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      final result = await LibraryAddonService.instance.installDocumentFromJson(
+        raw,
+        origin:
+            'https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json',
+      );
+
+      expect(result.format, LibraryAddonDocumentFormat.tachiyomiRepository);
+      expect(result.totalCount, 1);
+      expect(result.addons.single.name, 'Example Modern FR');
+      expect(result.addons.single.language, 'fr');
+      expect(
+        result.addons.single.androidPackage,
+        'eu.kanade.tachiyomi.extension.fr.examplemodern',
+      );
+      expect(
+        result.addons.single.androidApk,
+        'https://github.com/example/releases/example-modern.apk',
+      );
+    });
+
     test('does not install Keiyoushi migration-warning pseudo sources', () async {
       final raw = jsonEncode([
         {
@@ -178,6 +229,16 @@ void main() {
       );
       expect(result.totalCount, 1);
       expect(result.addons.single.name, 'Safe');
+    });
+
+    test('keeps Gallica as a built-in native catalog source', () async {
+      final sources = await LibraryAddonService.instance.load();
+      final gallica = sources.firstWhere(
+        (item) => item.id == LibraryAddonService.gallicaAddonId,
+      );
+      expect(gallica.isBuiltIn, isTrue);
+      expect(gallica.isGallicaSource, isTrue);
+      expect(gallica.canBrowseOnIos, isTrue);
     });
   });
 }

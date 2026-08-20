@@ -95,5 +95,56 @@ void main() {
       ]);
       expect(item.hasReadableContent, isTrue);
     });
+
+    test('parses Gallica OPDS acquisitions as readable EPUB books', () {
+      const xml = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>https://gallica.bnf.fr/ark:/12148/bpt6k123</id>
+    <title>Un livre du domaine public</title>
+    <author><name>Auteur Exemple</name></author>
+    <summary>Résumé du livre.</summary>
+    <link
+      rel="http://opds-spec.org/image"
+      type="image/jpeg"
+      href="http://gallica.bnf.fr/ark:/12148/bpt6k123.highres" />
+    <link
+      rel="http://opds-spec.org/acquisition"
+      type="application/epub+zip"
+      href="http://gallica.bnf.fr/ark:/12148/bpt6k123.epub" />
+  </entry>
+  <entry>
+    <id>navigation</id>
+    <title>Catégorie</title>
+    <link
+      rel="subsection"
+      type="application/atom+xml"
+      href="https://gallica.bnf.fr/opds?query=test" />
+  </entry>
+</feed>
+''';
+
+      final items = LibraryCatalogService.parseGallicaOpdsDocument(
+        xml,
+        baseUri: Uri.parse('https://gallica.bnf.fr/'),
+      );
+
+      expect(items, hasLength(1));
+      final book = items.single;
+      expect(book.title, 'Un livre du domaine public');
+      expect(book.subtitle, 'Auteur Exemple');
+      expect(book.mediaType, LibraryMediaType.book);
+      expect(
+        book.coverUrl,
+        'https://gallica.bnf.fr/ark:/12148/bpt6k123.highres',
+      );
+      expect(
+        book.contentUrl,
+        'https://gallica.bnf.fr/ark:/12148/bpt6k123.epub',
+      );
+      expect(book.raw['contentType'], 'application/epub+zip');
+      expect(book.hasReadableContent, isTrue);
+    });
   });
 }

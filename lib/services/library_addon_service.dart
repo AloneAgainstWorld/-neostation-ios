@@ -10,12 +10,6 @@ enum LibrarySourceKind {
   metadataOnly,
 }
 
-/// Versioned, declarative Library source manifest.
-///
-/// Add-ons do not execute arbitrary Dart/JavaScript code. They only describe a
-/// remote catalog that NeoStation can consume through a stable schema. The
-/// Library also accepts Tachiyomi/Mihon extension-repository indexes as a
-/// discovery format; Android APKs are preserved as metadata only on iOS.
 class LibraryAddon {
   const LibraryAddon({
     required this.id,
@@ -31,6 +25,7 @@ class LibraryAddon {
 
   static const String schemaV1 = 'neostation.library.v1';
   static const String tachiyomiProviderType = 'tachiyomi-extension-repository';
+  static const String gallicaProviderType = 'gallica-opds';
 
   final String id;
   final String name;
@@ -46,6 +41,13 @@ class LibraryAddon {
     final provider = manifest['provider'];
     return provider is Map && provider['type'] == tachiyomiProviderType;
   }
+
+  bool get isGallicaSource {
+    final provider = manifest['provider'];
+    return provider is Map && provider['type'] == gallicaProviderType;
+  }
+
+  bool get isBuiltIn => manifest['builtIn'] == true;
 
   String? get language {
     final provider = manifest['provider'];
@@ -180,7 +182,7 @@ class LibraryAddon {
 
     final endpoints = manifest['endpoints'];
     if (endpoints != null && endpoints is! Map) {
-      throw LibraryAddonException(
+      throw const LibraryAddonException(
         'Manifest field "endpoints" must be an object.',
       );
     }
@@ -206,10 +208,10 @@ class LibraryAddon {
   }
 
   Map<String, dynamic> toJson() => {
-    'origin': origin,
-    'installedAt': installedAt.toIso8601String(),
-    'manifest': manifest,
-  };
+        'origin': origin,
+        'installedAt': installedAt.toIso8601String(),
+        'manifest': manifest,
+      };
 
   factory LibraryAddon.fromJson(Map<String, dynamic> value) {
     final rawManifest = value['manifest'];
@@ -227,7 +229,10 @@ class LibraryAddon {
 enum LibraryAddonDocumentFormat { neoStationManifest, tachiyomiRepository }
 
 class LibraryAddonInstallResult {
-  const LibraryAddonInstallResult({required this.addon, required this.updated});
+  const LibraryAddonInstallResult({
+    required this.addon,
+    required this.updated,
+  });
 
   final LibraryAddon addon;
   final bool updated;
@@ -262,10 +267,10 @@ class LibraryAddonService {
   LibraryAddonService._();
 
   static final LibraryAddonService instance = LibraryAddonService._();
-  static const String _prefsKey = 'neostation_library_addons_v1';
 
-  /// Tachiyomi/Mihon repositories can contain hundreds of extension entries,
-  /// so the old 1 MB single-manifest limit was too small for a directory index.
+  static const String _prefsKey = 'neostation_library_addons_v1';
+  static const String gallicaAddonId = 'native.gallica.bnf';
+
   static const int _maxDocumentBytes = 20 * 1024 * 1024;
   static const int _maxRepositorySources = 10000;
 
@@ -276,10 +281,11 @@ class LibraryAddonService {
 
   Future<List<LibraryAddon>> load() async {
     if (_loaded) return addons;
+
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
     _addons.clear();
-    var prunedDeprecationStubs = false;
+    var needsPersist = false;
 
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -292,29 +298,56 @@ class LibraryAddonService {
                 Map<String, dynamic>.from(item),
               );
               if (addon.isRepositoryDeprecationStub) {
-                prunedDeprecationStubs = true;
+                needsPersist = true;
                 continue;
               }
               _addons.add(addon);
             } catch (_) {
-              // One corrupt/obsolete source must not make the whole Library
-              // unusable; valid manifests still load normally.
+              // Ignore one obsolete or corrupt stored source.
             }
           }
         }
       } catch (_) {
-        // Keep a clean empty list if the preference itself is malformed.
+        // Keep a clean list when stored preferences are malformed.
       }
+    }
+
+    if (_addons.indexWhere((item) => item.id == gallicaAddonId) < 0) {
+      _addons.add(_builtInGallicaAddon());
+      needsPersist = true;
     }
 
     _sortAddons();
     _loaded = true;
-    if (prunedDeprecationStubs) await _persist();
+    if (needsPersist) await _persist();
     return addons;
   }
 
-  /// Installs either a native NeoStation manifest object or a Tachiyomi/Mihon
-  /// extension-repository JSON array from HTTPS.
+  LibraryAddon _builtInGallicaAddon() {
+    return LibraryAddon.fromManifest(
+      <String, dynamic>{
+        'schema': LibraryAddon.schemaV1,
+        'id': gallicaAddonId,
+        'name': 'Gallica / BnF',
+        'version': '1',
+        'baseUrl': 'https://gallica.bnf.fr/',
+        'description':
+            'Livres numériques EPUB du domaine public proposés par Gallica (BnF).',
+        'builtIn': true,
+        'provider': <String, dynamic>{
+          'type': LibraryAddon.gallicaProviderType,
+          'source': 'Bibliothèque nationale de France / Gallica',
+        },
+        'endpoints': <String, dynamic>{
+          'catalog':
+              'services/engine/search/opds?operation=searchRetrieve&version=1.2&exactSearch=false&query=dc.formatspecific%20all%20%22epub%22&filter=provenance%20all%20%22bnf.fr%22&maximumRecords=50',
+        },
+      },
+      origin: 'builtin:gallica-bnf',
+      installedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
+  }
+
   Future<LibraryAddonBatchInstallResult> installDocumentFromUrl(
     String documentUrl,
   ) async {
@@ -326,9 +359,6 @@ class LibraryAddonService {
     var effectiveUri = uri;
     var response = await _downloadRepository(uri);
 
-    // Keiyoushi intentionally reduced index.min.json to two migration-warning
-    // pseudo extensions. They are not reading sources. When that exact stub is
-    // detected, transparently use the sibling full index.json instead.
     if (_looksLikeKeiyoushiDeprecationStub(response.bodyBytes) &&
         uri.path.endsWith('/index.min.json')) {
       final fullPath = uri.path.substring(
@@ -356,8 +386,8 @@ class LibraryAddonService {
       response = await http
           .get(uri, headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 20));
-    } catch (e) {
-      throw LibraryAddonException('Unable to download repository: $e');
+    } catch (error) {
+      throw LibraryAddonException('Unable to download repository: $error');
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -404,10 +434,22 @@ class LibraryAddonService {
     }
 
     if (decoded is Map) {
-      final manifest = Map<String, dynamic>.from(decoded);
-      _rejectKnownExternalManifest(manifest);
+      final object = Map<String, dynamic>.from(decoded);
+      final modernEntries = _extractModernKeiyoushiEntries(object);
+      if (modernEntries != null) {
+        final parsed = _parseTachiyomiRepository(
+          modernEntries,
+          origin: origin,
+        );
+        return _upsertMany(
+          parsed,
+          format: LibraryAddonDocumentFormat.tachiyomiRepository,
+        );
+      }
+
+      _rejectKnownExternalManifest(object);
       final addon = LibraryAddon.fromManifest(
-        manifest,
+        object,
         origin: origin,
       );
       await _validateMinimumAppVersion(addon);
@@ -426,11 +468,63 @@ class LibraryAddonService {
     }
 
     throw const LibraryAddonException(
-      'Document root must be a NeoStation manifest object or a Tachiyomi/Mihon repository array.',
+      'Document root must be a NeoStation manifest or a supported Tachiyomi/Mihon repository.',
     );
   }
 
-  /// Backward-compatible single-manifest API.
+  static List<dynamic>? _extractModernKeiyoushiEntries(
+    Map<String, dynamic> document,
+  ) {
+    final extensionList = document['extensionList'];
+    if (extensionList is! Map) return null;
+    final extensions = extensionList['extensions'];
+    if (extensions is! List) return null;
+
+    final result = <dynamic>[];
+    for (final rawExtension in extensions) {
+      if (rawExtension is! Map) continue;
+      final extension = Map<String, dynamic>.from(rawExtension);
+      final packageName = extension['packageName']?.toString().trim() ?? '';
+      if (packageName.isEmpty) continue;
+
+      final resources = extension['resources'];
+      final resourceMap = resources is Map
+          ? Map<String, dynamic>.from(resources)
+          : const <String, dynamic>{};
+      final rawSources = extension['sources'];
+      if (rawSources is! List) continue;
+
+      final convertedSources = <Map<String, dynamic>>[];
+      for (final rawSource in rawSources) {
+        if (rawSource is! Map) continue;
+        final source = Map<String, dynamic>.from(rawSource);
+        convertedSources.add(<String, dynamic>{
+          'id': source['id'],
+          'name': source['name'],
+          'lang': source['language'],
+          'baseUrl': source['homeUrl'],
+        });
+      }
+
+      result.add(<String, dynamic>{
+        'name': extension['name'],
+        'pkg': packageName,
+        'apk': resourceMap['apkUrl'],
+        'lang': convertedSources.isEmpty
+            ? 'all'
+            : (convertedSources.first['lang'] ?? 'all'),
+        'code': extension['versionCode'],
+        'version': extension['versionName'] ?? extension['extensionLib'] ?? '0',
+        'nsfw':
+            extension['contentWarning']?.toString() == 'CONTENT_WARNING_NSFW'
+                ? 1
+                : 0,
+        'sources': convertedSources,
+      });
+    }
+    return result;
+  }
+
   Future<LibraryAddonInstallResult> installFromUrl(String manifestUrl) async {
     final batch = await installDocumentFromUrl(manifestUrl);
     if (batch.format != LibraryAddonDocumentFormat.neoStationManifest ||
@@ -445,7 +539,6 @@ class LibraryAddonService {
     );
   }
 
-  /// Backward-compatible single-manifest API.
   Future<LibraryAddonInstallResult> installFromJson(
     String rawJson, {
     required String origin,
@@ -572,9 +665,9 @@ class LibraryAddonService {
         final source = Map<String, dynamic>.from(rawSource);
         final baseUrl = source['baseUrl']?.toString().trim() ?? '';
         final uri = Uri.tryParse(baseUrl);
-        // Keep iOS network sources HTTPS-only. Invalid entries are ignored
-        // rather than making a large third-party repository entirely unusable.
-        if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) continue;
+        if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+          continue;
+        }
 
         final sourceId = source['id']?.toString().trim().isNotEmpty == true
             ? source['id'].toString().trim()
@@ -678,6 +771,7 @@ class LibraryAddonService {
 
   Future<bool> remove(String id) async {
     await load();
+    if (id == gallicaAddonId) return false;
     final before = _addons.length;
     _addons.removeWhere((addon) => addon.id == id);
     if (_addons.length == before) return false;

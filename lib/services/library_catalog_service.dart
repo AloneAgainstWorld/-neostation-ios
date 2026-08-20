@@ -1,6 +1,9 @@
 import 'dart:convert';
 
+import 'package:archive/archive_io.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as path;
+import 'package:xml/xml.dart';
 
 import 'library_addon_service.dart';
 
@@ -121,7 +124,7 @@ class LibraryCatalogService {
 
   static const Duration _timeout = Duration(seconds: 20);
   static const int _maxCatalogBytes = 12 * 1024 * 1024;
-  static const int _maxReaderBytes = 8 * 1024 * 1024;
+  static const int _maxReaderBytes = 32 * 1024 * 1024;
 
   Future<List<LibraryCatalogItem>> loadCatalog(LibraryAddon addon) async {
     if (addon.sourceKind == LibrarySourceKind.metadataOnly) {
@@ -150,6 +153,19 @@ class LibraryCatalogService {
 
     final baseUri = Uri.parse(baseUrl);
     final uri = _resolveHttps(baseUri, endpoint, field: 'catalog endpoint');
+
+    if (addon.isGallicaSource) {
+      final response = await _get(
+        uri,
+        maxBytes: _maxCatalogBytes,
+        accept: 'application/atom+xml, application/xml, text/xml',
+      );
+      return parseGallicaOpdsDocument(
+        utf8.decode(response.bodyBytes, allowMalformed: true),
+        baseUri: baseUri,
+      );
+    }
+
     final response = await _get(uri, maxBytes: _maxCatalogBytes);
 
     dynamic decoded;
@@ -191,8 +207,18 @@ class LibraryCatalogService {
     }
 
     final uri = Uri.parse(contentUrl);
-    final response = await _get(uri, maxBytes: _maxReaderBytes);
-    final body = utf8.decode(response.bodyBytes);
+    final contentType = item.raw['contentType']?.toString().toLowerCase() ?? '';
+    if (contentType.contains('application/epub+zip') ||
+        uri.path.toLowerCase().endsWith('.epub')) {
+      return _loadEpubText(uri);
+    }
+
+    final response = await _get(
+      uri,
+      maxBytes: _maxReaderBytes,
+      accept: 'application/json, text/plain, text/markdown, text/html',
+    );
+    final body = utf8.decode(response.bodyBytes, allowMalformed: true);
 
     try {
       final decoded = jsonDecode(body);
@@ -203,14 +229,327 @@ class LibraryCatalogService {
         }
       }
     } catch (_) {
-      // Plain text/Markdown is a supported reader response.
+      // Plain text/Markdown/HTML is supported below.
     }
 
-    if (body.trim().isEmpty) {
+    final text = _markupToText(body);
+    if (text.isEmpty) {
       throw const LibraryAddonException('Reader response is empty.');
     }
-    return body;
+    return text;
   }
+
+  static List<LibraryCatalogItem> parseGallicaOpdsDocument(
+    String rawXml, {
+    required Uri baseUri,
+  }) {
+    XmlDocument document;
+    try {
+      document = XmlDocument.parse(rawXml);
+    } catch (_) {
+      throw const LibraryAddonException(
+        'Gallica did not return a valid OPDS/Atom catalog.',
+      );
+    }
+
+    final items = <LibraryCatalogItem>[];
+    for (final entry in document.descendants.whereType<XmlElement>().where(
+          (element) => element.name.local == 'entry',
+        )) {
+      final title = _directChildText(entry, 'title');
+      if (title.isEmpty) continue;
+
+      String author = '';
+      final authorElement = entry.children
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 'author')
+          .firstOrNull;
+      if (authorElement != null) {
+        author = _directChildText(authorElement, 'name');
+      }
+      if (author.isEmpty) {
+        author = _directChildText(entry, 'creator');
+      }
+
+      final id = _directChildText(entry, 'id');
+      final summary = _directChildText(entry, 'summary').isNotEmpty
+          ? _directChildText(entry, 'summary')
+          : _directChildText(entry, 'content');
+
+      String? acquisitionUrl;
+      String? coverUrl;
+      for (final link in entry.children.whereType<XmlElement>().where(
+            (element) => element.name.local == 'link',
+          )) {
+        final rel = link.getAttribute('rel')?.trim() ?? '';
+        final type = link.getAttribute('type')?.trim().toLowerCase() ?? '';
+        final href = link.getAttribute('href')?.trim() ?? '';
+        if (href.isEmpty) continue;
+
+        final resolved = _safeHttpsUrl(baseUri, href);
+        if (resolved == null) continue;
+
+        if (rel == 'http://opds-spec.org/acquisition' &&
+            type.contains('application/epub+zip')) {
+          acquisitionUrl ??= resolved;
+        }
+        if (rel == 'http://opds-spec.org/image' ||
+            rel == 'http://opds-spec.org/image/thumbnail' ||
+            type.startsWith('image/')) {
+          coverUrl ??= resolved;
+        }
+      }
+
+      if (acquisitionUrl == null) {
+        continue;
+      }
+
+      items.add(
+        LibraryCatalogItem(
+          id: id.isEmpty ? acquisitionUrl : id,
+          title: title,
+          mediaType: LibraryMediaType.book,
+          subtitle: author,
+          description: _normalizeWhitespace(summary),
+          coverUrl: coverUrl,
+          content: null,
+          contentUrl: acquisitionUrl,
+          pageUrls: const [],
+          raw: Map<String, dynamic>.unmodifiable(<String, dynamic>{
+            'provider': LibraryAddon.gallicaProviderType,
+            'contentType': 'application/epub+zip',
+            'acquisitionUrl': acquisitionUrl,
+          }),
+        ),
+      );
+    }
+
+    return List.unmodifiable(items);
+  }
+
+  Future<String> _loadEpubText(Uri uri) async {
+    final response = await _get(
+      uri,
+      maxBytes: _maxReaderBytes,
+      accept: 'application/epub+zip, application/octet-stream',
+    );
+
+    Archive archive;
+    try {
+      archive = ZipDecoder().decodeBytes(response.bodyBytes);
+    } catch (_) {
+      throw const LibraryAddonException(
+        'Unable to open the EPUB returned by Gallica.',
+      );
+    }
+
+    final files = <String, ArchiveFile>{};
+    for (final file in archive) {
+      if (!file.isFile) continue;
+      files[_normalizeArchivePath(file.name)] = file;
+    }
+
+    final readingOrder = _epubReadingOrder(files);
+    if (readingOrder.isEmpty) {
+      throw const LibraryAddonException(
+        'The EPUB contains no readable XHTML/HTML pages.',
+      );
+    }
+
+    final sections = <String>[];
+    for (final file in readingOrder.take(400)) {
+      try {
+        final content = file.content as List<int>;
+        final markup = utf8.decode(content, allowMalformed: true);
+        final text = _markupToText(markup);
+        if (text.isNotEmpty) sections.add(text);
+      } catch (_) {
+        // Skip one corrupt chapter and keep the rest of the book readable.
+      }
+    }
+
+    final result = sections.join('\n\n').trim();
+    if (result.isEmpty) {
+      throw const LibraryAddonException(
+        'The EPUB contains no readable text.',
+      );
+    }
+    return result;
+  }
+
+  static List<ArchiveFile> _epubReadingOrder(
+    Map<String, ArchiveFile> files,
+  ) {
+    final fallback = files.entries
+        .where((entry) {
+          final name = entry.key.toLowerCase();
+          return name.endsWith('.xhtml') ||
+              name.endsWith('.html') ||
+              name.endsWith('.htm');
+        })
+        .toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    try {
+      final containerFile = files['META-INF/container.xml'];
+      if (containerFile == null) {
+        return fallback.map((entry) => entry.value).toList();
+      }
+      final containerXml = utf8.decode(
+        containerFile.content as List<int>,
+        allowMalformed: true,
+      );
+      final container = XmlDocument.parse(containerXml);
+      final rootfile = container.descendants
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 'rootfile')
+          .firstOrNull;
+      final opfPath = rootfile?.getAttribute('full-path')?.trim();
+      if (opfPath == null || opfPath.isEmpty) {
+        return fallback.map((entry) => entry.value).toList();
+      }
+
+      final normalizedOpfPath = _normalizeArchivePath(opfPath);
+      final opfFile = files[normalizedOpfPath];
+      if (opfFile == null) {
+        return fallback.map((entry) => entry.value).toList();
+      }
+
+      final opfXml = utf8.decode(
+        opfFile.content as List<int>,
+        allowMalformed: true,
+      );
+      final opf = XmlDocument.parse(opfXml);
+      final manifest = <String, String>{};
+      for (final item in opf.descendants.whereType<XmlElement>().where(
+            (element) => element.name.local == 'item',
+          )) {
+        final id = item.getAttribute('id')?.trim() ?? '';
+        final href = item.getAttribute('href')?.trim() ?? '';
+        final mediaType = item.getAttribute('media-type')?.trim() ?? '';
+        if (id.isEmpty || href.isEmpty) continue;
+        if (mediaType.contains('html') ||
+            href.toLowerCase().endsWith('.xhtml') ||
+            href.toLowerCase().endsWith('.html') ||
+            href.toLowerCase().endsWith('.htm')) {
+          manifest[id] = href;
+        }
+      }
+
+      final baseDir = path.posix.dirname(normalizedOpfPath);
+      final ordered = <ArchiveFile>[];
+      final seen = <String>{};
+      for (final itemRef in opf.descendants.whereType<XmlElement>().where(
+            (element) => element.name.local == 'itemref',
+          )) {
+        final idRef = itemRef.getAttribute('idref')?.trim() ?? '';
+        final href = manifest[idRef];
+        if (href == null) continue;
+        final fullPath = _normalizeArchivePath(
+          path.posix.join(baseDir == '.' ? '' : baseDir, href),
+        );
+        final file = files[fullPath];
+        if (file != null && seen.add(fullPath)) ordered.add(file);
+      }
+
+      if (ordered.isNotEmpty) return ordered;
+    } catch (_) {
+      // Fall back to sorted HTML/XHTML files for malformed EPUB metadata.
+    }
+
+    return fallback.map((entry) => entry.value).toList();
+  }
+
+  static String _markupToText(String markup) {
+    final trimmed = markup.trim();
+    if (trimmed.isEmpty) return '';
+
+    try {
+      final document = XmlDocument.parse(trimmed);
+      XmlNode root = document;
+      final body = document.descendants
+          .whereType<XmlElement>()
+          .where((element) => element.name.local == 'body')
+          .firstOrNull;
+      if (body != null) root = body;
+
+      final buffer = StringBuffer();
+      for (final node in root.descendants) {
+        if (node is XmlText) {
+          final value = _normalizeWhitespace(node.value);
+          if (value.isNotEmpty) {
+            if (buffer.isNotEmpty) buffer.write(' ');
+            buffer.write(value);
+          }
+        } else if (node is XmlElement) {
+          final tag = node.name.local.toLowerCase();
+          if (const {
+            'p',
+            'div',
+            'br',
+            'h1',
+            'h2',
+            'h3',
+            'h4',
+            'h5',
+            'h6',
+            'li',
+            'blockquote',
+          }.contains(tag)) {
+            buffer.write('\n');
+          }
+        }
+      }
+      return buffer
+          .toString()
+          .replaceAll(RegExp(r'[ \t]+\n'), '\n')
+          .replaceAll(RegExp(r'\n[ \t]+'), '\n')
+          .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+          .trim();
+    } catch (_) {
+      return _normalizeWhitespace(
+        trimmed
+            .replaceAll(
+              RegExp(r'<script[\s\S]*?</script>', caseSensitive: false),
+              ' ',
+            )
+            .replaceAll(
+              RegExp(r'<style[\s\S]*?</style>', caseSensitive: false),
+              ' ',
+            )
+            .replaceAll(RegExp(r'<[^>]+>'), ' '),
+      );
+    }
+  }
+
+  static String _directChildText(XmlElement element, String localName) {
+    for (final child in element.children.whereType<XmlElement>()) {
+      if (child.name.local == localName) {
+        return child.innerText.trim();
+      }
+    }
+    return '';
+  }
+
+  static String? _safeHttpsUrl(Uri baseUri, String value) {
+    final parsed = Uri.tryParse(value);
+    if (parsed == null) return null;
+    var resolved = parsed.hasScheme ? parsed : baseUri.resolveUri(parsed);
+    if (resolved.scheme == 'http' &&
+        resolved.host.toLowerCase() == 'gallica.bnf.fr') {
+      resolved = resolved.replace(scheme: 'https');
+    }
+    if (resolved.scheme != 'https' || resolved.host.isEmpty) return null;
+    return resolved.toString();
+  }
+
+  static String _normalizeArchivePath(String value) {
+    final normalized = path.posix.normalize(value.replaceAll('\\', '/'));
+    return normalized.startsWith('./') ? normalized.substring(2) : normalized;
+  }
+
+  static String _normalizeWhitespace(String value) =>
+      value.replaceAll(RegExp(r'\s+'), ' ').trim();
 
   static List<dynamic> _extractItems(dynamic decoded) {
     if (decoded is List) return decoded;
@@ -248,11 +587,12 @@ class LibraryCatalogService {
   static Future<http.Response> _get(
     Uri uri, {
     required int maxBytes,
+    String accept = 'application/json, text/plain',
   }) async {
     http.Response response;
     try {
       response = await http
-          .get(uri, headers: const {'Accept': 'application/json, text/plain'})
+          .get(uri, headers: <String, String>{'Accept': accept})
           .timeout(_timeout);
     } catch (error) {
       throw LibraryAddonException('Unable to load ${uri.host}: $error');
@@ -266,5 +606,13 @@ class LibraryCatalogService {
       throw const LibraryAddonException('Library response is too large.');
     }
     return response;
+  }
+}
+
+extension _FirstOrNullExtension<T> on Iterable<T> {
+  T? get firstOrNull {
+    final iterator = this.iterator;
+    if (!iterator.moveNext()) return null;
+    return iterator.current;
   }
 }
