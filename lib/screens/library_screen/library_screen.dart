@@ -10,15 +10,16 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/services/gamepad/gamepad_navigation_manager.dart';
 import 'package:neostation/services/library_addon_service.dart';
+import 'package:neostation/services/library_catalog_service.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
 
-/// Library hub and declarative add-on manager.
+/// Native Library hub and declarative source manager.
 ///
-/// Add-ons are intentionally manifests rather than executable plugins. This
-/// keeps the iOS build safe and lets NeoStation add catalog capabilities later
-/// without loading third-party code into the process.
+/// Installed sources are providers only: users browse the normalized NeoStation
+/// catalog here, never a provider website or WebView. Tachiyomi/Mihon APK-only
+/// sources remain installable as metadata until a native iOS adapter exists.
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -38,14 +39,28 @@ class LibraryScreen extends StatefulWidget {
 
 enum _LibraryView { hub, addons }
 
+class _NativeLibraryEntry {
+  const _NativeLibraryEntry({required this.source, required this.item});
+
+  final LibraryAddon source;
+  final LibraryCatalogItem item;
+}
+
 class LibraryScreenState extends State<LibraryScreen> {
   final LibraryAddonService _addonService = LibraryAddonService.instance;
+  final LibraryCatalogService _catalogService = LibraryCatalogService.instance;
 
   _LibraryView _view = _LibraryView.hub;
   int _hubSelectedIndex = 0;
   int _addonSelectedIndex = 0;
+  int _librarySelectedIndex = 0;
+  int _libraryColumns = 5;
+  bool _libraryFocused = false;
   bool _loadingAddons = true;
+  bool _loadingLibrary = true;
+  int _catalogFailures = 0;
   List<LibraryAddon> _addons = const [];
+  List<_NativeLibraryEntry> _libraryItems = const [];
 
   int get _addonSelectionCount => 2 + _addons.length;
 
@@ -74,10 +89,66 @@ class LibraryScreenState extends State<LibraryScreen> {
         _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999).toInt();
       }
     });
+    await _refreshNativeLibrary(addons);
+  }
+
+  Future<void> _refreshNativeLibrary([List<LibraryAddon>? installed]) async {
+    final addons = installed ?? _addons;
+    if (mounted) {
+      setState(() {
+        _loadingLibrary = true;
+        _catalogFailures = 0;
+      });
+    }
+
+    final entries = <_NativeLibraryEntry>[];
+    var failures = 0;
+
+    for (final addon in addons) {
+      // Repository entries backed only by Android APK runtime are intentionally
+      // ignored here. They become visible automatically once a native adapter
+      // exposes a NeoStation catalog endpoint.
+      if (!addon.canBrowseOnIos) continue;
+      try {
+        final items = await _catalogService.loadCatalog(addon);
+        for (final item in items) {
+          entries.add(_NativeLibraryEntry(source: addon, item: item));
+        }
+      } catch (_) {
+        failures++;
+      }
+    }
+
+    entries.sort(
+      (a, b) => a.item.title.toLowerCase().compareTo(b.item.title.toLowerCase()),
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _libraryItems = List.unmodifiable(entries);
+      _catalogFailures = failures;
+      _loadingLibrary = false;
+      if (_libraryItems.isEmpty) {
+        _librarySelectedIndex = 0;
+        _libraryFocused = false;
+      } else if (_librarySelectedIndex >= _libraryItems.length) {
+        _librarySelectedIndex = _libraryItems.length - 1;
+      }
+    });
   }
 
   bool _navigateHorizontal(int delta) {
     if (_view != _LibraryView.hub) return false;
+
+    if (_libraryFocused && _libraryItems.isNotEmpty) {
+      final next = (_librarySelectedIndex + delta)
+          .clamp(0, _libraryItems.length - 1)
+          .toInt();
+      if (next == _librarySelectedIndex) return false;
+      setState(() => _librarySelectedIndex = next);
+      return true;
+    }
+
     final next = (_hubSelectedIndex + delta).clamp(0, 1).toInt();
     if (next == _hubSelectedIndex) return false;
     setState(() => _hubSelectedIndex = next);
@@ -85,21 +156,54 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   bool _navigateVertical(int delta) {
-    if (_view != _LibraryView.addons || _addonSelectionCount <= 0) return false;
-    final next = (_addonSelectedIndex + delta)
-        .clamp(0, _addonSelectionCount - 1)
-        .toInt();
-    if (next == _addonSelectedIndex) return false;
-    setState(() => _addonSelectedIndex = next);
+    if (_view == _LibraryView.addons) {
+      if (_addonSelectionCount <= 0) return false;
+      final next = (_addonSelectedIndex + delta)
+          .clamp(0, _addonSelectionCount - 1)
+          .toInt();
+      if (next == _addonSelectedIndex) return false;
+      setState(() => _addonSelectedIndex = next);
+      return true;
+    }
+
+    if (_libraryItems.isEmpty) return false;
+    if (!_libraryFocused) {
+      if (delta <= 0) return false;
+      setState(() {
+        _libraryFocused = true;
+        _librarySelectedIndex = _librarySelectedIndex
+            .clamp(0, _libraryItems.length - 1)
+            .toInt();
+      });
+      return true;
+    }
+
+    final next = _librarySelectedIndex + (delta * _libraryColumns);
+    if (delta < 0 && next < 0) {
+      setState(() => _libraryFocused = false);
+      return true;
+    }
+
+    final clamped = next.clamp(0, _libraryItems.length - 1).toInt();
+    if (clamped == _librarySelectedIndex) return false;
+    setState(() => _librarySelectedIndex = clamped);
     return true;
   }
 
   void _activateSelection() {
     if (_view == _LibraryView.hub) {
+      if (_libraryFocused &&
+          _librarySelectedIndex >= 0 &&
+          _librarySelectedIndex < _libraryItems.length) {
+        _openCatalogItem(_libraryItems[_librarySelectedIndex]);
+        return;
+      }
+
       if (_hubSelectedIndex == 0) {
         setState(() {
           _view = _LibraryView.addons;
           _addonSelectedIndex = 0;
+          _libraryFocused = false;
         });
       } else {
         _showMessage(AppLocale.libraryNextStep.getString(context));
@@ -124,7 +228,13 @@ class LibraryScreenState extends State<LibraryScreen> {
       setState(() {
         _view = _LibraryView.hub;
         _hubSelectedIndex = 0;
+        _libraryFocused = false;
       });
+      return;
+    }
+
+    if (_libraryFocused) {
+      setState(() => _libraryFocused = false);
     }
   }
 
@@ -137,7 +247,10 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   void _tapHubCard(int index) {
     SfxService().playNavSound();
-    setState(() => _hubSelectedIndex = index);
+    setState(() {
+      _hubSelectedIndex = index;
+      _libraryFocused = false;
+    });
     _activateSelection();
   }
 
@@ -322,6 +435,10 @@ class LibraryScreenState extends State<LibraryScreen> {
       modal: true,
     );
     try {
+      final baseUrl = addon.baseUrl;
+      final location = baseUrl == null
+          ? 'local'
+          : (Uri.tryParse(baseUrl)?.host ?? baseUrl);
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -332,7 +449,7 @@ class LibraryScreenState extends State<LibraryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('v${addon.version} • ${Uri.parse(addon.baseUrl).host}'),
+                Text('v${addon.version} • $location'),
                 if (addon.description.isNotEmpty) ...[
                   SizedBox(height: 10.r),
                   Text(addon.description),
@@ -363,6 +480,79 @@ class LibraryScreenState extends State<LibraryScreen> {
                 ),
               ],
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(AppLocale.close.getString(dialogContext)),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      GamepadNavigationManager.popLayer(layerId);
+    }
+  }
+
+  Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
+    final item = entry.item;
+    const layerId = 'library_catalog_reader';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    try {
+      if (item.pageUrls.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(item.title),
+            content: SizedBox(
+              width: 680.r,
+              height: 540.r,
+              child: ListView.separated(
+                itemCount: item.pageUrls.length,
+                separatorBuilder: (_, _) => SizedBox(height: 12.r),
+                itemBuilder: (_, index) => Image.network(
+                  item.pageUrls[index],
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(AppLocale.close.getString(dialogContext)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      String text;
+      try {
+        text = await _catalogService.loadReadableText(item);
+      } on LibraryAddonException catch (error) {
+        if (item.description.isNotEmpty) {
+          text = item.description;
+        } else {
+          _showMessage(error.message);
+          return;
+        }
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(item.title),
+          content: SizedBox(
+            width: 680.r,
+            height: 540.r,
+            child: SingleChildScrollView(child: SelectableText(text)),
           ),
           actions: [
             TextButton(
@@ -498,7 +688,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           children: [
             Expanded(
               child: _LibraryEntryCard(
-                selected: _hubSelectedIndex == 0,
+                selected: !_libraryFocused && _hubSelectedIndex == 0,
                 icon: Symbols.extension_rounded,
                 title: AppLocale.libraryAddons.getString(context),
                 subtitle: AppLocale.libraryAddonsSubtitle.getString(context),
@@ -508,7 +698,7 @@ class LibraryScreenState extends State<LibraryScreen> {
             SizedBox(width: 14.r),
             Expanded(
               child: _LibraryEntryCard(
-                selected: _hubSelectedIndex == 1,
+                selected: !_libraryFocused && _hubSelectedIndex == 1,
                 icon: Symbols.folder_open_rounded,
                 title: AppLocale.libraryLocal.getString(context),
                 subtitle: AppLocale.libraryLocalSubtitle.getString(context),
@@ -517,58 +707,106 @@ class LibraryScreenState extends State<LibraryScreen> {
             ),
           ],
         ),
-        SizedBox(height: 12.r),
-        Expanded(
-          // Keep the empty-state copy high enough that short landscape displays
-          // cannot crop it into the bottom Library border/footer area.
-          child: Align(
-            alignment: const Alignment(0, -0.72),
-            child: Padding(
-              padding: EdgeInsets.only(top: 12.r, bottom: 34.r),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Symbols.collections_bookmark_rounded,
-                    size: 36.r,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
-                  ),
-                  SizedBox(height: 8.r),
-                  Text(
-                    _addons.isEmpty
-                        ? AppLocale.libraryEmptyTitle.getString(context)
-                        : AppLocale.libraryAddonCount
-                              .getString(context)
-                              .replaceFirst(
-                                '{count}',
-                                _addons.length.toString(),
-                              ),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 4.r),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 520.r),
-                    child: Text(
-                      AppLocale.libraryEmptySubtitle.getString(context),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.visible,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.62,
-                        ),
-                        height: 1.25,
-                      ),
-                    ),
-                  ),
-                ],
+        SizedBox(height: 14.r),
+        Expanded(child: _buildNativeLibrary(context, theme)),
+      ],
+    );
+  }
+
+  Widget _buildNativeLibrary(BuildContext context, ThemeData theme) {
+    if (_loadingLibrary) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_libraryItems.isEmpty) {
+      final hasInstalledSources = _addons.isNotEmpty;
+      return Align(
+        alignment: const Alignment(0, -0.55),
+        child: Padding(
+          padding: EdgeInsets.only(top: 12.r, bottom: 34.r),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Symbols.collections_bookmark_rounded,
+                size: 36.r,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
               ),
-            ),
+              SizedBox(height: 8.r),
+              Text(
+                hasInstalledSources
+                    ? 'Aucun contenu disponible'
+                    : AppLocale.libraryEmptyTitle.getString(context),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 4.r),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 620.r),
+                child: Text(
+                  hasInstalledSources
+                      ? 'Les sources sont installées, mais aucune ne fournit encore un catalogue natif compatible avec NeoStation sur iOS.'
+                      : AppLocale.libraryEmptySubtitle.getString(context),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.visible,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              if (_catalogFailures > 0) ...[
+                SizedBox(height: 6.r),
+                Text(
+                  '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-      ],
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const targetExtent = 155.0;
+        final columns = (constraints.maxWidth / targetExtent)
+            .floor()
+            .clamp(2, 8)
+            .toInt();
+        _libraryColumns = columns;
+
+        return GridView.builder(
+          padding: EdgeInsets.only(bottom: 28.r),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 12.r,
+            crossAxisSpacing: 12.r,
+            childAspectRatio: 0.68,
+          ),
+          itemCount: _libraryItems.length,
+          itemBuilder: (context, index) {
+            final entry = _libraryItems[index];
+            return _LibraryCatalogCard(
+              item: entry.item,
+              selected: _libraryFocused && _librarySelectedIndex == index,
+              onTap: () {
+                SfxService().playNavSound();
+                setState(() {
+                  _libraryFocused = true;
+                  _librarySelectedIndex = index;
+                });
+                _openCatalogItem(entry);
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -644,6 +882,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                   ),
                 )
               : ListView.separated(
+                  cacheExtent: 1200.r,
                   padding: EdgeInsets.only(bottom: 26.r),
                   itemCount: _addons.length,
                   separatorBuilder: (_, _) => SizedBox(height: 8.r),
@@ -759,6 +998,116 @@ class _LibraryEntryCard extends StatelessWidget {
   }
 }
 
+class _LibraryCatalogCard extends StatelessWidget {
+  const _LibraryCatalogCard({
+    required this.item,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final LibraryCatalogItem item;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final radius = BorderRadius.circular(10.r);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outline.withValues(alpha: 0.15),
+          width: selected ? 2.r : 1.r,
+        ),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.16),
+                  blurRadius: 10.r,
+                ),
+              ]
+            : null,
+      ),
+      child: NeoGlass(
+        role: GlassSurfaceRole.card,
+        borderRadius: radius,
+        enableBackdropBlur: false,
+        showSheen: false,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding: EdgeInsets.all(8.r),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(7.r),
+                    child: SizedBox.expand(
+                      child: item.coverUrl == null
+                          ? ColoredBox(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.10,
+                              ),
+                              child: Icon(
+                                Symbols.menu_book_rounded,
+                                color: theme.colorScheme.primary,
+                                size: 34.r,
+                              ),
+                            )
+                          : Image.network(
+                              item.coverUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => ColoredBox(
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.10,
+                                ),
+                                child: Icon(
+                                  Symbols.menu_book_rounded,
+                                  color: theme.colorScheme.primary,
+                                  size: 34.r,
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 7.r),
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.05,
+                  ),
+                ),
+                if (item.subtitle.isNotEmpty) ...[
+                  SizedBox(height: 3.r),
+                  Text(
+                    item.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AddonRow extends StatelessWidget {
   const _AddonRow({
     required this.addon,
@@ -776,7 +1125,15 @@ class _AddonRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final radius = BorderRadius.circular(10.r);
-    final host = Uri.tryParse(addon.baseUrl)?.host ?? addon.baseUrl;
+    final baseUrl = addon.baseUrl;
+    final host = baseUrl == null
+        ? 'local'
+        : (Uri.tryParse(baseUrl)?.host ?? baseUrl);
+    final compatibility = switch (addon.sourceKind) {
+      LibrarySourceKind.catalog => 'catalogue natif',
+      LibrarySourceKind.localLibrary => 'local',
+      LibrarySourceKind.metadataOnly => 'métadonnées iOS',
+    };
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 140),
@@ -829,7 +1186,7 @@ class _AddonRow extends StatelessWidget {
                       ),
                       SizedBox(height: 2.r),
                       Text(
-                        'v${addon.version} • $host',
+                        'v${addon.version} • $host • $compatibility',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
