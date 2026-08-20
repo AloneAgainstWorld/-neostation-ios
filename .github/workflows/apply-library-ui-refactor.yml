@@ -1,0 +1,41 @@
+name: Apply Library UI Refactor
+
+on:
+  push:
+    branches:
+      - feature/library-native
+    paths:
+      - tooling/apply_library_ui_refactor.py
+      - .github/workflows/apply-library-ui-refactor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply source refactor
+        run: python3 tooling/apply_library_ui_refactor.py
+
+      - name: Commit generated source changes
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            lib/screens/library_screen/library_screen.dart \
+            lib/screens/library_screen/library_reader_screen.dart \
+            lib/screens/settings_screen/new_settings_options/general_settings_content.dart
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "fix(library): unify scrolling and reader navigation"
+          git push origin HEAD:feature/library-native
