@@ -25,6 +25,7 @@ class LibraryAddon {
 
   static const String schemaV1 = 'neostation.library.v1';
   static const String tachiyomiProviderType = 'tachiyomi-extension-repository';
+  static const String aidokuProviderType = 'aidoku-source-repository';
   static const String gallicaProviderType = 'gallica-opds';
 
   final String id;
@@ -40,6 +41,32 @@ class LibraryAddon {
   bool get isTachiyomiRepositorySource {
     final provider = manifest['provider'];
     return provider is Map && provider['type'] == tachiyomiProviderType;
+  }
+
+  bool get isAidokuRepositorySource {
+    final provider = manifest['provider'];
+    return provider is Map && provider['type'] == aidokuProviderType;
+  }
+
+  bool get isRepositorySource =>
+      isTachiyomiRepositorySource || isAidokuRepositorySource;
+
+  String get repositoryOrigin {
+    final provider = manifest['provider'];
+    if (provider is Map) {
+      final value = provider['repositoryOrigin']?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return origin;
+  }
+
+  String? get sourceDownloadUrl {
+    final provider = manifest['provider'];
+    if (provider is Map) {
+      final value = provider['downloadUrl']?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return null;
   }
 
   bool get isGallicaSource {
@@ -226,7 +253,11 @@ class LibraryAddon {
   }
 }
 
-enum LibraryAddonDocumentFormat { neoStationManifest, tachiyomiRepository }
+enum LibraryAddonDocumentFormat {
+  neoStationManifest,
+  tachiyomiRepository,
+  aidokuRepository,
+}
 
 class LibraryAddonInstallResult {
   const LibraryAddonInstallResult({
@@ -356,28 +387,113 @@ class LibraryAddonService {
       throw const LibraryAddonException('Repository URL must use HTTPS.');
     }
 
-    var effectiveUri = uri;
-    var response = await _downloadRepository(uri);
+    LibraryAddonException? lastError;
+    for (final candidate in _repositoryCandidates(uri)) {
+      try {
+        var effectiveUri = candidate;
+        var response = await _downloadRepository(candidate);
 
-    if (_looksLikeKeiyoushiDeprecationStub(response.bodyBytes) &&
-        uri.path.endsWith('/index.min.json')) {
-      final fullPath = uri.path.substring(
-            0,
-            uri.path.length - 'index.min.json'.length,
-          ) +
-          'index.json';
-      final fullUri = uri.replace(path: fullPath);
-      final fullResponse = await _downloadRepository(fullUri);
-      if (!_looksLikeKeiyoushiDeprecationStub(fullResponse.bodyBytes)) {
-        effectiveUri = fullUri;
-        response = fullResponse;
+        if (_looksLikeKeiyoushiDeprecationStub(response.bodyBytes) &&
+            candidate.path.endsWith('/index.min.json')) {
+          final fullPath = candidate.path.substring(
+                0,
+                candidate.path.length - 'index.min.json'.length,
+              ) +
+              'index.json';
+          final fullUri = candidate.replace(path: fullPath);
+          try {
+            final fullResponse = await _downloadRepository(fullUri);
+            if (!_looksLikeKeiyoushiDeprecationStub(fullResponse.bodyBytes)) {
+              effectiveUri = fullUri;
+              response = fullResponse;
+            }
+          } on LibraryAddonException {
+            // Keep the minified response if the full index is unavailable.
+          }
+        }
+
+        return await installDocumentFromJson(
+          utf8.decode(response.bodyBytes),
+          origin: effectiveUri.toString(),
+        );
+      } on LibraryAddonException catch (error) {
+        lastError = error;
+      } on FormatException catch (error) {
+        lastError = LibraryAddonException('Invalid repository document: $error');
       }
     }
 
-    return installDocumentFromJson(
-      utf8.decode(response.bodyBytes),
-      origin: effectiveUri.toString(),
-    );
+    throw lastError ??
+        const LibraryAddonException('Unable to resolve this repository URL.');
+  }
+
+  static List<Uri> _repositoryCandidates(Uri original) {
+    final values = <String>[];
+
+    void add(String value) {
+      final parsed = Uri.tryParse(value);
+      if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty) {
+        return;
+      }
+      if (!values.contains(parsed.toString())) values.add(parsed.toString());
+    }
+
+    add(original.toString());
+    final host = original.host.toLowerCase();
+    final lowerPath = original.path.toLowerCase();
+
+    // Old repositories that moved or were archived. Keep accepting the URLs
+    // users already have in their source lists and transparently resolve them.
+    if ((host == 'raw.githubusercontent.com' || host == 'github.com') &&
+        lowerPath.contains('/almightyhak/aniyomi-anime-repo')) {
+      add(
+        'https://raw.githubusercontent.com/aniyomi-addons/anime-extensions-repo/repo/index.min.json',
+      );
+      add(
+        'https://raw.githubusercontent.com/aniyomi-addons/anime-extensions-repo/repo/index.json',
+      );
+    }
+    if ((host == 'raw.githubusercontent.com' || host == 'github.com') &&
+        lowerPath.contains('/komikku-app/extensions')) {
+      add(
+        'https://raw.githubusercontent.com/cuong-tran/manga-repo/repo/index.json',
+      );
+    }
+    if ((host == 'raw.githubusercontent.com' || host == 'github.com') &&
+        lowerPath.contains('/thepbone/tachiyomi-extensions-revived')) {
+      add(
+        'https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json',
+      );
+      add(
+        'https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json',
+      );
+    }
+    if ((host == 'raw.githubusercontent.com' || host == 'github.com') &&
+        lowerPath.contains('/moomooo95/aidoku-french-sources')) {
+      add(
+        'https://raw.githubusercontent.com/Moomooo95/aidoku-french-sources/gh-pages/index.min.json',
+      );
+      add(
+        'https://raw.githubusercontent.com/Moomooo95/aidoku-french-sources/gh-pages/index.json',
+      );
+    }
+
+    // Accept a plain GitHub repository URL. Common source-repository branches
+    // are tried in order, so users do not need to know the raw index URL.
+    if (host == 'github.com' && original.pathSegments.length >= 2) {
+      final owner = original.pathSegments[0];
+      final repo = original.pathSegments[1].replaceFirst(RegExp(r'\.git$'), '');
+      for (final branch in const ['repo', 'gh-pages', 'main', 'master']) {
+        add(
+          'https://raw.githubusercontent.com/$owner/$repo/$branch/index.min.json',
+        );
+        add(
+          'https://raw.githubusercontent.com/$owner/$repo/$branch/index.json',
+        );
+      }
+    }
+
+    return values.map(Uri.parse).toList(growable: false);
   }
 
   Future<http.Response> _downloadRepository(Uri uri) async {
@@ -435,6 +551,15 @@ class LibraryAddonService {
 
     if (decoded is Map) {
       final object = Map<String, dynamic>.from(decoded);
+      final aidokuEntries = _extractAidokuEntries(object);
+      if (aidokuEntries != null) {
+        final parsed = _parseAidokuRepository(aidokuEntries, origin: origin);
+        return _upsertMany(
+          parsed,
+          format: LibraryAddonDocumentFormat.aidokuRepository,
+        );
+      }
+
       final modernEntries = _extractModernKeiyoushiEntries(object);
       if (modernEntries != null) {
         final parsed = _parseTachiyomiRepository(
@@ -460,6 +585,13 @@ class LibraryAddonService {
     }
 
     if (decoded is List) {
+      if (_looksLikeAidokuEntries(decoded)) {
+        final parsed = _parseAidokuRepository(decoded, origin: origin);
+        return _upsertMany(
+          parsed,
+          format: LibraryAddonDocumentFormat.aidokuRepository,
+        );
+      }
       final parsed = _parseTachiyomiRepository(decoded, origin: origin);
       return _upsertMany(
         parsed,
@@ -470,6 +602,145 @@ class LibraryAddonService {
     throw const LibraryAddonException(
       'Document root must be a NeoStation manifest or a supported Tachiyomi/Mihon repository.',
     );
+  }
+
+  static List<dynamic>? _extractAidokuEntries(
+    Map<String, dynamic> document,
+  ) {
+    final sources = document['sources'];
+    if (sources is List && _looksLikeAidokuEntries(sources)) return sources;
+    return null;
+  }
+
+  static bool _looksLikeAidokuEntries(List<dynamic> entries) {
+    var matches = 0;
+    for (final raw in entries) {
+      if (raw is! Map) continue;
+      final entry = Map<String, dynamic>.from(raw);
+      final id = entry['id']?.toString().trim() ?? '';
+      final name = entry['name']?.toString().trim() ?? '';
+      final hasPackage =
+          (entry['file']?.toString().trim().isNotEmpty ?? false) ||
+          (entry['downloadURL']?.toString().trim().isNotEmpty ?? false) ||
+          (entry['downloadUrl']?.toString().trim().isNotEmpty ?? false);
+      if (id.isNotEmpty &&
+          name.isNotEmpty &&
+          hasPackage &&
+          !entry.containsKey('pkg')) {
+        matches++;
+      }
+    }
+    return matches > 0;
+  }
+
+  List<LibraryAddon> _parseAidokuRepository(
+    List<dynamic> entries, {
+    required String origin,
+  }) {
+    final originUri = Uri.tryParse(origin);
+    if (originUri == null ||
+        originUri.scheme != 'https' ||
+        originUri.host.isEmpty) {
+      throw const LibraryAddonException('Aidoku repository origin must use HTTPS.');
+    }
+
+    final result = <LibraryAddon>[];
+    final seenIds = <String>{};
+
+    String? resolveOptional(dynamic raw, {String? legacyFolder}) {
+      final value = raw?.toString().trim() ?? '';
+      if (value.isEmpty) return null;
+      final direct = Uri.tryParse(value);
+      if (direct != null && direct.hasScheme) {
+        if (direct.scheme != 'https' || direct.host.isEmpty) return null;
+        return direct.toString();
+      }
+      final relative = legacyFolder == null ? value : '$legacyFolder/$value';
+      final resolved = originUri.resolve(relative);
+      if (resolved.scheme != 'https' || resolved.host.isEmpty) return null;
+      return resolved.toString();
+    }
+
+    for (final rawEntry in entries) {
+      if (rawEntry is! Map) continue;
+      if (result.length >= _maxRepositorySources) {
+        throw const LibraryAddonException(
+          'Repository contains more than 10000 sources.',
+        );
+      }
+
+      final entry = Map<String, dynamic>.from(rawEntry);
+      final sourceId = entry['id']?.toString().trim() ?? '';
+      final sourceName = entry['name']?.toString().trim() ?? '';
+      if (sourceId.isEmpty || sourceName.isEmpty) continue;
+
+      final version = entry['version']?.toString().trim().isNotEmpty == true
+          ? entry['version'].toString().trim()
+          : '0';
+      final sourceLang =
+          entry['lang']?.toString().trim().isNotEmpty == true
+              ? entry['lang'].toString().trim()
+              : ((entry['languages'] is List &&
+                      (entry['languages'] as List).isNotEmpty)
+                  ? (entry['languages'] as List).first.toString()
+                  : 'all');
+      final downloadUrl =
+          resolveOptional(entry['downloadURL'] ?? entry['downloadUrl']) ??
+          resolveOptional(entry['file'], legacyFolder: 'sources');
+      if (downloadUrl == null) continue;
+      final iconUrl =
+          resolveOptional(entry['iconURL'] ?? entry['iconUrl']) ??
+          resolveOptional(entry['icon'], legacyFolder: 'icons');
+      final explicitBase = entry['baseURL'] ?? entry['baseUrl'];
+      final parsedBase = explicitBase == null
+          ? null
+          : Uri.tryParse(explicitBase.toString().trim());
+      final baseUrl = parsedBase != null &&
+              parsedBase.scheme == 'https' &&
+              parsedBase.host.isNotEmpty
+          ? parsedBase.toString()
+          : originUri.resolve('.').toString();
+
+      final id = _aidokuAddonId(sourceId);
+      if (!seenIds.add(id)) continue;
+      final manifest = <String, dynamic>{
+        'schema': LibraryAddon.schemaV1,
+        'id': id,
+        'name': sourceName,
+        'version': version,
+        'baseUrl': baseUrl,
+        if (iconUrl != null) 'icon': iconUrl,
+        'description': 'Aidoku repository source • $sourceLang',
+        'iosCompatibility': 'metadata-only',
+        'provider': <String, dynamic>{
+          'type': LibraryAddon.aidokuProviderType,
+          'sourceId': sourceId,
+          'sourceLang': sourceLang,
+          'downloadUrl': downloadUrl,
+          'file': entry['file'],
+          'nsfw': entry['nsfw'],
+          'contentRating': entry['contentRating'],
+          'repositoryOrigin': origin,
+        },
+      };
+      result.add(LibraryAddon.fromManifest(manifest, origin: origin));
+    }
+
+    if (result.isEmpty) {
+      throw const LibraryAddonException(
+        'No installable Aidoku sources were found in this repository.',
+      );
+    }
+    return result;
+  }
+
+  static String _aidokuAddonId(String sourceId) {
+    var safe = sourceId
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    if (safe.length > 92) safe = safe.substring(0, 92);
+    if (safe.length < 2) safe = 'source';
+    return 'aidoku.$safe';
   }
 
   static List<dynamic>? _extractModernKeiyoushiEntries(
@@ -767,6 +1038,22 @@ class LibraryAddonService {
     _addons.sort(
       (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
     );
+  }
+
+  Future<int> removeRepository(String repositoryOrigin) async {
+    await load();
+    final normalized = repositoryOrigin.trim();
+    if (normalized.isEmpty) return 0;
+    final before = _addons.length;
+    _addons.removeWhere(
+      (addon) =>
+          !addon.isBuiltIn &&
+          addon.isRepositorySource &&
+          addon.repositoryOrigin == normalized,
+    );
+    final removed = before - _addons.length;
+    if (removed > 0) await _persist();
+    return removed;
   }
 
   Future<bool> remove(String id) async {

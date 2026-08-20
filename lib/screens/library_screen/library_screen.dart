@@ -76,6 +76,7 @@ class LibraryScreenState extends State<LibraryScreen> {
   double _libraryRowExtent = 220;
 
   String _languageFilter = 'all';
+  String _sourceFilter = 'all';
   bool _sortAscending = true;
   String? _alphabetAnchor;
 
@@ -89,8 +90,14 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   List<_NativeLibraryEntry> get _visibleLibraryItems {
     final items = _libraryItems.where((entry) {
-      if (_languageFilter == 'all') return true;
-      return _itemLanguageCodes(entry).contains(_languageFilter);
+      if (_languageFilter != 'all' &&
+          !_itemLanguageCodes(entry).contains(_languageFilter)) {
+        return false;
+      }
+      if (_sourceFilter != 'all' && entry.providerId != _sourceFilter) {
+        return false;
+      }
+      return true;
     }).toList();
     items.sort((a, b) {
       final comparison = a.item.title.toLowerCase().compareTo(
@@ -119,6 +126,30 @@ class LibraryScreenState extends State<LibraryScreen> {
       return a.compareTo(b);
     });
     return <String>['all', ...sorted];
+  }
+
+  Map<String, String> get _sourceOptions {
+    final options = <String, String>{'all': 'all'};
+    for (final entry in _libraryItems) {
+      final label = entry.isMangaDex
+          ? 'MangaDex'
+          : (entry.source?.name.trim().isNotEmpty == true
+              ? entry.source!.name.trim()
+              : entry.providerId);
+      options[entry.providerId] = label;
+    }
+    final pairs = options.entries.where((entry) => entry.key != 'all').toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+    return <String, String>{'all': 'all', for (final entry in pairs) entry.key: entry.value};
+  }
+
+  String _sourceLabel(String id) {
+    if (id == 'all') {
+      return Localizations.localeOf(context).languageCode == 'fr'
+          ? 'Toutes les sources'
+          : 'All sources';
+    }
+    return _sourceOptions[id] ?? id;
   }
 
   @override
@@ -200,6 +231,10 @@ class LibraryScreenState extends State<LibraryScreen> {
       _catalogFailures = failures;
       _loadingLibrary = false;
       _alphabetAnchor = null;
+      if (_sourceFilter != 'all' &&
+          !_libraryItems.any((entry) => entry.providerId == _sourceFilter)) {
+        _sourceFilter = 'all';
+      }
       final visible = _visibleLibraryItems;
       if (visible.isEmpty) {
         _librarySelectedIndex = 0;
@@ -342,7 +377,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         setState(() => _hubSelectedIndex = next);
         return true;
       case _HubFocus.filters:
-        final next = (_filterSelectedIndex + delta).clamp(0, 2).toInt();
+        final next = (_filterSelectedIndex + delta).clamp(0, 3).toInt();
         if (next == _filterSelectedIndex) return false;
         setState(() => _filterSelectedIndex = next);
         return true;
@@ -428,8 +463,10 @@ class LibraryScreenState extends State<LibraryScreen> {
           _openLanguageMenu();
         } else if (_filterSelectedIndex == 1) {
           _openSortMenu();
-        } else {
+        } else if (_filterSelectedIndex == 2) {
           _openIndexMenu();
+        } else {
+          _openSourceMenu();
         }
         return;
       }
@@ -486,7 +523,13 @@ class LibraryScreenState extends State<LibraryScreen> {
     if (_view != _LibraryView.addons || _addonSelectedIndex < 3) return;
     final addonIndex = _addonSelectedIndex - 3;
     if (addonIndex < 0 || addonIndex >= _addons.length) return;
-    await _confirmRemoveAddon(_addons[addonIndex]);
+    final addon = _addons[addonIndex];
+    if (addon.isBuiltIn) return;
+    if (addon.isRepositorySource) {
+      await _chooseRemoveSourceOrRepository(addon);
+    } else {
+      await _confirmRemoveAddon(addon);
+    }
   }
 
   void _cycleLanguageFilter() {
@@ -673,6 +716,37 @@ class LibraryScreenState extends State<LibraryScreen> {
     _ensureSelectedBookVisible();
   }
 
+  Future<void> _openSourceMenu() async {
+    final options = _sourceOptions;
+    final selected = await showMenu<String>(
+      context: context,
+      position: _popupPosition(),
+      items: [
+        for (final entry in options.entries)
+          PopupMenuItem<String>(
+            value: entry.key,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28.r,
+                  child: entry.key == _sourceFilter
+                      ? Icon(Symbols.check_rounded, size: 18.r)
+                      : null,
+                ),
+                Flexible(child: Text(_sourceLabel(entry.key))),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _sourceFilter = selected;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+  }
+
   void _tapHubCard(int index) {
     SfxService().playNavSound();
     setState(() {
@@ -763,7 +837,8 @@ class LibraryScreenState extends State<LibraryScreen> {
       final result = await _addonService.installDocumentFromUrl(url);
       await _loadAddons();
       if (!mounted) return;
-      if (result.format == LibraryAddonDocumentFormat.tachiyomiRepository) {
+      if (result.format == LibraryAddonDocumentFormat.tachiyomiRepository ||
+          result.format == LibraryAddonDocumentFormat.aidokuRepository) {
         _showMessage(
           AppLocale.libraryAddonCount
               .getString(context)
@@ -819,7 +894,8 @@ class LibraryScreenState extends State<LibraryScreen> {
       );
       await _loadAddons();
       if (!mounted) return;
-      if (install.format == LibraryAddonDocumentFormat.tachiyomiRepository) {
+      if (install.format == LibraryAddonDocumentFormat.tachiyomiRepository ||
+          install.format == LibraryAddonDocumentFormat.aidokuRepository) {
         _showMessage(
           AppLocale.libraryAddonCount
               .getString(context)
@@ -894,6 +970,23 @@ class LibraryScreenState extends State<LibraryScreen> {
                       style: Theme.of(dialogContext).textTheme.bodySmall,
                     ),
                 ],
+                if (addon.isAidokuRepositorySource) ...[
+                  SizedBox(height: 10.r),
+                  Text(
+                    'Aidoku • ${addon.language ?? 'all'} • iOS source metadata',
+                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(dialogContext).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (addon.sourceDownloadUrl != null)
+                    Text(
+                      addon.sourceDownloadUrl!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                ],
                 SizedBox(height: 12.r),
                 Text(
                   addon.origin,
@@ -908,6 +1001,19 @@ class LibraryScreenState extends State<LibraryScreen> {
             ),
           ),
           actions: [
+            if (!addon.isBuiltIn)
+              TextButton.icon(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  if (addon.isRepositorySource) {
+                    await _chooseRemoveSourceOrRepository(addon);
+                  } else {
+                    await _confirmRemoveAddon(addon);
+                  }
+                },
+                icon: const Icon(Symbols.delete_rounded),
+                label: Text(AppLocale.delete.getString(dialogContext)),
+              ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: Text(AppLocale.close.getString(dialogContext)),
@@ -960,6 +1066,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           subtitle: item.subtitle,
           coverUrl: item.coverUrl,
           text: text,
+          bookmarkId: 'book:${item.id}:${item.title}',
         ),
       ),
     );
@@ -977,6 +1084,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           title: title,
           subtitle: subtitle,
           pages: pages,
+          bookmarkId: 'pages:$title:$subtitle',
         ),
       ),
     );
@@ -1116,6 +1224,98 @@ class LibraryScreenState extends State<LibraryScreen> {
       '${item.title} — ${selectedChapter.displayTitle}',
       pages,
       subtitle: selectedChapter.language.toUpperCase(),
+    );
+  }
+
+  Future<void> _chooseRemoveSourceOrRepository(LibraryAddon addon) async {
+    final locale = Localizations.localeOf(context).languageCode;
+    final repositoryCount = _addons
+        .where(
+          (item) =>
+              item.isRepositorySource &&
+              item.repositoryOrigin == addon.repositoryOrigin,
+        )
+        .length;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(locale == 'fr' ? 'Supprimer' : 'Remove'),
+        content: Text(
+          locale == 'fr'
+              ? 'Cette source appartient à un dépôt contenant $repositoryCount source(s).'
+              : 'This source belongs to a repository containing $repositoryCount source(s).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(AppLocale.cancel.getString(dialogContext)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop('source'),
+            child: Text(locale == 'fr' ? 'Cette source' : 'This source'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop('repository'),
+            child: Text(locale == 'fr' ? 'Tout le dépôt' : 'Entire repository'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'repository') {
+      await _confirmRemoveRepository(addon);
+    } else {
+      await _confirmRemoveAddon(addon);
+    }
+  }
+
+  Future<void> _confirmRemoveRepository(LibraryAddon addon) async {
+    final locale = Localizations.localeOf(context).languageCode;
+    final origin = addon.repositoryOrigin;
+    final count = _addons
+        .where(
+          (item) => item.isRepositorySource && item.repositoryOrigin == origin,
+        )
+        .length;
+    final confirmed = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(
+              locale == 'fr' ? 'Supprimer le dépôt ?' : 'Remove repository?',
+            ),
+            content: Text(
+              locale == 'fr'
+                  ? 'Les $count sources importées depuis ce dépôt seront supprimées. Les autres dépôts et Gallica ne seront pas modifiés.'
+                  : 'All $count sources imported from this repository will be removed. Other repositories and Gallica will not be changed.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(AppLocale.cancel.getString(dialogContext)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(AppLocale.delete.getString(dialogContext)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    final removed = await _addonService.removeRepository(origin);
+    await _loadAddons();
+    if (!mounted) return;
+    setState(() {
+      _addonSelectedIndex = _addonSelectedIndex.clamp(
+        0,
+        (_addonSelectionCount - 1).clamp(0, 9999),
+      );
+    });
+    _showMessage(
+      locale == 'fr'
+          ? '$removed source(s) supprimée(s) avec le dépôt.'
+          : '$removed source(s) removed with the repository.',
     );
   }
 
@@ -1333,6 +1533,23 @@ class LibraryScreenState extends State<LibraryScreen> {
                 _filterSelectedIndex = 2;
               });
               _openIndexMenu();
+            },
+          ),
+        ),
+        SizedBox(width: 10.r),
+        Expanded(
+          child: _FilterControl(
+            selected:
+                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 3,
+            icon: Symbols.source_rounded,
+            label: locale == 'fr' ? 'Source' : 'Source',
+            value: _sourceLabel(_sourceFilter),
+            onTap: () {
+              setState(() {
+                _hubFocus = _HubFocus.filters;
+                _filterSelectedIndex = 3;
+              });
+              _openSourceMenu();
             },
           ),
         ),

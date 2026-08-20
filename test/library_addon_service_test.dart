@@ -231,6 +231,69 @@ void main() {
       expect(result.addons.single.name, 'Safe');
     });
 
+    test('imports legacy Aidoku source-list entries', () async {
+      final raw = jsonEncode([
+        {
+          'id': 'fr.example',
+          'name': 'Example FR',
+          'file': 'fr.example-v2.aix',
+          'icon': 'fr.example-v2.png',
+          'lang': 'fr',
+          'version': 2,
+          'nsfw': 0,
+        },
+      ]);
+
+      final result = await LibraryAddonService.instance.installDocumentFromJson(
+        raw,
+        origin:
+            'https://raw.githubusercontent.com/example/aidoku/gh-pages/index.min.json',
+      );
+
+      expect(result.format, LibraryAddonDocumentFormat.aidokuRepository);
+      expect(result.totalCount, 1);
+      expect(result.addons.single.isAidokuRepositorySource, isTrue);
+      expect(result.addons.single.language, 'fr');
+      expect(
+        result.addons.single.sourceDownloadUrl,
+        'https://raw.githubusercontent.com/example/aidoku/gh-pages/sources/fr.example-v2.aix',
+      );
+    });
+
+    test('removes every source belonging to one imported repository', () async {
+      final raw = jsonEncode([
+        {
+          'id': 'fr.one',
+          'name': 'One',
+          'file': 'fr.one-v1.aix',
+          'lang': 'fr',
+          'version': 1,
+        },
+        {
+          'id': 'fr.two',
+          'name': 'Two',
+          'file': 'fr.two-v1.aix',
+          'lang': 'fr',
+          'version': 1,
+        },
+      ]);
+      const origin =
+          'https://raw.githubusercontent.com/example/aidoku/gh-pages/index.min.json';
+      await LibraryAddonService.instance.installDocumentFromJson(
+        raw,
+        origin: origin,
+      );
+
+      final removed = await LibraryAddonService.instance.removeRepository(origin);
+      expect(removed, 2);
+      final remaining = await LibraryAddonService.instance.load();
+      expect(remaining.where((item) => item.repositoryOrigin == origin), isEmpty);
+      expect(
+        remaining.any((item) => item.id == LibraryAddonService.gallicaAddonId),
+        isTrue,
+      );
+    });
+
     test('keeps Gallica as a built-in native catalog source', () async {
       final sources = await LibraryAddonService.instance.load();
       final gallica = sources.firstWhere(
