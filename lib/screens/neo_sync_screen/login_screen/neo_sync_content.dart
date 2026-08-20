@@ -952,11 +952,11 @@ class NeoSyncContentState extends State<NeoSyncContent>
     final dot = baseName.lastIndexOf('.');
     final stem = dot > 0 ? baseName.substring(0, dot) : baseName;
     final extension = dot > 0 ? baseName.substring(dot) : '';
-    var candidate = File(p.join(root.path, ...directorySegments, baseName));
+    var candidate = File(p.joinAll(<String>[root.path, ...directorySegments, baseName]));
     var suffix = 2;
     while (candidate.existsSync()) {
       candidate = File(
-        p.join(root.path, ...directorySegments, '$stem-$suffix$extension'),
+        p.joinAll(<String>[root.path, ...directorySegments, '$stem-$suffix$extension']),
       );
       suffix++;
     }
