@@ -42,7 +42,7 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => LibraryScreenState();
 }
 
-enum _LibraryView { hub, addons, local }
+enum _LibraryView { hub, addons, local, manage }
 
 enum _HubFocus { shortcuts, filters, books }
 
@@ -771,7 +771,7 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     switch (_hubFocus) {
       case _HubFocus.shortcuts:
-        final next = (_hubSelectedIndex + delta).clamp(0, 1).toInt();
+        final next = (_hubSelectedIndex + delta).clamp(0, 2).toInt();
         if (next == _hubSelectedIndex) return false;
         setState(() => _hubSelectedIndex = next);
         return true;
@@ -795,6 +795,14 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   bool _navigateVertical(int delta) {
+    if (_view == _LibraryView.manage) {
+      if (_addons.isEmpty) return false;
+      final next = (_addonSelectedIndex + delta).clamp(0, _addons.length - 1).toInt();
+      if (next == _addonSelectedIndex) return false;
+      setState(() => _addonSelectedIndex = next);
+      return true;
+    }
+
     if (_view == _LibraryView.addons) {
       if (_addonSelectionCount <= 0) return false;
       final next = (_addonSelectedIndex + delta).clamp(
@@ -851,8 +859,13 @@ class LibraryScreenState extends State<LibraryScreen> {
             _view = _LibraryView.addons;
             _addonSelectedIndex = 0;
           });
-        } else {
+        } else if (_hubSelectedIndex == 1) {
           setState(() => _view = _LibraryView.local);
+        } else {
+          setState(() {
+            _view = _LibraryView.manage;
+            _addonSelectedIndex = 0;
+          });
         }
         return;
       }
@@ -884,6 +897,13 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     if (_view == _LibraryView.local) {
       _backToHub(selectLocal: true);
+      return;
+    }
+
+    if (_view == _LibraryView.manage) {
+      if (_addonSelectedIndex >= 0 && _addonSelectedIndex < _addons.length) {
+        _showAddonDetails(_addons[_addonSelectedIndex]);
+      }
       return;
     }
 
@@ -921,6 +941,10 @@ class LibraryScreenState extends State<LibraryScreen> {
       _backToHub();
       return;
     }
+    if (_view == _LibraryView.manage) {
+      _backToHub(selectManage: true);
+      return;
+    }
 
     if (_hubFocus == _HubFocus.books) {
       setState(() => _hubFocus = _HubFocus.filters);
@@ -929,17 +953,24 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  void _backToHub({bool selectLocal = false}) {
+  void _backToHub({bool selectLocal = false, bool selectManage = false}) {
     setState(() {
       _view = _LibraryView.hub;
       _hubFocus = _HubFocus.shortcuts;
-      _hubSelectedIndex = selectLocal ? 1 : 0;
+      _hubSelectedIndex = selectManage ? 2 : (selectLocal ? 1 : 0);
     });
   }
 
   Future<void> _deleteSelectedAddon() async {
-    if (_view != _LibraryView.addons || _addonSelectedIndex < 3) return;
-    final addonIndex = _addonSelectedIndex - 3;
+    final int addonIndex;
+    if (_view == _LibraryView.addons) {
+      if (_addonSelectedIndex < 3) return;
+      addonIndex = _addonSelectedIndex - 3;
+    } else if (_view == _LibraryView.manage) {
+      addonIndex = _addonSelectedIndex;
+    } else {
+      return;
+    }
     if (addonIndex < 0 || addonIndex >= _addons.length) return;
     final addon = _addons[addonIndex];
     if (addon.isBuiltIn) return;
@@ -2042,10 +2073,10 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _loadAddons();
     if (!mounted) return;
     setState(() {
-      _addonSelectedIndex = _addonSelectedIndex.clamp(
-        0,
-        (_addonSelectionCount - 1).clamp(0, 9999),
-      );
+      final maxIndex = _view == _LibraryView.manage
+          ? (_addons.length - 1).clamp(0, 9999)
+          : (_addonSelectionCount - 1).clamp(0, 9999);
+      _addonSelectedIndex = _addonSelectedIndex.clamp(0, maxIndex);
     });
     _showMessage(
       locale == 'fr'
@@ -2097,10 +2128,10 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _loadAddons();
     if (!mounted) return;
     setState(() {
-      _addonSelectedIndex = _addonSelectedIndex.clamp(
-        0,
-        (_addonSelectionCount - 1).clamp(0, 9999),
-      );
+      final maxIndex = _view == _LibraryView.manage
+          ? (_addons.length - 1).clamp(0, 9999)
+          : (_addonSelectionCount - 1).clamp(0, 9999);
+      _addonSelectedIndex = _addonSelectedIndex.clamp(0, maxIndex);
     });
     _showMessage(
       AppLocale.libraryAddonRemoved
@@ -2118,6 +2149,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           _LibraryView.hub => _buildHub(context),
           _LibraryView.addons => _buildAddons(context),
           _LibraryView.local => _buildLocalLibrary(context),
+          _LibraryView.manage => _buildManageSources(context),
         },
       ),
     );
@@ -2199,6 +2231,21 @@ class LibraryScreenState extends State<LibraryScreen> {
                   title: AppLocale.libraryLocal.getString(context),
                   subtitle: AppLocale.libraryLocalSubtitle.getString(context),
                   onTap: () => _tapHubCard(1),
+                ),
+              ),
+              SizedBox(width: 14.r),
+              Expanded(
+                child: _LibraryEntryCard(
+                  selected:
+                      _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 2,
+                  icon: Symbols.manage_accounts_rounded,
+                  title: Localizations.localeOf(context).languageCode == 'fr'
+                      ? 'Gérer les sources'
+                      : 'Manage sources',
+                  subtitle: Localizations.localeOf(context).languageCode == 'fr'
+                      ? 'Supprimer une source ou un dépôt installé.'
+                      : 'Remove an installed source or repository.',
+                  onTap: () => _tapHubCard(2),
                 ),
               ),
             ],
@@ -2832,6 +2879,118 @@ class LibraryScreenState extends State<LibraryScreen> {
                             addon: _addons[index],
                             selected: _addonSelectedIndex == index + 3,
                             onTap: () => _tapAddonSelection(index + 3),
+                            onDelete: _addons[index].isBuiltIn
+                                ? null
+                                : () => _confirmRemoveAddon(_addons[index]),
+                          ),
+                          if (index + 1 < _addons.length) SizedBox(height: 8.r),
+                        ],
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManageSources(BuildContext context) {
+    final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final repositoryGroups = _installedRepositoryGroups;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(
+          context,
+          trailing: FilledButton.tonalIcon(
+            onPressed: () => _backToHub(selectManage: true),
+            icon: const Icon(Symbols.arrow_back_rounded),
+            label: Text(AppLocale.back.getString(context)),
+          ),
+        ),
+        SizedBox(height: 18.r),
+        Row(
+          children: [
+            Icon(
+              Symbols.manage_accounts_rounded,
+              size: 24.r,
+              color: theme.colorScheme.primary,
+            ),
+            SizedBox(width: 9.r),
+            Text(
+              locale == 'fr' ? 'Gérer les sources' : 'Manage sources',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 5.r),
+        Text(
+          locale == 'fr'
+              ? 'Retirez à tout moment une source devenue inutile ou un dépôt complet devenu indisponible.'
+              : 'Remove an unused source or an unavailable repository at any time.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.64),
+          ),
+        ),
+        SizedBox(height: 12.r),
+        Expanded(
+          child: _loadingAddons
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: 26.r),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (repositoryGroups.isNotEmpty) ...[
+                        Text(
+                          locale == 'fr' ? 'Dépôts installés' : 'Installed repositories',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 7.r),
+                        for (final entry in repositoryGroups.entries) ...[
+                          _RepositoryManagementRow(
+                            name: _repositoryDisplayName(entry.key),
+                            origin: entry.key,
+                            sourceCount: entry.value.length,
+                            onDelete: () => _confirmRemoveRepository(entry.value.first),
+                          ),
+                          SizedBox(height: 8.r),
+                        ],
+                        SizedBox(height: 10.r),
+                      ],
+                      Text(
+                        AppLocale.libraryAddonInstalledSources.getString(context),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 7.r),
+                      if (_addons.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 36.r),
+                          child: Center(
+                            child: Text(
+                              AppLocale.libraryEmptyTitle.getString(context),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        for (var index = 0; index < _addons.length; index++) ...[
+                          _AddonRow(
+                            addon: _addons[index],
+                            selected: _addonSelectedIndex == index,
+                            onTap: () {
+                              setState(() => _addonSelectedIndex = index);
+                              _showAddonDetails(_addons[index]);
+                            },
                             onDelete: _addons[index].isBuiltIn
                                 ? null
                                 : () => _confirmRemoveAddon(_addons[index]),
