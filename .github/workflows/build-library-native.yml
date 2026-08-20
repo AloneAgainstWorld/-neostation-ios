@@ -69,10 +69,7 @@ jobs:
       - name: Patch flutter_localization Swift 5 incompatibility
         run: |
           set -euo pipefail
-          PLUGIN_FILE=$(find "$HOME/.pub-cache" \
-            -path "*flutter_localization-0.4.1*/FlutterLocalizationPlugin.swift" \
-            -print -quit)
-          test -n "$PLUGIN_FILE"
+          PLUGIN_FILE="$HOME/.pub-cache/hosted/pub.dev/flutter_localization-0.4.1/ios/flutter_localization/Sources/flutter_localization/FlutterLocalizationPlugin.swift"
           test -f "$PLUGIN_FILE"
           python3 - "$PLUGIN_FILE" <<'PY'
           import pathlib
@@ -82,14 +79,13 @@ jobs:
           bad = 'registrar.messenger(),'
           good = 'registrar.messenger()'
           if bad in source:
-              source = source.replace(bad, good)
-              path.write_text(source, encoding='utf-8')
-              print('Patched flutter_localization Swift 5 trailing comma')
+              path.write_text(source.replace(bad, good), encoding='utf-8')
+              print('Patched iOS flutter_localization Swift 5 trailing comma')
           elif good in source:
-              print('flutter_localization is already compatible')
+              print('iOS flutter_localization is already compatible')
           else:
-              print(path.read_text(encoding='utf-8'))
-              raise SystemExit('Could not locate registrar.messenger() call')
+              print(source)
+              raise SystemExit('Could not locate iOS registrar.messenger() call')
           PY
 
       - name: Run Library regression tests
