@@ -1,0 +1,43 @@
+name: Fix Library Repository Removal Test
+
+on:
+  push:
+    branches:
+      - feature/library-native
+    paths:
+      - .github/workflows/fix-library-remove-repository-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/library-native
+      - name: Isolate repository removal test origin
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('test/library_addon_service_test.dart')
+          text = path.read_text()
+          marker = "test('removes every source belonging to one imported repository'"
+          pos = text.index(marker)
+          tail = text[pos:]
+          old = "https://raw.githubusercontent.com/example/aidoku/gh-pages/index.min.json"
+          new = "https://raw.githubusercontent.com/example/remove-test/gh-pages/index.min.json"
+          if old not in tail:
+              raise SystemExit('Removal test origin anchor not found')
+          tail = tail.replace(old, new, 1)
+          path.write_text(text[:pos] + tail)
+          PY
+      - name: Commit test fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- test/library_addon_service_test.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "test(library): isolate repository removal state"
+          git push origin HEAD:feature/library-native
