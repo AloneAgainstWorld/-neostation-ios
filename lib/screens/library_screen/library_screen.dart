@@ -1196,13 +1196,11 @@ class LibraryScreenState extends State<LibraryScreen> {
         SizedBox(
           width: 58.r,
           height: 58.r,
-          child: Padding(
-            padding: EdgeInsets.all(2.r),
-            child: Image.asset(
-              'assets/images/icons/library-manga-clean.webp',
-              fit: BoxFit.contain,
-              alignment: Alignment.center,
-              filterQuality: FilterQuality.high,
+          child: Center(
+            child: Icon(
+              Symbols.menu_book_rounded,
+              size: 44.r,
+              color: theme.colorScheme.onSurface,
             ),
           ),
         ),
