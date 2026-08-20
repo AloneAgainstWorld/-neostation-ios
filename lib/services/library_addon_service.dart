@@ -1,7 +1,14 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum LibrarySourceKind {
+  catalog,
+  localLibrary,
+  metadataOnly,
+}
 
 /// Versioned, declarative Library source manifest.
 ///
@@ -28,7 +35,7 @@ class LibraryAddon {
   final String id;
   final String name;
   final String version;
-  final String baseUrl;
+  final String? baseUrl;
   final String description;
   final String? iconUrl;
   final String origin;
@@ -70,6 +77,46 @@ class LibraryAddon {
   bool get isMetadataOnlyOnIos =>
       manifest['iosCompatibility']?.toString() == 'metadata-only';
 
+  String? get minimumAppVersion {
+    final value = manifest['minAppVersion']?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  LibrarySourceKind get sourceKind {
+    if (isMetadataOnlyOnIos) return LibrarySourceKind.metadataOnly;
+    final raw = (manifest['sourceType'] ?? manifest['kind'])
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (raw == 'local' ||
+        raw == 'local-library' ||
+        raw == 'local_library' ||
+        raw == 'locallibrary') {
+      return LibrarySourceKind.localLibrary;
+    }
+    return LibrarySourceKind.catalog;
+  }
+
+  bool get canBrowseOnIos =>
+      sourceKind == LibrarySourceKind.catalog && catalogEndpoint != null;
+
+  String? get catalogEndpoint {
+    final endpoints = manifest['endpoints'];
+    if (endpoints is! Map) return null;
+    for (final key in const ['catalog', 'browse']) {
+      final value = endpoints[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return null;
+  }
+
+  String? get searchEndpoint {
+    final endpoints = manifest['endpoints'];
+    if (endpoints is! Map) return null;
+    final value = endpoints['search']?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
   factory LibraryAddon.fromManifest(
     Map<String, dynamic> manifest, {
     required String origin,
@@ -97,8 +144,27 @@ class LibraryAddon {
 
     final name = requiredString('name');
     final version = requiredString('version');
-    final baseUrl = requiredString('baseUrl');
-    _validateHttpsUrl(baseUrl, field: 'baseUrl');
+    final rawKind = (manifest['sourceType'] ?? manifest['kind'])
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    final isLocal =
+        rawKind == 'local' ||
+        rawKind == 'local-library' ||
+        rawKind == 'local_library' ||
+        rawKind == 'locallibrary';
+
+    final baseUrlValue = manifest['baseUrl']?.toString().trim();
+    final baseUrl =
+        baseUrlValue == null || baseUrlValue.isEmpty ? null : baseUrlValue;
+    if (!isLocal && baseUrl == null) {
+      throw const LibraryAddonException(
+        'Missing required manifest field: baseUrl',
+      );
+    }
+    if (baseUrl != null) {
+      _validateHttpsUrl(baseUrl, field: 'baseUrl');
+    }
 
     final iconValue = manifest['icon']?.toString().trim();
     final iconUrl = iconValue == null || iconValue.isEmpty ? null : iconValue;
@@ -280,10 +346,13 @@ class LibraryAddonService {
     }
 
     if (decoded is Map) {
+      final manifest = Map<String, dynamic>.from(decoded);
+      _rejectKnownExternalManifest(manifest);
       final addon = LibraryAddon.fromManifest(
-        Map<String, dynamic>.from(decoded),
+        manifest,
         origin: origin,
       );
+      await _validateMinimumAppVersion(addon);
       return _upsertMany(
         [addon],
         format: LibraryAddonDocumentFormat.neoStationManifest,
@@ -334,6 +403,75 @@ class LibraryAddonService {
       addon: batch.addons.single,
       updated: batch.updatedCount == 1,
     );
+  }
+
+  void _rejectKnownExternalManifest(Map<String, dynamic> manifest) {
+    if (manifest.containsKey('schema')) return;
+
+    final looksLikeObsidianPlugin =
+        manifest['id'] != null &&
+        manifest['name'] != null &&
+        manifest['version'] != null &&
+        manifest['minAppVersion'] != null &&
+        (manifest['author'] != null || manifest['isDesktopOnly'] != null);
+
+    if (looksLikeObsidianPlugin) {
+      throw const LibraryAddonException(
+        'This is an Obsidian plugin manifest. Its minAppVersion targets '
+        'Obsidian, not NeoStation. A NeoStation source must declare '
+        'schema "neostation.library.v1".',
+      );
+    }
+  }
+
+  Future<void> _validateMinimumAppVersion(LibraryAddon addon) async {
+    final minimum = addon.minimumAppVersion;
+    if (minimum == null) return;
+
+    final requiredParts = _parseSemanticVersion(minimum);
+    if (requiredParts == null) {
+      throw LibraryAddonException(
+        'Invalid minAppVersion "$minimum". Expected a semantic version such as 0.9.9.',
+      );
+    }
+
+    final info = await PackageInfo.fromPlatform();
+    final current = info.version.trim();
+    final currentParts = _parseSemanticVersion(current);
+    if (currentParts == null) {
+      throw LibraryAddonException(
+        'Unable to compare the current NeoStation version "$current".',
+      );
+    }
+
+    if (_compareVersionParts(currentParts, requiredParts) < 0) {
+      throw LibraryAddonException(
+        'This source requires NeoStation $minimum or newer. '
+        'Installed version: $current.',
+      );
+    }
+  }
+
+  static List<int>? _parseSemanticVersion(String value) {
+    final core = value.trim().split(RegExp(r'[-+]')).first;
+    if (core.isEmpty) return null;
+    final result = <int>[];
+    for (final piece in core.split('.')) {
+      final parsed = int.tryParse(piece);
+      if (parsed == null || parsed < 0) return null;
+      result.add(parsed);
+    }
+    return result.isEmpty ? null : result;
+  }
+
+  static int _compareVersionParts(List<int> a, List<int> b) {
+    final length = a.length > b.length ? a.length : b.length;
+    for (var index = 0; index < length; index++) {
+      final left = index < a.length ? a[index] : 0;
+      final right = index < b.length ? b[index] : 0;
+      if (left != right) return left.compareTo(right);
+    }
+    return 0;
   }
 
   List<LibraryAddon> _parseTachiyomiRepository(
