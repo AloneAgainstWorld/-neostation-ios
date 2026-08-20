@@ -1344,6 +1344,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
 
     return Consumer<AuthService>(
       builder: (context, authService, child) {
+        final safePadding = MediaQuery.viewPaddingOf(context);
+        final safeLeft = Platform.isIOS ? safePadding.left : 0.0;
+        final safeRight = Platform.isIOS ? safePadding.right : 0.0;
         // Load initial data when user logs in (only once per app session)
         if (authService.isLoggedIn &&
             !_dataLoadedThisSession &&
@@ -1360,7 +1363,7 @@ class NeoSyncContentState extends State<NeoSyncContent>
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.r),
+                  padding: EdgeInsets.fromLTRB(16.r + safeLeft, 0, 16.r + safeRight, 0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1391,11 +1394,14 @@ class NeoSyncContentState extends State<NeoSyncContent>
   Widget _buildDesktopLayout() {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final safePadding = MediaQuery.viewPaddingOf(context);
+        final safeLeft = Platform.isIOS ? safePadding.left : 0.0;
+        final safeRight = Platform.isIOS ? safePadding.right : 0.0;
         return Padding(
           padding: EdgeInsets.only(
             top: 52.r,
-            left: 8.r,
-            right: 8.r,
+            left: 8.r + safeLeft,
+            right: 8.r + safeRight,
             bottom: 8.r,
           ),
           child: Row(
