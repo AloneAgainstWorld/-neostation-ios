@@ -50,6 +50,25 @@ const Map<String, dynamic> appLocaleId = {
       'Tambahkan add-on atau sumber lokal untuk memulai.',
   AppLocale.libraryNextStep:
       'Bagian ini akan diaktifkan pada tahap berikutnya.',
+  AppLocale.libraryAddonAddUrl: 'Tambah lewat URL',
+  AppLocale.libraryAddonAddUrlSubtitle:
+      'Pasang manifes NeoStation yang dihosting melalui HTTPS.',
+  AppLocale.libraryAddonImportFile: 'Impor manifes',
+  AppLocale.libraryAddonImportFileSubtitle:
+      'Pasang add-on NeoStation dari berkas JSON lokal.',
+  AppLocale.libraryAddonUrlTitle: 'Tambah sumber Perpustakaan',
+  AppLocale.libraryAddonUrlHelp:
+      'URL manifes HTTPS (skema neostation.library.v1).',
+  AppLocale.libraryAddonInstall: 'Pasang',
+  AppLocale.libraryAddonInstalling: 'Memasang sumber…',
+  AppLocale.libraryAddonInstalled: '{name} terpasang',
+  AppLocale.libraryAddonUpdated: '{name} diperbarui',
+  AppLocale.libraryAddonError: 'Tidak dapat memasang sumber: {error}',
+  AppLocale.libraryAddonInstalledSources: 'Sumber terpasang',
+  AppLocale.libraryAddonRemoveTitle: 'Hapus sumber?',
+  AppLocale.libraryAddonRemoveBody: 'Hapus {name} dari sumber Perpustakaan?',
+  AppLocale.libraryAddonRemoved: '{name} dihapus',
+  AppLocale.libraryAddonCount: '{count} sumber terpasang',
   AppLocale.general: 'Umum',
   AppLocale.secondaryDisplay: 'Layar Sekunder',
   AppLocale.directories: 'Direktori',

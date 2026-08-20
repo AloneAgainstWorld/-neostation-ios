@@ -71,7 +71,9 @@ class LibraryAddon {
 
     final endpoints = manifest['endpoints'];
     if (endpoints != null && endpoints is! Map) {
-      throw LibraryAddonException('Manifest field "endpoints" must be an object.');
+      throw LibraryAddonException(
+        'Manifest field "endpoints" must be an object.',
+      );
     }
 
     return LibraryAddon(
@@ -168,7 +170,9 @@ class LibraryAddonService {
       }
     }
 
-    _addons.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    _addons.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
     _loaded = true;
     return addons;
   }
@@ -230,7 +234,9 @@ class LibraryAddonService {
     } else {
       _addons.add(addon);
     }
-    _addons.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    _addons.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
     await _persist();
     return LibraryAddonInstallResult(addon: addon, updated: updated);
   }

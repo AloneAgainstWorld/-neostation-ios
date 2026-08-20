@@ -48,6 +48,25 @@ const Map<String, dynamic> appLocalePt = {
   AppLocale.libraryEmptySubtitle:
       'Adicione um complemento ou uma fonte local para começar.',
   AppLocale.libraryNextStep: 'Esta seção será ativada na próxima etapa.',
+  AppLocale.libraryAddonAddUrl: 'Adicionar por URL',
+  AppLocale.libraryAddonAddUrlSubtitle:
+      'Instale um manifesto NeoStation hospedado por HTTPS.',
+  AppLocale.libraryAddonImportFile: 'Importar manifesto',
+  AppLocale.libraryAddonImportFileSubtitle:
+      'Instale um add-on NeoStation a partir de um arquivo JSON local.',
+  AppLocale.libraryAddonUrlTitle: 'Adicionar fonte da Biblioteca',
+  AppLocale.libraryAddonUrlHelp:
+      'URL HTTPS do manifesto (esquema neostation.library.v1).',
+  AppLocale.libraryAddonInstall: 'Instalar',
+  AppLocale.libraryAddonInstalling: 'Instalando fonte…',
+  AppLocale.libraryAddonInstalled: '{name} instalado',
+  AppLocale.libraryAddonUpdated: '{name} atualizado',
+  AppLocale.libraryAddonError: 'Não foi possível instalar a fonte: {error}',
+  AppLocale.libraryAddonInstalledSources: 'Fontes instaladas',
+  AppLocale.libraryAddonRemoveTitle: 'Remover fonte?',
+  AppLocale.libraryAddonRemoveBody: 'Remover {name} das fontes da Biblioteca?',
+  AppLocale.libraryAddonRemoved: '{name} removido',
+  AppLocale.libraryAddonCount: '{count} fonte(s) instalada(s)',
   AppLocale.general: 'Geral',
   AppLocale.secondaryDisplay: 'Tela Secundária',
   AppLocale.directories: 'Diretórios',

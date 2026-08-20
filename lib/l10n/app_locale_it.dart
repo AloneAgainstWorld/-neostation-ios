@@ -49,6 +49,26 @@ const Map<String, dynamic> appLocaleIt = {
       'Aggiungi un componente o una fonte locale per iniziare.',
   AppLocale.libraryNextStep:
       'Questa sezione sarà attivata nel prossimo passaggio.',
+  AppLocale.libraryAddonAddUrl: 'Aggiungi tramite URL',
+  AppLocale.libraryAddonAddUrlSubtitle:
+      'Installa un manifesto NeoStation ospitato tramite HTTPS.',
+  AppLocale.libraryAddonImportFile: 'Importa manifesto',
+  AppLocale.libraryAddonImportFileSubtitle:
+      'Installa un add-on NeoStation da un file JSON locale.',
+  AppLocale.libraryAddonUrlTitle: 'Aggiungi fonte Libreria',
+  AppLocale.libraryAddonUrlHelp:
+      'URL HTTPS del manifesto (schema neostation.library.v1).',
+  AppLocale.libraryAddonInstall: 'Installa',
+  AppLocale.libraryAddonInstalling: 'Installazione fonte…',
+  AppLocale.libraryAddonInstalled: '{name} installato',
+  AppLocale.libraryAddonUpdated: '{name} aggiornato',
+  AppLocale.libraryAddonError: 'Impossibile installare la fonte: {error}',
+  AppLocale.libraryAddonInstalledSources: 'Fonti installate',
+  AppLocale.libraryAddonRemoveTitle: 'Rimuovere la fonte?',
+  AppLocale.libraryAddonRemoveBody:
+      'Rimuovere {name} dalle fonti della Libreria?',
+  AppLocale.libraryAddonRemoved: '{name} rimosso',
+  AppLocale.libraryAddonCount: '{count} fonte/i installata/e',
   AppLocale.general: 'Generale',
   AppLocale.secondaryDisplay: 'Schermo Secondario',
   AppLocale.directories: 'Directory',

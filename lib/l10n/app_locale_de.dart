@@ -51,6 +51,27 @@ const Map<String, dynamic> appLocaleDe = {
       'Füge ein Add-on oder eine lokale Quelle hinzu, um zu beginnen.',
   AppLocale.libraryNextStep:
       'Dieser Bereich wird im nächsten Schritt aktiviert.',
+  AppLocale.libraryAddonAddUrl: 'Quelle per URL hinzufügen',
+  AppLocale.libraryAddonAddUrlSubtitle:
+      'Installiert ein über HTTPS bereitgestelltes NeoStation-Manifest.',
+  AppLocale.libraryAddonImportFile: 'Manifest importieren',
+  AppLocale.libraryAddonImportFileSubtitle:
+      'Installiert ein NeoStation-Add-on aus einer lokalen JSON-Datei.',
+  AppLocale.libraryAddonUrlTitle: 'Bibliotheksquelle hinzufügen',
+  AppLocale.libraryAddonUrlHelp:
+      'HTTPS-Manifest-URL (Schema neostation.library.v1).',
+  AppLocale.libraryAddonInstall: 'Installieren',
+  AppLocale.libraryAddonInstalling: 'Quelle wird installiert…',
+  AppLocale.libraryAddonInstalled: '{name} installiert',
+  AppLocale.libraryAddonUpdated: '{name} aktualisiert',
+  AppLocale.libraryAddonError:
+      'Quelle konnte nicht installiert werden: {error}',
+  AppLocale.libraryAddonInstalledSources: 'Installierte Quellen',
+  AppLocale.libraryAddonRemoveTitle: 'Quelle entfernen?',
+  AppLocale.libraryAddonRemoveBody:
+      '{name} aus den Bibliotheksquellen entfernen?',
+  AppLocale.libraryAddonRemoved: '{name} entfernt',
+  AppLocale.libraryAddonCount: '{count} Quelle(n) installiert',
   AppLocale.general: 'Allgemein',
   AppLocale.secondaryDisplay: 'Zweitbildschirm',
   AppLocale.directories: 'Verzeichnisse',

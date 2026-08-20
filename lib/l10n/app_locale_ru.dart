@@ -49,6 +49,25 @@ const Map<String, dynamic> appLocaleRu = {
   AppLocale.libraryEmptySubtitle:
       'Добавьте дополнение или локальный источник, чтобы начать.',
   AppLocale.libraryNextStep: 'Этот раздел будет включён на следующем этапе.',
+  AppLocale.libraryAddonAddUrl: 'Добавить по URL',
+  AppLocale.libraryAddonAddUrlSubtitle:
+      'Установить манифест NeoStation, размещённый по HTTPS.',
+  AppLocale.libraryAddonImportFile: 'Импортировать манифест',
+  AppLocale.libraryAddonImportFileSubtitle:
+      'Установить дополнение NeoStation из локального JSON-файла.',
+  AppLocale.libraryAddonUrlTitle: 'Добавить источник библиотеки',
+  AppLocale.libraryAddonUrlHelp:
+      'HTTPS URL манифеста (схема neostation.library.v1).',
+  AppLocale.libraryAddonInstall: 'Установить',
+  AppLocale.libraryAddonInstalling: 'Установка источника…',
+  AppLocale.libraryAddonInstalled: '{name} установлен',
+  AppLocale.libraryAddonUpdated: '{name} обновлён',
+  AppLocale.libraryAddonError: 'Не удалось установить источник: {error}',
+  AppLocale.libraryAddonInstalledSources: 'Установленные источники',
+  AppLocale.libraryAddonRemoveTitle: 'Удалить источник?',
+  AppLocale.libraryAddonRemoveBody: 'Удалить {name} из источников библиотеки?',
+  AppLocale.libraryAddonRemoved: '{name} удалён',
+  AppLocale.libraryAddonCount: 'Установлено источников: {count}',
   AppLocale.general: 'Общие',
   AppLocale.secondaryDisplay: 'Второй экран',
   AppLocale.directories: 'Директории',

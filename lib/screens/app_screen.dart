@@ -459,6 +459,8 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
   void _handleBackNavigation() {
     if (_selectedTabIndex == AppTabs.scraper) {
       NewScraperOptionsScreen.backCurrent();
+    } else if (_selectedTabIndex == AppTabs.library) {
+      LibraryScreen.backCurrent();
     }
   }
 
@@ -479,6 +481,8 @@ class AppScreenState extends State<AppScreen> with WidgetsBindingObserver {
   void _handleXButton() {
     if (_selectedTabIndex == AppTabs.settings) {
       NewSettingsScreen.deleteCurrent();
+    } else if (_selectedTabIndex == AppTabs.library) {
+      LibraryScreen.deleteCurrent();
     }
   }
 

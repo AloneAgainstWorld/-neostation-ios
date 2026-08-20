@@ -71,7 +71,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       _addons = addons;
       _loadingAddons = false;
       if (_addonSelectedIndex >= _addonSelectionCount) {
-        _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999);
+        _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999).toInt();
       }
     });
   }
@@ -202,7 +202,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 final value = controller.text.trim();
                 if (value.isNotEmpty) Navigator.of(dialogContext).pop(value);
               },
-              child: Text(AppLocale.libraryAddonInstall.getString(dialogContext)),
+              child: Text(
+                AppLocale.libraryAddonInstall.getString(dialogContext),
+              ),
             ),
           ],
         ),
@@ -247,7 +249,7 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _installFromLocalManifest() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['json'],
       allowMultiple: false,
@@ -257,7 +259,8 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     final picked = result.files.single;
     try {
-      final bytes = picked.bytes ??
+      final bytes =
+          picked.bytes ??
           (picked.path == null ? null : await File(picked.path!).readAsBytes());
       if (bytes == null) {
         throw const LibraryAddonException('Unable to read selected manifest.');
@@ -320,9 +323,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                 Text(
                   addon.origin,
                   style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(dialogContext)
-                        .colorScheme
-                        .onSurface
+                    color: Theme.of(dialogContext).colorScheme.onSurface
                         .withValues(alpha: 0.6),
                   ),
                 ),
@@ -353,30 +354,30 @@ class LibraryScreenState extends State<LibraryScreen> {
     bool confirmed = false;
     try {
       confirmed =
-              await showDialog<bool>(
-                context: context,
-                barrierDismissible: false,
-                builder: (dialogContext) => AlertDialog(
-                  title: Text(
-                    AppLocale.libraryAddonRemoveTitle.getString(dialogContext),
-                  ),
-                  content: Text(
-                    AppLocale.libraryAddonRemoveBody
-                        .getString(dialogContext)
-                        .replaceFirst('{name}', addon.name),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: Text(AppLocale.cancel.getString(dialogContext)),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: Text(AppLocale.delete.getString(dialogContext)),
-                    ),
-                  ],
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(
+                AppLocale.libraryAddonRemoveTitle.getString(dialogContext),
+              ),
+              content: Text(
+                AppLocale.libraryAddonRemoveBody
+                    .getString(dialogContext)
+                    .replaceFirst('{name}', addon.name),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: Text(AppLocale.cancel.getString(dialogContext)),
                 ),
-              ) ??
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: Text(AppLocale.delete.getString(dialogContext)),
+                ),
+              ],
+            ),
+          ) ??
           false;
     } finally {
       GamepadNavigationManager.popLayer(layerId);
@@ -386,10 +387,9 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _addonService.remove(addon.id);
     await _loadAddons();
     if (!mounted) return;
-    _addonSelectedIndex = _addonSelectedIndex.clamp(
-      0,
-      (_addonSelectionCount - 1).clamp(0, 9999),
-    );
+    _addonSelectedIndex = _addonSelectedIndex
+        .clamp(0, (_addonSelectionCount - 1).clamp(0, 9999).toInt())
+        .toInt();
     _showMessage(
       AppLocale.libraryAddonRemoved
           .getString(context)
@@ -402,7 +402,9 @@ class LibraryScreenState extends State<LibraryScreen> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(24.r, 54.r, 24.r, 18.r),
-        child: _view == _LibraryView.hub ? _buildHub(context) : _buildAddons(context),
+        child: _view == _LibraryView.hub
+            ? _buildHub(context)
+            : _buildAddons(context),
       ),
     );
   }
@@ -412,13 +414,17 @@ class LibraryScreenState extends State<LibraryScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12.r),
-          child: Image.asset(
-            'assets/images/icons/library-manga.webp',
-            width: 54.r,
-            height: 54.r,
-            fit: BoxFit.cover,
+        SizedBox(
+          width: 58.r,
+          height: 58.r,
+          child: Padding(
+            padding: EdgeInsets.all(2.r),
+            child: Image.asset(
+              'assets/images/icons/library-manga.webp',
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              filterQuality: FilterQuality.high,
+            ),
           ),
         ),
         SizedBox(width: 14.r),
@@ -499,7 +505,10 @@ class LibraryScreenState extends State<LibraryScreen> {
                         ? AppLocale.libraryEmptyTitle.getString(context)
                         : AppLocale.libraryAddonCount
                               .getString(context)
-                              .replaceFirst('{count}', _addons.length.toString()),
+                              .replaceFirst(
+                                '{count}',
+                                _addons.length.toString(),
+                              ),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -513,7 +522,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.visible,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.62,
+                        ),
                         height: 1.25,
                       ),
                     ),
@@ -543,7 +554,9 @@ class LibraryScreenState extends State<LibraryScreen> {
         SizedBox(height: 18.r),
         Text(
           AppLocale.libraryAddons.getString(context),
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         SizedBox(height: 10.r),
         Row(
@@ -553,7 +566,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 selected: _addonSelectedIndex == 0,
                 icon: Symbols.language_rounded,
                 title: AppLocale.libraryAddonAddUrl.getString(context),
-                subtitle: AppLocale.libraryAddonAddUrlSubtitle.getString(context),
+                subtitle: AppLocale.libraryAddonAddUrlSubtitle.getString(
+                  context,
+                ),
                 onTap: () => _tapAddonSelection(0),
               ),
             ),
@@ -574,7 +589,9 @@ class LibraryScreenState extends State<LibraryScreen> {
         SizedBox(height: 14.r),
         Text(
           AppLocale.libraryAddonInstalledSources.getString(context),
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         SizedBox(height: 8.r),
         Expanded(
@@ -586,7 +603,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                   child: Text(
                     AppLocale.libraryEmptyTitle.getString(context),
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.62,
+                      ),
                     ),
                   ),
                 )
@@ -685,7 +704,9 @@ class _LibraryEntryCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.62,
+                        ),
                       ),
                     ),
                   ],

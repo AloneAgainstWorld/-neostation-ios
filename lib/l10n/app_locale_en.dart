@@ -49,6 +49,25 @@ const Map<String, dynamic> appLocaleEn = {
   AppLocale.libraryEmptySubtitle:
       'Add an add-on or a local source to get started.',
   AppLocale.libraryNextStep: 'This section will be enabled in the next step.',
+  AppLocale.libraryAddonAddUrl: 'Add source by URL',
+  AppLocale.libraryAddonAddUrlSubtitle:
+      'Install a NeoStation manifest hosted on HTTPS.',
+  AppLocale.libraryAddonImportFile: 'Import manifest',
+  AppLocale.libraryAddonImportFileSubtitle:
+      'Install a NeoStation add-on from a local JSON file.',
+  AppLocale.libraryAddonUrlTitle: 'Add Library source',
+  AppLocale.libraryAddonUrlHelp:
+      'HTTPS manifest URL (schema neostation.library.v1).',
+  AppLocale.libraryAddonInstall: 'Install',
+  AppLocale.libraryAddonInstalling: 'Installing source…',
+  AppLocale.libraryAddonInstalled: 'Installed {name}',
+  AppLocale.libraryAddonUpdated: 'Updated {name}',
+  AppLocale.libraryAddonError: 'Unable to install source: {error}',
+  AppLocale.libraryAddonInstalledSources: 'Installed sources',
+  AppLocale.libraryAddonRemoveTitle: 'Remove source?',
+  AppLocale.libraryAddonRemoveBody: 'Remove {name} from your Library sources?',
+  AppLocale.libraryAddonRemoved: 'Removed {name}',
+  AppLocale.libraryAddonCount: '{count} source(s) installed',
   AppLocale.general: 'General',
   AppLocale.secondaryDisplay: 'Secondary Screen',
   AppLocale.directories: 'Directories',

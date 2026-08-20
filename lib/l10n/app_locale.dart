@@ -69,6 +69,25 @@ mixin AppLocale {
   static const String libraryEmptyTitle = 'library_empty_title';
   static const String libraryEmptySubtitle = 'library_empty_subtitle';
   static const String libraryNextStep = 'library_next_step';
+  static const String libraryAddonAddUrl = 'library_addon_add_url';
+  static const String libraryAddonAddUrlSubtitle =
+      'library_addon_add_url_subtitle';
+  static const String libraryAddonImportFile = 'library_addon_import_file';
+  static const String libraryAddonImportFileSubtitle =
+      'library_addon_import_file_subtitle';
+  static const String libraryAddonUrlTitle = 'library_addon_url_title';
+  static const String libraryAddonUrlHelp = 'library_addon_url_help';
+  static const String libraryAddonInstall = 'library_addon_install';
+  static const String libraryAddonInstalling = 'library_addon_installing';
+  static const String libraryAddonInstalled = 'library_addon_installed';
+  static const String libraryAddonUpdated = 'library_addon_updated';
+  static const String libraryAddonError = 'library_addon_error';
+  static const String libraryAddonInstalledSources =
+      'library_addon_installed_sources';
+  static const String libraryAddonRemoveTitle = 'library_addon_remove_title';
+  static const String libraryAddonRemoveBody = 'library_addon_remove_body';
+  static const String libraryAddonRemoved = 'library_addon_removed';
+  static const String libraryAddonCount = 'library_addon_count';
   static const String general = 'general';
   static const String secondaryDisplay = 'secondary_display';
   static const String directories = 'directories';
