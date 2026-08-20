@@ -142,8 +142,8 @@ void main() {
         },
       ]);
 
-      expect(
-        () => LibraryAddonService.instance.installDocumentFromJson(
+      await expectLater(
+        LibraryAddonService.instance.installDocumentFromJson(
           raw,
           origin: 'https://example.com/index.min.json',
         ),
