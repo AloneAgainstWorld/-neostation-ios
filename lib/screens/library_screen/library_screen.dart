@@ -96,6 +96,12 @@ class LibraryScreenState extends State<LibraryScreen> {
   final Set<String> _aidokuLoading = <String>{};
   int _aidokuRoundRobinCursor = 0;
   String _titleQuery = '';
+  final TextEditingController _titleSearchController = TextEditingController();
+  final FocusNode _titleSearchFocusNode =
+      FocusNode(debugLabel: 'library_inline_title_search');
+  Timer? _titleSearchDebounce;
+  bool _titleSearchMode = false;
+  bool _titleSearchFiltersExpanded = false;
   bool _hideAdultContent = true;
   bool _searchingTitles = false;
   int _searchGeneration = 0;
@@ -203,6 +209,7 @@ class LibraryScreenState extends State<LibraryScreen> {
     super.initState();
     LibraryScreen._currentState = this;
     _libraryScrollController.addListener(_onLibraryScroll);
+    _titleSearchController.text = _titleQuery;
     _loadAddons();
   }
 
@@ -213,6 +220,9 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
     _libraryScrollController.removeListener(_onLibraryScroll);
     _libraryScrollController.dispose();
+    _titleSearchDebounce?.cancel();
+    _titleSearchController.dispose();
+    _titleSearchFocusNode.dispose();
     super.dispose();
   }
 
@@ -859,7 +869,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         } else if (_filterSelectedIndex == 4) {
           _openContentMenu();
         } else {
-          _openTitleSearchDialog();
+          _enterTitleSearchMode();
         }
         return;
       }
@@ -892,6 +902,21 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _back() {
+    if (_titleSearchMode) {
+      if (_titleSearchFocusNode.hasFocus) {
+        _titleSearchFocusNode.unfocus();
+        unawaited(_dismissSystemKeyboard());
+        return;
+      }
+      setState(() {
+        _titleSearchMode = false;
+        _titleSearchFiltersExpanded = false;
+        _hubFocus = _HubFocus.filters;
+        _filterSelectedIndex = 5;
+      });
+      return;
+    }
+
     if (_view == _LibraryView.addons || _view == _LibraryView.local) {
       _backToHub();
       return;
@@ -1203,185 +1228,86 @@ class LibraryScreenState extends State<LibraryScreen> {
     } catch (_) {}
   }
 
-  Future<void> _openTitleSearchDialog() async {
-    final controller = TextEditingController(text: _titleQuery);
-    final focusNode = FocusNode(debugLabel: 'library_title_search');
-    const layerId = 'library_title_search_dialog';
-    GamepadNavigationManager.pushLayer(
-      layerId,
-      onActivate: () {},
-      onDeactivate: () {},
-      modal: true,
+  void _enterTitleSearchMode() {
+    _titleSearchDebounce?.cancel();
+    _titleSearchController.value = TextEditingValue(
+      text: _titleQuery,
+      selection: TextSelection.collapsed(offset: _titleQuery.length),
     );
-    String? result;
-    try {
-      result = await showDialog<String>(
-        context: context,
-        barrierDismissible: true,
-        builder: (dialogContext) {
-          final theme = Theme.of(dialogContext);
-          final fr = Localizations.localeOf(dialogContext).languageCode == 'fr';
+    setState(() {
+      _titleSearchMode = true;
+      _titleSearchFiltersExpanded = false;
+      _hubFocus = _HubFocus.filters;
+      _filterSelectedIndex = 5;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _titleSearchFocusNode.requestFocus();
+    });
+  }
 
-          Future<void> closeWith(String? value) async {
-            focusNode.unfocus();
-            await _dismissSystemKeyboard();
-            if (dialogContext.mounted) {
-              Navigator.of(dialogContext).pop(value);
-            }
-          }
+  void _leaveTitleSearchMode() {
+    _titleSearchDebounce?.cancel();
+    _titleSearchFocusNode.unfocus();
+    unawaited(_dismissSystemKeyboard());
+    setState(() {
+      _titleSearchMode = false;
+      _titleSearchFiltersExpanded = false;
+      _hubFocus = _HubFocus.filters;
+      _filterSelectedIndex = 5;
+    });
+  }
 
-          final media = MediaQuery.of(dialogContext);
-          final keyboardInset = media.viewInsets.bottom;
-          final keyboardVisible = keyboardInset > 0;
-          final horizontalInset = 34.r;
-          final topInset = keyboardVisible ? 8.r : 24.r;
-          final bottomInset = keyboardVisible ? keyboardInset + 10.r : 24.r;
-          final availableHeight =
-              (media.size.height - topInset - bottomInset)
-                  .clamp(180.0, media.size.height)
-                  .toDouble();
+  void _scheduleInlineTitleSearch(String rawValue) {
+    final query = rawValue.trim();
+    _titleSearchDebounce?.cancel();
+    final generation = ++_searchGeneration;
+    setState(() {
+      _titleQuery = query;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+      if (query.isEmpty) {
+        _remoteSearchEntries = const [];
+        _searchingTitles = false;
+      } else {
+        // Local titles filter immediately; remote providers fill in after the
+        // short debounce below, mirroring the responsive game-search field.
+        _searchingTitles = true;
+      }
+    });
+    if (query.isEmpty) return;
+    _titleSearchDebounce = Timer(const Duration(milliseconds: 420), () {
+      if (!mounted || generation != _searchGeneration) return;
+      unawaited(_runTitleSearch(query));
+    });
+  }
 
-          return AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.fromLTRB(
-              horizontalInset,
-              topInset,
-              horizontalInset,
-              bottomInset,
-            ),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: EdgeInsets.zero,
-                child: NeoGlass(
-                  role: GlassSurfaceRole.card,
-                  borderRadius: BorderRadius.circular(18.r),
-                  enableBackdropBlur: true,
-                  showSheen: false,
-                  padding: EdgeInsets.fromLTRB(22.r, 16.r, 22.r, 14.r),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: 720.r,
-                      maxHeight: availableHeight,
-                    ),
-                    child: SingleChildScrollView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.manual,
-                      physics: const ClampingScrollPhysics(),
-                      child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      fr ? 'Rechercher un titre' : 'Search titles',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    SizedBox(height: 5.r),
-                    Text(
-                      fr
-                          ? 'Livre ou manga — la recherche interroge aussi les sources installées.'
-                          : 'Book or manga — installed sources are searched too.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
-                      ),
-                    ),
-                    SizedBox(height: 16.r),
-                    TextField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      autofocus: true,
-                      textInputAction: TextInputAction.search,
-                      textAlignVertical: TextAlignVertical.center,
-                      scrollPadding: EdgeInsets.only(
-                        bottom: keyboardVisible ? keyboardInset + 18.r : 18.r,
-                      ),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        filled: true,
-                        fillColor: theme.colorScheme.surfaceContainerHighest
-                            .withValues(alpha: 0.38),
-                        prefixIcon: Icon(
-                          Symbols.search_rounded,
-                          color: theme.colorScheme.primary,
-                        ),
-                        hintText: fr ? 'Livre, manga…' : 'Book, manga…',
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 14.r,
-                          vertical: 16.r,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(13.r),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.26),
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(13.r),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.24),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(13.r),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.primary,
-                            width: 2.r,
-                          ),
-                        ),
-                      ),
-                      onSubmitted: (value) => closeWith(value.trim()),
-                    ),
-                    SizedBox(height: 17.r),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (_titleQuery.isNotEmpty) ...[
-                          TextButton(
-                            onPressed: () => closeWith(''),
-                            child: Text(fr ? 'Effacer' : 'Clear'),
-                          ),
-                          SizedBox(width: 6.r),
-                        ],
-                        TextButton(
-                          onPressed: () => closeWith(null),
-                          child: Text(AppLocale.cancel.getString(dialogContext)),
-                        ),
-                        SizedBox(width: 8.r),
-                        FilledButton.icon(
-                          onPressed: () => closeWith(controller.text.trim()),
-                          icon: const Icon(Symbols.search_rounded),
-                          label: Text(fr ? 'Rechercher' : 'Search'),
-                        ),
-                      ],
-                    ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    } finally {
-      focusNode.unfocus();
-      await _dismissSystemKeyboard();
-      await Future<void>.delayed(const Duration(milliseconds: 90));
-      await _dismissSystemKeyboard();
-      controller.dispose();
-      focusNode.dispose();
-      GamepadNavigationManager.popLayer(layerId);
-    }
-    if (!mounted || result == null) return;
-    await _runTitleSearch(result!);
+  Future<void> _submitInlineTitleSearch(String rawValue) async {
+    _titleSearchDebounce?.cancel();
+    final query = rawValue.trim();
+    _titleSearchFocusNode.unfocus();
+    await _dismissSystemKeyboard();
+    await _runTitleSearch(query);
+  }
+
+  void _clearInlineTitleSearch() {
+    _titleSearchDebounce?.cancel();
+    _titleSearchController.clear();
+    ++_searchGeneration;
+    setState(() {
+      _titleQuery = '';
+      _remoteSearchEntries = const [];
+      _searchingTitles = false;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+    _titleSearchFocusNode.requestFocus();
+  }
+
+  void _toggleInlineSearchFilters() {
+    _titleSearchFocusNode.unfocus();
+    unawaited(_dismissSystemKeyboard());
+    setState(() => _titleSearchFiltersExpanded = !_titleSearchFiltersExpanded);
   }
 
   void _tapHubCard(int index) {
@@ -2240,6 +2166,8 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _buildHub(BuildContext context) {
+    if (_titleSearchMode) return _buildInlineTitleSearchHub(context);
+
     final theme = Theme.of(context);
     return CustomScrollView(
       controller: _libraryScrollController,
@@ -2287,7 +2215,180 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
 
-  Widget _buildFilters(BuildContext context) {
+  Widget _buildInlineTitleSearchHub(BuildContext context) {
+    final theme = Theme.of(context);
+    return CustomScrollView(
+      controller: _libraryScrollController,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        SliverToBoxAdapter(child: _buildInlineTitleSearchRow(context, theme)),
+        if (_titleSearchFiltersExpanded) ...[
+          SliverToBoxAdapter(child: SizedBox(height: 8.r)),
+          SliverToBoxAdapter(child: _buildFilters(context, includeSearch: false)),
+        ],
+        SliverToBoxAdapter(child: SizedBox(height: 10.r)),
+        _buildNativeLibrarySliver(context, theme),
+        _buildCatalogProgressSliver(context),
+        SliverToBoxAdapter(child: SizedBox(height: 42.r)),
+      ],
+    );
+  }
+
+  Widget _buildInlineTitleSearchRow(BuildContext context, ThemeData theme) {
+    final locale = Localizations.localeOf(context).languageCode;
+    final visible = _visibleLibraryItems;
+    final countLabel = locale == 'fr'
+        ? '${visible.length} résultat${visible.length > 1 ? 's' : ''}'
+        : '${visible.length} result${visible.length == 1 ? '' : 's'}';
+    final activeFilters = <bool>[
+      _languageFilter != 'all',
+      _sourceFilter != 'all',
+      _alphabetAnchor != null,
+      !_hideAdultContent,
+    ].where((value) => value).length;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(
+                color: _titleSearchFocusNode.hasFocus
+                    ? theme.colorScheme.primary
+                    : Colors.transparent,
+                width: 2.r,
+              ),
+            ),
+            child: TextField(
+              controller: _titleSearchController,
+              focusNode: _titleSearchFocusNode,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              onTap: () {
+                if (mounted) setState(() {});
+              },
+              onChanged: _scheduleInlineTitleSearch,
+              onSubmitted: _submitInlineTitleSearch,
+              decoration: InputDecoration(
+                hintText: locale == 'fr' ? 'Rechercher…' : 'Search…',
+                prefixIcon: const Icon(Symbols.search_rounded),
+                suffixIcon: _titleSearchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: locale == 'fr' ? 'Effacer' : 'Clear',
+                        onPressed: _clearInlineTitleSearch,
+                        icon: const Icon(Symbols.close_rounded),
+                      ),
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12.r,
+                  vertical: 10.r,
+                ),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.r),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(width: 10.r),
+        if (_searchingTitles) ...[
+          SizedBox(
+            width: 14.r,
+            height: 14.r,
+            child: const CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 7.r),
+        ],
+        Text(
+          countLabel,
+          style: TextStyle(
+            fontSize: 12.r,
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        SizedBox(width: 10.r),
+        GestureDetector(
+          onTap: _toggleInlineSearchFilters,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 12.r, vertical: 9.r),
+            decoration: BoxDecoration(
+              color: _titleSearchFiltersExpanded
+                  ? theme.colorScheme.primary.withValues(alpha: 0.18)
+                  : (activeFilters > 0
+                      ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                      : theme.colorScheme.surface.withValues(alpha: 0.5)),
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(
+                color: _titleSearchFiltersExpanded
+                    ? theme.colorScheme.primary
+                    : (activeFilters > 0
+                        ? theme.colorScheme.primary.withValues(alpha: 0.5)
+                        : Colors.transparent),
+                width: 2.r,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Symbols.tune_rounded, size: 18.r),
+                SizedBox(width: 6.r),
+                Text(
+                  locale == 'fr' ? 'Filtres' : 'Filters',
+                  style: TextStyle(
+                    fontSize: 13.r,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (activeFilters > 0) ...[
+                  SizedBox(width: 6.r),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6.r, vertical: 1.r),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Text(
+                      '$activeFilters',
+                      style: TextStyle(
+                        fontSize: 11.r,
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+                SizedBox(width: 4.r),
+                Icon(
+                  _titleSearchFiltersExpanded
+                      ? Symbols.expand_less_rounded
+                      : Symbols.expand_more_rounded,
+                  size: 16.r,
+                ),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(width: 6.r),
+        IconButton(
+          tooltip: locale == 'fr' ? 'Fermer la recherche' : 'Close search',
+          onPressed: _leaveTitleSearchMode,
+          icon: const Icon(Symbols.close_rounded),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilters(BuildContext context, {bool includeSearch = true}) {
     final locale = Localizations.localeOf(context).languageCode;
     final visible = _visibleLibraryItems;
     final countLabel = _titleQuery.isNotEmpty
@@ -2369,16 +2470,18 @@ class LibraryScreenState extends State<LibraryScreen> {
               value: _contentFilterLabel(),
               action: _openContentMenu,
             ),
-            SizedBox(width: 8.r),
-            control(
-              index: 5,
-              icon: Symbols.search_rounded,
-              label: locale == 'fr' ? 'Recherche' : 'Search',
-              value: _titleQuery.isEmpty
-                  ? (locale == 'fr' ? 'Titre' : 'Title')
-                  : _titleQuery,
-              action: _openTitleSearchDialog,
-            ),
+            if (includeSearch) ...[
+              SizedBox(width: 8.r),
+              control(
+                index: 5,
+                icon: Symbols.search_rounded,
+                label: locale == 'fr' ? 'Recherche' : 'Search',
+                value: _titleQuery.isEmpty
+                    ? (locale == 'fr' ? 'Titre' : 'Title')
+                    : _titleQuery,
+                action: _enterTitleSearchMode,
+              ),
+            ],
           ],
         ),
         SizedBox(height: 7.r),
