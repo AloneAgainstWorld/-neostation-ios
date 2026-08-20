@@ -77,6 +77,12 @@ class LibraryAddon {
   bool get isMetadataOnlyOnIos =>
       manifest['iosCompatibility']?.toString() == 'metadata-only';
 
+  bool get isRepositoryDeprecationStub {
+    final package = androidPackage;
+    return package == 'eu.kanade.tachiyomi.extension.all.keiyoushi' ||
+        package == 'eu.kanade.tachiyomi.extension.all.mihon';
+  }
+
   String? get minimumAppVersion {
     final value = manifest['minAppVersion']?.toString().trim();
     return value == null || value.isEmpty ? null : value;
@@ -273,6 +279,7 @@ class LibraryAddonService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
     _addons.clear();
+    var prunedDeprecationStubs = false;
 
     if (raw != null && raw.isNotEmpty) {
       try {
@@ -281,9 +288,14 @@ class LibraryAddonService {
           for (final item in decoded) {
             if (item is! Map) continue;
             try {
-              _addons.add(
-                LibraryAddon.fromJson(Map<String, dynamic>.from(item)),
+              final addon = LibraryAddon.fromJson(
+                Map<String, dynamic>.from(item),
               );
+              if (addon.isRepositoryDeprecationStub) {
+                prunedDeprecationStubs = true;
+                continue;
+              }
+              _addons.add(addon);
             } catch (_) {
               // One corrupt/obsolete source must not make the whole Library
               // unusable; valid manifests still load normally.
@@ -297,6 +309,7 @@ class LibraryAddonService {
 
     _sortAddons();
     _loaded = true;
+    if (prunedDeprecationStubs) await _persist();
     return addons;
   }
 
@@ -310,6 +323,34 @@ class LibraryAddonService {
       throw const LibraryAddonException('Repository URL must use HTTPS.');
     }
 
+    var effectiveUri = uri;
+    var response = await _downloadRepository(uri);
+
+    // Keiyoushi intentionally reduced index.min.json to two migration-warning
+    // pseudo extensions. They are not reading sources. When that exact stub is
+    // detected, transparently use the sibling full index.json instead.
+    if (_looksLikeKeiyoushiDeprecationStub(response.bodyBytes) &&
+        uri.path.endsWith('/index.min.json')) {
+      final fullPath = uri.path.substring(
+            0,
+            uri.path.length - 'index.min.json'.length,
+          ) +
+          'index.json';
+      final fullUri = uri.replace(path: fullPath);
+      final fullResponse = await _downloadRepository(fullUri);
+      if (!_looksLikeKeiyoushiDeprecationStub(fullResponse.bodyBytes)) {
+        effectiveUri = fullUri;
+        response = fullResponse;
+      }
+    }
+
+    return installDocumentFromJson(
+      utf8.decode(response.bodyBytes),
+      origin: effectiveUri.toString(),
+    );
+  }
+
+  Future<http.Response> _downloadRepository(Uri uri) async {
     http.Response response;
     try {
       response = await http
@@ -327,11 +368,28 @@ class LibraryAddonService {
     if (response.bodyBytes.length > _maxDocumentBytes) {
       throw const LibraryAddonException('Repository is larger than 20 MB.');
     }
+    return response;
+  }
 
-    return installDocumentFromJson(
-      utf8.decode(response.bodyBytes),
-      origin: uri.toString(),
-    );
+  static bool _looksLikeKeiyoushiDeprecationStub(List<int> bytes) {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(utf8.decode(bytes));
+    } catch (_) {
+      return false;
+    }
+    if (decoded is! List || decoded.length > 4) return false;
+
+    final packages = <String>{};
+    for (final rawEntry in decoded) {
+      if (rawEntry is! Map) continue;
+      final package = rawEntry['pkg']?.toString().trim();
+      if (package != null && package.isNotEmpty) packages.add(package);
+    }
+    return packages.contains(
+          'eu.kanade.tachiyomi.extension.all.keiyoushi',
+        ) &&
+        packages.contains('eu.kanade.tachiyomi.extension.all.mihon');
   }
 
   Future<LibraryAddonBatchInstallResult> installDocumentFromJson(
@@ -485,7 +543,9 @@ class LibraryAddonService {
       if (rawEntry is! Map) continue;
       final entry = Map<String, dynamic>.from(rawEntry);
       final packageName = entry['pkg']?.toString().trim() ?? '';
-      if (packageName.isEmpty) continue;
+      if (packageName.isEmpty || _isRepositoryDeprecationPackage(packageName)) {
+        continue;
+      }
 
       final extensionName = entry['name']?.toString().trim() ?? packageName;
       final version = entry['version']?.toString().trim().isNotEmpty == true
@@ -561,6 +621,11 @@ class LibraryAddonService {
       );
     }
     return result;
+  }
+
+  static bool _isRepositoryDeprecationPackage(String packageName) {
+    return packageName == 'eu.kanade.tachiyomi.extension.all.keiyoushi' ||
+        packageName == 'eu.kanade.tachiyomi.extension.all.mihon';
   }
 
   static String _tachiyomiAddonId(String packageName, String sourceId) {
