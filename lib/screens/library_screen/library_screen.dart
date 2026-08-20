@@ -454,7 +454,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           child: Padding(
             padding: EdgeInsets.all(2.r),
             child: Image.asset(
-              'assets/images/icons/library-manga.webp',
+              'assets/images/icons/library-manga-clean.webp',
               fit: BoxFit.contain,
               alignment: Alignment.center,
               filterQuality: FilterQuality.high,
