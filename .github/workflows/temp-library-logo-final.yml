@@ -49,7 +49,7 @@ jobs:
 
       - name: Rebuild clean Library logo asset
         run: |
-          base64 --decode assets/images/icons/library-manga-clean.b64 > assets/images/icons/library-manga-clean.webp
+          base64 -D -i assets/images/icons/library-manga-clean.b64 -o assets/images/icons/library-manga-clean.webp
           file assets/images/icons/library-manga-clean.webp
           python3 - <<'PY'
           from pathlib import Path
