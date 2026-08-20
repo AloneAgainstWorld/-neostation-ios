@@ -823,6 +823,10 @@ extension NeoSyncCore on NeoSyncProvider {
       // 3. Escanear archivos en esas rutas pero en un Isolate para no bloquear la UI
       final List<File> allFiles = [];
       const int maxFileSize = 10 * 1024 * 1024; // 10MB
+      final armsx2ScanRoot =
+          Platform.isIOS && system.folderName.toLowerCase() == 'ps2'
+          ? ConfigService.linkedArmsx2SaveFolderPath
+          : null;
 
       // Execute heavy listing and filtering in background
       final List<String> filePaths = await Isolate.run(() {
@@ -834,7 +838,11 @@ extension NeoSyncCore on NeoSyncProvider {
               (file) {
                 try {
                   final size = file.lengthSync();
-                  return size <= maxFileSize;
+                  final inArmsx2Root =
+                      armsx2ScanRoot != null &&
+                      (path.isWithin(armsx2ScanRoot, file.path) ||
+                          path.equals(armsx2ScanRoot, file.parent.path));
+                  return inArmsx2Root || size <= maxFileSize;
                 } catch (e) {
                   return false;
                 }
