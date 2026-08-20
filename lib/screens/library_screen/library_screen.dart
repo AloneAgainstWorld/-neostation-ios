@@ -1230,18 +1230,47 @@ class LibraryScreenState extends State<LibraryScreen> {
             }
           }
 
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(horizontal: 34.r, vertical: 24.r),
-            child: NeoGlass(
-              role: GlassSurfaceRole.card,
-              borderRadius: BorderRadius.circular(18.r),
-              enableBackdropBlur: true,
-              showSheen: false,
-              padding: EdgeInsets.fromLTRB(22.r, 20.r, 22.r, 18.r),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 720.r),
-                child: Column(
+          final media = MediaQuery.of(dialogContext);
+          final keyboardInset = media.viewInsets.bottom;
+          final keyboardVisible = keyboardInset > 0;
+          final horizontalInset = 34.r;
+          final topInset = keyboardVisible ? 8.r : 24.r;
+          final bottomInset = keyboardVisible ? keyboardInset + 10.r : 24.r;
+          final availableHeight =
+              (media.size.height - topInset - bottomInset)
+                  .clamp(180.0, media.size.height)
+                  .toDouble();
+
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.fromLTRB(
+              horizontalInset,
+              topInset,
+              horizontalInset,
+              bottomInset,
+            ),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: EdgeInsets.zero,
+                child: NeoGlass(
+                  role: GlassSurfaceRole.card,
+                  borderRadius: BorderRadius.circular(18.r),
+                  enableBackdropBlur: true,
+                  showSheen: false,
+                  padding: EdgeInsets.fromLTRB(22.r, 16.r, 22.r, 14.r),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: 720.r,
+                      maxHeight: availableHeight,
+                    ),
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.manual,
+                      physics: const ClampingScrollPhysics(),
+                      child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1267,6 +1296,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                       autofocus: true,
                       textInputAction: TextInputAction.search,
                       textAlignVertical: TextAlignVertical.center,
+                      scrollPadding: EdgeInsets.only(
+                        bottom: keyboardVisible ? keyboardInset + 18.r : 18.r,
+                      ),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -1329,7 +1361,10 @@ class LibraryScreenState extends State<LibraryScreen> {
                         ),
                       ],
                     ),
-                  ],
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
