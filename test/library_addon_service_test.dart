@@ -278,7 +278,7 @@ void main() {
         },
       ]);
       const origin =
-          'https://raw.githubusercontent.com/example/aidoku/gh-pages/index.min.json';
+          'https://raw.githubusercontent.com/example/remove-test/gh-pages/index.min.json';
       await LibraryAddonService.instance.installDocumentFromJson(
         raw,
         origin: origin,
