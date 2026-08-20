@@ -1,0 +1,215 @@
+name: Temporary Library add-ons stage 2 validation
+
+on:
+  push:
+    branches:
+      - feature/library-hub
+
+permissions:
+  contents: write
+  statuses: write
+
+env:
+  SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+  SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+
+jobs:
+  build:
+    if: github.event.head_commit.message == 'Run Library add-ons stage 2 IPA'
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/library-hub
+          fetch-depth: 0
+
+      - name: Publish run locator
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          payload=json.dumps({'state':'pending','context':'neostation/library-addons-stage2','description':f"run_id={os.environ['RUN_ID']}",'target_url':f"https://github.com/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']}"}).encode()
+          req=urllib.request.Request(f"https://api.github.com/repos/{os.environ['REPO']}/statuses/{os.environ['SHA']}",data=payload,method='POST',headers={'Authorization':f"Bearer {os.environ['GH_TOKEN']}",'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+          urllib.request.urlopen(req,timeout=30).read()
+          PY
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply Library add-ons stage 2 patch
+        run: python3 build-utils/patch_library_addons_stage2.py
+
+      - name: Format and resolve
+        run: |
+          dart format \
+            lib/screens/library_screen/library_screen.dart \
+            lib/services/library_addon_service.dart \
+            lib/screens/app_screen.dart \
+            lib/l10n/app_locale.dart \
+            lib/l10n/app_locale_*.dart \
+            test/library_addon_service_test.dart
+          flutter pub get
+
+      - name: Verify Library add-ons contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          screen=Path('lib/screens/library_screen/library_screen.dart').read_text()
+          service=Path('lib/services/library_addon_service.dart').read_text()
+          app=Path('lib/screens/app_screen.dart').read_text()
+          locale=Path('lib/l10n/app_locale.dart').read_text()
+          assert "Alignment(0, -0.72)" in screen
+          assert 'LibraryAddonService.instance' in screen
+          assert 'FilePicker.platform.pickFiles' in screen
+          assert '_installFromUrl' in screen and '_installFromLocalManifest' in screen
+          assert 'static void backCurrent()' in screen and 'static void deleteCurrent()' in screen
+          assert "schemaV1 = 'neostation.library.v1'" in service
+          assert "_prefsKey = 'neostation_library_addons_v1'" in service
+          assert "uri.scheme != 'https'" in service
+          assert 'LibraryScreen.backCurrent();' in app
+          assert 'LibraryScreen.deleteCurrent();' in app
+          assert 'libraryAddonAddUrl' in locale and 'libraryAddonCount' in locale
+          for lang in ['en','es','ru','zh','zh_hant','pt','fr','de','it','id','ja','ko']:
+              text=Path(f'lib/l10n/app_locale_{lang}.dart').read_text()
+              assert 'AppLocale.libraryAddonAddUrl:' in text, lang
+              assert 'AppLocale.libraryAddonRemoved:' in text, lang
+          print('Library add-ons stage 2 contract verified')
+          PY
+
+      - name: Analyze changed source
+        run: |
+          flutter analyze --no-fatal-infos \
+            lib/screens/library_screen/library_screen.dart \
+            lib/services/library_addon_service.dart \
+            lib/screens/app_screen.dart \
+            lib/l10n/app_locale.dart
+
+      - name: Run focused tests
+        run: |
+          flutter test test/library_addon_service_test.dart
+          flutter test test/rpcs3_library_service_test.dart
+          flutter test test/game_repository_test.dart
+
+      - name: Commit validated source
+        run: |
+          set -euo pipefail
+          git config user.name 'NeoStation Build Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- \
+            lib/screens/library_screen/library_screen.dart \
+            lib/services/library_addon_service.dart \
+            lib/screens/app_screen.dart \
+            lib/l10n/app_locale.dart \
+            lib/l10n/app_locale_en.dart \
+            lib/l10n/app_locale_es.dart \
+            lib/l10n/app_locale_ru.dart \
+            lib/l10n/app_locale_zh.dart \
+            lib/l10n/app_locale_zh_hant.dart \
+            lib/l10n/app_locale_pt.dart \
+            lib/l10n/app_locale_fr.dart \
+            lib/l10n/app_locale_de.dart \
+            lib/l10n/app_locale_it.dart \
+            lib/l10n/app_locale_id.dart \
+            lib/l10n/app_locale_ja.dart \
+            lib/l10n/app_locale_ko.dart \
+            test/library_addon_service_test.dart
+          if ! git diff --cached --quiet; then
+            git commit -m 'Add persistent Library add-on manager'
+            git push origin HEAD:feature/library-hub
+          fi
+
+      - name: ScreenScraper env
+        run: |
+          test -n "$SCREENSCRAPER_DEV_ID"
+          test -n "$SCREENSCRAPER_DEV_PASSWORD"
+          printf 'SCREENSCRAPER_DEV_ID=%s\nSCREENSCRAPER_DEV_PASSWORD=%s\n' "$SCREENSCRAPER_DEV_ID" "$SCREENSCRAPER_DEV_PASSWORD" > .env
+          chmod 600 .env
+
+      - name: Patch flutter_localization
+        run: |
+          FL=$(find "$HOME/.pub-cache" -path '*flutter_localization-0.4.1/ios/flutter_localization/Sources/flutter_localization/FlutterLocalizationPlugin.swift' -print -quit)
+          test -n "$FL"
+          python3 - "$FL" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1]); s=p.read_text()
+          old='      binaryMessenger: registrar.messenger(),\n    )'; new='      binaryMessenger: registrar.messenger()\n    )'
+          if old in s: p.write_text(s.replace(old,new,1))
+          elif new not in s: raise SystemExit('Unexpected flutter_localization source')
+          PY
+
+      - name: Preserve audio policy
+        run: |
+          python3 build-utils/patch_ios_video_player_audio_session.py
+          python3 build-utils/patch_ios_video_player_audio_session.py --check
+
+      - name: Scaffold iOS
+        run: |
+          if [ ! -d ios ]; then
+            flutter create --platforms=ios --org com.neogamelab --project-name neostation .
+          fi
+
+      - name: Configure iOS
+        run: |
+          sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/g' ios/Runner.xcodeproj/project.pbxproj
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.neogamelab.neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string neostation" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :LSApplicationQueriesSchemes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:0 string retroarch" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:1 string shortcuts" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:2 string armsx2" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:3 string melonx" "$PLIST"
+          DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" -path '*device_info_plus*/FPPDeviceInfoPlusPlugin.m' -print -quit)
+          if [ -n "$DEVICE_INFO_FILE" ]; then sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"; fi
+          dart run flutter_launcher_icons
+          chmod +x build-utils/force_ios_fork_icon.sh
+          build-utils/force_ios_fork_icon.sh
+          cd ios && pod install --repo-update
+
+      - name: Configure Flutter build
+        run: flutter build ios --release --no-codesign --config-only --dart-define-from-file=.env
+
+      - name: Build IPA
+        run: |
+          set -euo pipefail
+          rm -rf build/ios/DerivedData build/ios/unsigned
+          mkdir -p build/ios
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" COMPILER_INDEX_STORE_ENABLE=NO build | tee build/ios/xcodebuild-library-addons-stage2.log
+          APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -n "$APP_PATH"
+          mkdir -p build/ios/unsigned/Payload
+          cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
+          (cd build/ios/unsigned && zip -r ../../../NeoStation-Library-Addons-Stage2.ipa Payload)
+
+      - name: Upload IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeoStation-Library-Addons-Stage2
+          path: |
+            NeoStation-Library-Addons-Stage2.ipa
+            build/ios/xcodebuild-library-addons-stage2.log
+          if-no-files-found: warn
+
+      - if: always()
+        run: rm -f .env
