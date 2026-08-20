@@ -1,0 +1,1 @@
+NeoStation Library validation: keep search field visible above the iOS keyboard.
