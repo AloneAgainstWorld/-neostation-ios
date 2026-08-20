@@ -2637,6 +2637,27 @@ class LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  Map<String, List<LibraryAddon>> get _installedRepositoryGroups {
+    final groups = <String, List<LibraryAddon>>{};
+    for (final addon in _addons) {
+      if (!addon.isRepositorySource || addon.isBuiltIn) continue;
+      groups.putIfAbsent(addon.repositoryOrigin, () => <LibraryAddon>[]).add(addon);
+    }
+    return groups;
+  }
+
+  String _repositoryDisplayName(String origin) {
+    final uri = Uri.tryParse(origin);
+    if (uri != null && uri.host.isNotEmpty) {
+      final path = uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+      if (uri.host == 'github.com' && path.length >= 2) {
+        return '${path[0]}/${path[1]}';
+      }
+      return uri.host;
+    }
+    return origin;
+  }
+
   Widget _buildCatalogProgressSliver(BuildContext context) {
     if (!_loadingMoreCatalogs || _titleQuery.isNotEmpty) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -2666,6 +2687,8 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   Widget _buildAddons(BuildContext context) {
     final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final repositoryGroups = _installedRepositoryGroups;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2690,7 +2713,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                 selected: _addonSelectedIndex == 0,
                 icon: Symbols.arrow_back_rounded,
                 title: AppLocale.back.getString(context),
-                subtitle: Localizations.localeOf(context).languageCode == 'fr'
+                subtitle: locale == 'fr'
                     ? 'Revenir à la Bibliothèque et choisir une autre section.'
                     : 'Return to the Library and choose another section.',
                 onTap: () => _tapAddonSelection(0),
@@ -2719,41 +2742,105 @@ class LibraryScreenState extends State<LibraryScreen> {
           ],
         ),
         SizedBox(height: 14.r),
-        Text(
-          AppLocale.libraryAddonInstalledSources.getString(context),
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        SizedBox(height: 8.r),
         Expanded(
           child: _loadingAddons
               ? const Center(child: CircularProgressIndicator())
-              : _addons.isEmpty
-                  ? Align(
-                      alignment: const Alignment(0, -0.5),
-                      child: Text(
-                        AppLocale.libraryEmptyTitle.getString(context),
-                        style: theme.textTheme.bodyMedium?.copyWith(
+              : SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: 26.r),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (repositoryGroups.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(
+                              Symbols.inventory_2_rounded,
+                              size: 18.r,
+                              color: theme.colorScheme.primary,
+                            ),
+                            SizedBox(width: 7.r),
+                            Text(
+                              locale == 'fr' ? 'Dépôts installés' : 'Installed repositories',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 5.r),
+                        Text(
+                          locale == 'fr'
+                              ? 'Un dépôt peut être supprimé entièrement, avec toutes les sources qu’il a ajoutées.'
+                              : 'A repository can be removed entirely together with every source it installed.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                          ),
+                        ),
+                        SizedBox(height: 8.r),
+                        for (final entry in repositoryGroups.entries) ...[
+                          _RepositoryManagementRow(
+                            name: _repositoryDisplayName(entry.key),
+                            origin: entry.key,
+                            sourceCount: entry.value.length,
+                            onDelete: () => _confirmRemoveRepository(entry.value.first),
+                          ),
+                          SizedBox(height: 8.r),
+                        ],
+                        SizedBox(height: 8.r),
+                      ],
+                      Row(
+                        children: [
+                          Icon(
+                            Symbols.extension_rounded,
+                            size: 18.r,
+                            color: theme.colorScheme.primary,
+                          ),
+                          SizedBox(width: 7.r),
+                          Text(
+                            AppLocale.libraryAddonInstalledSources.getString(context),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 5.r),
+                      Text(
+                        locale == 'fr'
+                            ? 'Chaque source ajoutée peut être retirée individuellement. Les sources natives sont conservées.'
+                            : 'Every added source can be removed individually. Built-in sources are kept.',
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
                         ),
                       ),
-                    )
-                  : ListView.separated(
-                      cacheExtent: 1200.r,
-                      padding: EdgeInsets.only(bottom: 26.r),
-                      itemCount: _addons.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 8.r),
-                      itemBuilder: (context, index) {
-                        final addon = _addons[index];
-                        return _AddonRow(
-                          addon: addon,
-                          selected: _addonSelectedIndex == index + 3,
-                          onTap: () => _tapAddonSelection(index + 3),
-                          onDelete: () => addon.isRepositorySource
-                              ? _chooseRemoveSourceOrRepository(addon)
-                              : _confirmRemoveAddon(addon),
-                        );
-                      },
-                    ),
+                      SizedBox(height: 8.r),
+                      if (_addons.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 36.r),
+                          child: Center(
+                            child: Text(
+                              AppLocale.libraryEmptyTitle.getString(context),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        for (var index = 0; index < _addons.length; index++) ...[
+                          _AddonRow(
+                            addon: _addons[index],
+                            selected: _addonSelectedIndex == index + 3,
+                            onTap: () => _tapAddonSelection(index + 3),
+                            onDelete: _addons[index].isBuiltIn
+                                ? null
+                                : () => _confirmRemoveAddon(_addons[index]),
+                          ),
+                          if (index + 1 < _addons.length) SizedBox(height: 8.r),
+                        ],
+                    ],
+                  ),
+                ),
         ),
       ],
     );
@@ -3179,6 +3266,93 @@ class _LibraryCatalogCard extends StatelessWidget {
   }
 }
 
+class _RepositoryManagementRow extends StatelessWidget {
+  const _RepositoryManagementRow({
+    required this.name,
+    required this.origin,
+    required this.sourceCount,
+    required this.onDelete,
+  });
+
+  final String name;
+  final String origin;
+  final int sourceCount;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    final radius = BorderRadius.circular(10.r);
+    return NeoGlass(
+      role: GlassSurfaceRole.card,
+      borderRadius: radius,
+      enableBackdropBlur: false,
+      showSheen: false,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12.r, vertical: 9.r),
+        child: Row(
+          children: [
+            Container(
+              width: 38.r,
+              height: 38.r,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9.r),
+              ),
+              child: Icon(
+                Symbols.inventory_2_rounded,
+                color: theme.colorScheme.primary,
+                size: 21.r,
+              ),
+            ),
+            SizedBox(width: 10.r),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 2.r),
+                  Text(
+                    fr
+                        ? '$sourceCount source${sourceCount > 1 ? 's' : ''} • $origin'
+                        : '$sourceCount source${sourceCount == 1 ? '' : 's'} • $origin',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 10.r),
+            OutlinedButton.icon(
+              onPressed: onDelete,
+              icon: const Icon(Symbols.delete_forever_rounded),
+              label: Text(fr ? 'Supprimer le dépôt' : 'Remove repository'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+                side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.55),
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 12.r, vertical: 9.r),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AddonRow extends StatelessWidget {
   const _AddonRow({
     required this.addon,
@@ -3190,11 +3364,12 @@ class _AddonRow extends StatelessWidget {
   final LibraryAddon addon;
   final bool selected;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
     final radius = BorderRadius.circular(10.r);
     final location = addon.baseUrl == null
         ? 'local'
@@ -3252,13 +3427,36 @@ class _AddonRow extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          trailing: IconButton(
-            tooltip: AppLocale.delete.getString(context),
-            onPressed: onDelete,
-            icon: const Icon(Symbols.delete_outline_rounded),
-          ),
+          trailing: addon.isBuiltIn
+              ? Container(
+                  padding: EdgeInsets.symmetric(horizontal: 9.r, vertical: 5.r),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: Text(
+                    fr ? 'Native' : 'Built-in',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              : OutlinedButton.icon(
+                  onPressed: onDelete,
+                  icon: const Icon(Symbols.delete_outline_rounded),
+                  label: Text(fr ? 'Supprimer la source' : 'Remove source'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                    side: BorderSide(
+                      color: theme.colorScheme.error.withValues(alpha: 0.5),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 10.r, vertical: 8.r),
+                  ),
+                ),
         ),
       ),
     );
   }
 }
+
