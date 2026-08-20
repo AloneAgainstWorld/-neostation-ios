@@ -1,0 +1,35 @@
+name: Apply iOS Update NeoSync Export Safety
+
+on:
+  push:
+    branches:
+      - feature/library-native
+    paths:
+      - tooling/patch_ios_updates_neosync_export_strict_content.py
+      - .github/workflows/apply-ios-updates-neosync-export-safety.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/library-native
+      - name: Apply patch
+        run: python3 tooling/patch_ios_updates_neosync_export_strict_content.py
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            lib/screens/app_screen.dart \
+            lib/screens/library_screen/library_screen.dart \
+            lib/services/library_aidoku_native_service.dart \
+            lib/providers/neo_sync_provider.dart \
+            lib/screens/neo_sync_screen/login_screen/neo_sync_content.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(ios): disable desktop updates export NeoSync saves and harden safe content"
+          git push origin HEAD:feature/library-native
