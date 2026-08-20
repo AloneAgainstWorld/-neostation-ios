@@ -16,6 +16,8 @@ import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
 
+import 'library_reader_screen.dart';
+
 /// Native reading Library for iOS.
 ///
 /// The hub keeps provider management, local-library entry and native content in
@@ -423,11 +425,11 @@ class LibraryScreenState extends State<LibraryScreen> {
 
       if (_hubFocus == _HubFocus.filters) {
         if (_filterSelectedIndex == 0) {
-          _cycleLanguageFilter();
+          _openLanguageMenu();
         } else if (_filterSelectedIndex == 1) {
-          _toggleAlphabeticalSort();
+          _openSortMenu();
         } else {
-          _jumpToNextLetter();
+          _openIndexMenu();
         }
         return;
       }
@@ -540,6 +542,135 @@ class LibraryScreenState extends State<LibraryScreen> {
     if (trimmed.isEmpty) return '';
     final first = trimmed.substring(0, 1).toUpperCase();
     return RegExp(r'[A-ZÀ-ÖØ-Þ0-9]').hasMatch(first) ? first : '#';
+  }
+
+
+  RelativeRect _popupPosition() {
+    final size = MediaQuery.sizeOf(context);
+    final left = 24.r;
+    final top = 190.r;
+    final right = (size.width - 360.r).clamp(24.0, size.width - 48.0);
+    return RelativeRect.fromLTRB(left, top, right, 0);
+  }
+
+  Future<void> _openLanguageMenu() async {
+    final options = _languageOptions;
+    if (options.isEmpty) return;
+    final selected = await showMenu<String>(
+      context: context,
+      position: _popupPosition(),
+      items: [
+        for (final code in options)
+          PopupMenuItem<String>(
+            value: code,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28.r,
+                  child: code == _languageFilter
+                      ? Icon(Symbols.check_rounded, size: 18.r)
+                      : null,
+                ),
+                Text(_languageLabel(code)),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _languageFilter = selected;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+  }
+
+  Future<void> _openSortMenu() async {
+    final selected = await showMenu<bool>(
+      context: context,
+      position: _popupPosition(),
+      items: [
+        PopupMenuItem<bool>(
+          value: true,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28.r,
+                child: _sortAscending
+                    ? Icon(Symbols.check_rounded, size: 18.r)
+                    : null,
+              ),
+              const Text('A → Z'),
+            ],
+          ),
+        ),
+        PopupMenuItem<bool>(
+          value: false,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28.r,
+                child: !_sortAscending
+                    ? Icon(Symbols.check_rounded, size: 18.r)
+                    : null,
+              ),
+              const Text('Z → A'),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _sortAscending = selected;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+  }
+
+  Future<void> _openIndexMenu() async {
+    final visible = _visibleLibraryItems;
+    if (visible.isEmpty) return;
+    final letters = visible
+        .map((entry) => _firstLetter(entry.item.title))
+        .where((letter) => letter.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    if (letters.isEmpty) return;
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: _popupPosition(),
+      items: [
+        for (final letter in letters)
+          PopupMenuItem<String>(
+            value: letter,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28.r,
+                  child: letter == _alphabetAnchor
+                      ? Icon(Symbols.check_rounded, size: 18.r)
+                      : null,
+                ),
+                Text(letter),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    final itemIndex = visible.indexWhere(
+      (entry) => _firstLetter(entry.item.title) == selected,
+    );
+    if (itemIndex < 0) return;
+    setState(() {
+      _alphabetAnchor = selected;
+      _hubFocus = _HubFocus.books;
+      _librarySelectedIndex = itemIndex;
+    });
+    _ensureSelectedBookVisible();
   }
 
   void _tapHubCard(int index) {
@@ -822,121 +953,35 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _showTextReader(LibraryCatalogItem item, String text) async {
-    const layerId = 'library_catalog_reader';
-    GamepadNavigationManager.pushLayer(
-      layerId,
-      onActivate: () {},
-      onDeactivate: () {},
-      modal: true,
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => LibraryReaderScreen(
+          title: item.title,
+          subtitle: item.subtitle,
+          coverUrl: item.coverUrl,
+          text: text,
+        ),
+      ),
     );
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          final size = MediaQuery.sizeOf(dialogContext);
-          final theme = Theme.of(dialogContext);
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(horizontal: 22.r, vertical: 18.r),
-            child: NeoGlass(
-              role: GlassSurfaceRole.card,
-              borderRadius: BorderRadius.circular(18.r),
-              enableBackdropBlur: true,
-              showSheen: false,
-              child: SizedBox(
-                width: size.width * 0.94,
-                height: size.height * 0.88,
-                child: Padding(
-                  padding: EdgeInsets.all(18.r),
-                  child: Column(
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (item.coverUrl != null) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(9.r),
-                              child: SizedBox(
-                                width: 74.r,
-                                height: 104.r,
-                                child: Image.network(
-                                  item.coverUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 16.r),
-                          ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.title,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                if (item.subtitle.isNotEmpty) ...[
-                                  SizedBox(height: 5.r),
-                                  Text(
-                                    item.subtitle,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: AppLocale.close.getString(dialogContext),
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            icon: const Icon(Symbols.close_rounded),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 14.r),
-                      Divider(color: theme.colorScheme.outline.withValues(alpha: 0.18)),
-                      SizedBox(height: 8.r),
-                      Expanded(
-                        child: Scrollbar(
-                          thumbVisibility: true,
-                          child: SingleChildScrollView(
-                            padding: EdgeInsets.fromLTRB(8.r, 4.r, 18.r, 28.r),
-                            child: SelectableText(
-                              text,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                height: 1.55,
-                                fontSize: 16.r.clamp(14.0, 20.0),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    } finally {
-      GamepadNavigationManager.popLayer(layerId);
-    }
   }
+
 
   Future<void> _showPageReader(
     String title,
     List<String> pages, {
     String subtitle = '',
   }) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => LibraryReaderScreen(
+          title: title,
+          subtitle: subtitle,
+          pages: pages,
+        ),
+      ),
+    );
+  }
+) async {
     const layerId = 'library_page_reader';
     GamepadNavigationManager.pushLayer(
       layerId,
@@ -1289,43 +1334,50 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   Widget _buildHub(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildHeader(context),
-        SizedBox(height: 20.r),
-        Row(
-          children: [
-            Expanded(
-              child: _LibraryEntryCard(
-                selected:
-                    _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 0,
-                icon: Symbols.extension_rounded,
-                title: AppLocale.libraryAddons.getString(context),
-                subtitle: AppLocale.libraryAddonsSubtitle.getString(context),
-                onTap: () => _tapHubCard(0),
+    return CustomScrollView(
+      controller: _libraryScrollController,
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        SliverToBoxAdapter(child: _buildHeader(context)),
+        SliverToBoxAdapter(child: SizedBox(height: 20.r)),
+        SliverToBoxAdapter(
+          child: Row(
+            children: [
+              Expanded(
+                child: _LibraryEntryCard(
+                  selected:
+                      _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 0,
+                  icon: Symbols.extension_rounded,
+                  title: AppLocale.libraryAddons.getString(context),
+                  subtitle: AppLocale.libraryAddonsSubtitle.getString(context),
+                  onTap: () => _tapHubCard(0),
+                ),
               ),
-            ),
-            SizedBox(width: 14.r),
-            Expanded(
-              child: _LibraryEntryCard(
-                selected:
-                    _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 1,
-                icon: Symbols.folder_open_rounded,
-                title: AppLocale.libraryLocal.getString(context),
-                subtitle: AppLocale.libraryLocalSubtitle.getString(context),
-                onTap: () => _tapHubCard(1),
+              SizedBox(width: 14.r),
+              Expanded(
+                child: _LibraryEntryCard(
+                  selected:
+                      _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 1,
+                  icon: Symbols.folder_open_rounded,
+                  title: AppLocale.libraryLocal.getString(context),
+                  subtitle: AppLocale.libraryLocalSubtitle.getString(context),
+                  onTap: () => _tapHubCard(1),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        SizedBox(height: 12.r),
-        _buildFilters(context),
-        SizedBox(height: 10.r),
-        Expanded(child: _buildNativeLibrary(context, theme)),
+        SliverToBoxAdapter(child: SizedBox(height: 12.r)),
+        SliverToBoxAdapter(child: _buildFilters(context)),
+        SliverToBoxAdapter(child: SizedBox(height: 12.r)),
+        SliverToBoxAdapter(child: _buildNativeLibrary(context, theme)),
+        SliverToBoxAdapter(child: SizedBox(height: 42.r)),
       ],
     );
   }
+
 
   Widget _buildFilters(BuildContext context) {
     final locale = Localizations.localeOf(context).languageCode;
@@ -1348,7 +1400,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                 _hubFocus = _HubFocus.filters;
                 _filterSelectedIndex = 0;
               });
-              _cycleLanguageFilter();
+              _openLanguageMenu();
             },
           ),
         ),
@@ -1365,7 +1417,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                 _hubFocus = _HubFocus.filters;
                 _filterSelectedIndex = 1;
               });
-              _toggleAlphabeticalSort();
+              _openSortMenu();
             },
           ),
         ),
@@ -1375,14 +1427,14 @@ class LibraryScreenState extends State<LibraryScreen> {
             selected:
                 _hubFocus == _HubFocus.filters && _filterSelectedIndex == 2,
             icon: Symbols.abc_rounded,
-            label: locale == 'fr' ? 'Index' : 'Index',
+            label: 'Index',
             value: _alphabetAnchor == null ? 'A–Z' : _alphabetAnchor!,
             onTap: () {
               setState(() {
                 _hubFocus = _HubFocus.filters;
                 _filterSelectedIndex = 2;
               });
-              _jumpToNextLetter();
+              _openIndexMenu();
             },
           ),
         ),
@@ -1398,99 +1450,122 @@ class LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+
   Widget _buildNativeLibrary(BuildContext context, ThemeData theme) {
     if (_loadingLibrary) {
-      return const Center(child: CircularProgressIndicator());
+      return SizedBox(
+        height: 220.r,
+        child: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     final visible = _visibleLibraryItems;
     if (visible.isEmpty) {
       final hasContent = _libraryItems.isNotEmpty;
-      return Align(
-        alignment: const Alignment(0, -0.48),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Symbols.collections_bookmark_rounded,
-              size: 38.r,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
-            ),
-            SizedBox(height: 8.r),
-            Text(
-              hasContent
-                  ? (Localizations.localeOf(context).languageCode == 'fr'
-                        ? 'Aucun livre pour ce filtre'
-                        : 'No books match this filter')
-                  : AppLocale.libraryEmptyTitle.getString(context),
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+      return SizedBox(
+        height: 220.r,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Symbols.collections_bookmark_rounded,
+                size: 38.r,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
               ),
-            ),
-            SizedBox(height: 5.r),
-            if (_catalogFailures > 0)
+              SizedBox(height: 8.r),
               Text(
-                '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error.withValues(alpha: 0.85),
+                hasContent
+                    ? (Localizations.localeOf(context).languageCode == 'fr'
+                          ? 'Aucun livre pour ce filtre'
+                          : 'No books match this filter')
+                    : AppLocale.libraryEmptyTitle.getString(context),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-          ],
+              if (_catalogFailures > 0) ...[
+                SizedBox(height: 5.r),
+                Text(
+                  '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       );
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const targetExtent = 155.0;
-        final columns = (constraints.maxWidth / targetExtent)
-            .floor()
-            .clamp(2, 8);
+        final columns = constraints.maxWidth >= 1200 ? 6 : 5;
         _libraryColumns = columns;
-        final totalSpacing = (columns - 1) * 12.r;
+        final spacing = 12.r;
+        final totalSpacing = (columns - 1) * spacing;
         final cardWidth = (constraints.maxWidth - totalSpacing) / columns;
-        _libraryRowExtent = (cardWidth / 0.68) + 12.r;
+        final cardHeight = cardWidth / 0.68;
+        _libraryRowExtent = cardHeight + spacing;
+        final rowCount = (visible.length + columns - 1) ~/ columns;
 
-        return GridView.builder(
-          controller: _libraryScrollController,
-          cacheExtent: _libraryRowExtent * 2.4,
-          padding: EdgeInsets.only(bottom: 32.r),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 12.r,
-            crossAxisSpacing: 12.r,
-            childAspectRatio: 0.68,
-          ),
-          itemCount: visible.length,
-          itemBuilder: (context, index) {
-            final entry = visible[index];
-            final languages = _itemLanguageCodes(entry);
-            final languageLabel = languages.isEmpty
-                ? ''
-                : languages.map((code) => code.toUpperCase()).take(2).join(' • ');
-            return KeyedSubtree(
-              key: _keyForBook(entry),
-              child: _LibraryCatalogCard(
-                item: entry.item,
-                languageLabel: languageLabel,
-                selected:
-                    _hubFocus == _HubFocus.books &&
-                    _librarySelectedIndex == index,
-                onTap: () {
-                  SfxService().playNavSound();
-                  setState(() {
-                    _hubFocus = _HubFocus.books;
-                    _librarySelectedIndex = index;
-                  });
-                  _openCatalogItem(entry);
-                },
+        return Column(
+          children: [
+            for (var row = 0; row < rowCount; row++) ...[
+              if (row > 0) SizedBox(height: spacing),
+              SizedBox(
+                height: cardHeight,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var column = 0; column < columns; column++) ...[
+                      if (column > 0) SizedBox(width: spacing),
+                      Expanded(
+                        child: () {
+                          final index = row * columns + column;
+                          if (index >= visible.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final entry = visible[index];
+                          final languages = _itemLanguageCodes(entry);
+                          final languageLabel = languages.isEmpty
+                              ? ''
+                              : languages
+                                    .map((code) => code.toUpperCase())
+                                    .take(2)
+                                    .join(' • ');
+                          return KeyedSubtree(
+                            key: _keyForBook(entry),
+                            child: _LibraryCatalogCard(
+                              item: entry.item,
+                              languageLabel: languageLabel,
+                              selected:
+                                  _hubFocus == _HubFocus.books &&
+                                  _librarySelectedIndex == index,
+                              onTap: () {
+                                SfxService().playNavSound();
+                                setState(() {
+                                  _hubFocus = _HubFocus.books;
+                                  _librarySelectedIndex = index;
+                                });
+                                _openCatalogItem(entry);
+                              },
+                            ),
+                          );
+                        }(),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            );
-          },
+            ],
+          ],
         );
       },
     );
   }
+
 
   Widget _buildAddons(BuildContext context) {
     final theme = Theme.of(context);
