@@ -16,11 +16,10 @@ import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
 
-/// Native Library hub and declarative source manager.
+/// Native reading Library for iOS.
 ///
-/// Installed sources are providers only: users browse the normalized NeoStation
-/// catalog here, never a provider website or WebView. Tachiyomi/Mihon APK-only
-/// sources remain installable as metadata until a native iOS adapter exists.
+/// The hub keeps provider management, local-library entry and native content in
+/// one controller-friendly surface. Provider websites are never embedded.
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -38,7 +37,9 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => LibraryScreenState();
 }
 
-enum _LibraryView { hub, addons }
+enum _LibraryView { hub, addons, local }
+
+enum _HubFocus { shortcuts, filters, books }
 
 class _NativeLibraryEntry {
   const _NativeLibraryEntry({
@@ -59,19 +60,64 @@ class LibraryScreenState extends State<LibraryScreen> {
   final LibraryCatalogService _catalogService = LibraryCatalogService.instance;
   final LibraryMangaDexService _mangaDexService = LibraryMangaDexService.instance;
 
+  final ScrollController _libraryScrollController = ScrollController();
+  final Map<String, GlobalKey> _bookKeys = <String, GlobalKey>{};
+
   _LibraryView _view = _LibraryView.hub;
+  _HubFocus _hubFocus = _HubFocus.shortcuts;
+
   int _hubSelectedIndex = 0;
+  int _filterSelectedIndex = 0;
   int _addonSelectedIndex = 0;
   int _librarySelectedIndex = 0;
   int _libraryColumns = 5;
-  bool _libraryFocused = false;
+  double _libraryRowExtent = 220;
+
+  String _languageFilter = 'all';
+  bool _sortAscending = true;
+  String? _alphabetAnchor;
+
   bool _loadingAddons = true;
   bool _loadingLibrary = true;
   int _catalogFailures = 0;
   List<LibraryAddon> _addons = const [];
   List<_NativeLibraryEntry> _libraryItems = const [];
 
-  int get _addonSelectionCount => 2 + _addons.length;
+  int get _addonSelectionCount => 3 + _addons.length;
+
+  List<_NativeLibraryEntry> get _visibleLibraryItems {
+    final items = _libraryItems.where((entry) {
+      if (_languageFilter == 'all') return true;
+      return _itemLanguageCodes(entry).contains(_languageFilter);
+    }).toList();
+    items.sort((a, b) {
+      final comparison = a.item.title.toLowerCase().compareTo(
+        b.item.title.toLowerCase(),
+      );
+      return _sortAscending ? comparison : -comparison;
+    });
+    return items;
+  }
+
+  List<String> get _languageOptions {
+    final languages = <String>{};
+    for (final entry in _libraryItems) {
+      languages.addAll(_itemLanguageCodes(entry));
+    }
+    final sorted = languages.toList()..sort();
+    final preferred = <String>['fr', 'en'];
+    sorted.sort((a, b) {
+      final ai = preferred.indexOf(a);
+      final bi = preferred.indexOf(b);
+      if (ai >= 0 || bi >= 0) {
+        if (ai < 0) return 1;
+        if (bi < 0) return -1;
+        return ai.compareTo(bi);
+      }
+      return a.compareTo(b);
+    });
+    return <String>['all', ...sorted];
+  }
 
   @override
   void initState() {
@@ -85,6 +131,7 @@ class LibraryScreenState extends State<LibraryScreen> {
     if (identical(LibraryScreen._currentState, this)) {
       LibraryScreen._currentState = null;
     }
+    _libraryScrollController.dispose();
     super.dispose();
   }
 
@@ -95,7 +142,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       _addons = addons;
       _loadingAddons = false;
       if (_addonSelectedIndex >= _addonSelectionCount) {
-        _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999).toInt();
+        _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999);
       }
     });
     await _refreshNativeLibrary(addons);
@@ -113,8 +160,6 @@ class LibraryScreenState extends State<LibraryScreen> {
     final entries = <_NativeLibraryEntry>[];
     var failures = 0;
 
-    // MangaDex is the first built-in iOS-native provider. It feeds NeoStation's
-    // own catalog UI; its website is never embedded or opened.
     try {
       final nativeItems = await _mangaDexService.loadPopular();
       for (final item in nativeItems) {
@@ -130,9 +175,6 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
 
     for (final addon in addons) {
-      // Repository entries backed only by Android APK runtime are intentionally
-      // ignored here. They become visible automatically once a native adapter
-      // exposes a NeoStation catalog endpoint.
       if (!addon.canBrowseOnIos) continue;
       try {
         final items = await _catalogService.loadCatalog(addon);
@@ -150,104 +192,267 @@ class LibraryScreenState extends State<LibraryScreen> {
       }
     }
 
-    entries.sort(
-      (a, b) => a.item.title.toLowerCase().compareTo(b.item.title.toLowerCase()),
-    );
-
     if (!mounted) return;
     setState(() {
       _libraryItems = List.unmodifiable(entries);
       _catalogFailures = failures;
       _loadingLibrary = false;
-      if (_libraryItems.isEmpty) {
+      _alphabetAnchor = null;
+      final visible = _visibleLibraryItems;
+      if (visible.isEmpty) {
         _librarySelectedIndex = 0;
-        _libraryFocused = false;
-      } else if (_librarySelectedIndex >= _libraryItems.length) {
-        _librarySelectedIndex = _libraryItems.length - 1;
+        if (_hubFocus == _HubFocus.books) _hubFocus = _HubFocus.filters;
+      } else if (_librarySelectedIndex >= visible.length) {
+        _librarySelectedIndex = visible.length - 1;
+      }
+    });
+  }
+
+  Set<String> _itemLanguageCodes(_NativeLibraryEntry entry) {
+    final result = <String>{};
+
+    void addLanguage(dynamic value) {
+      if (value == null) return;
+      if (value is Iterable) {
+        for (final item in value) {
+          addLanguage(item);
+        }
+        return;
+      }
+      final raw = value.toString().trim().toLowerCase();
+      if (raw.isEmpty || raw == 'null') return;
+      final normalized = raw.replaceAll('_', '-').split('-').first;
+      if (RegExp(r'^[a-z]{2,3}$').hasMatch(normalized)) {
+        result.add(normalized);
+      }
+    }
+
+    final raw = entry.item.raw;
+    addLanguage(raw['language']);
+    addLanguage(raw['languages']);
+    addLanguage(raw['lang']);
+
+    final attributes = raw['attributes'];
+    if (attributes is Map) {
+      addLanguage(attributes['availableTranslatedLanguages']);
+      addLanguage(attributes['translatedLanguage']);
+      addLanguage(attributes['originalLanguage']);
+      final titles = attributes['title'];
+      if (titles is Map) addLanguage(titles.keys);
+      final descriptions = attributes['description'];
+      if (descriptions is Map) addLanguage(descriptions.keys);
+    }
+
+    // Gallica's public-domain OPDS feed is primarily French. Keep its books
+    // filterable even when an individual Atom entry omits dc:language.
+    if (result.isEmpty && entry.source?.isGallicaSource == true) {
+      result.add('fr');
+    }
+
+    return result;
+  }
+
+  String _languageLabel(String code) {
+    if (code == 'all') {
+      return Localizations.localeOf(context).languageCode == 'fr'
+          ? 'Toutes'
+          : 'All';
+    }
+    const labels = <String, String>{
+      'fr': 'Français',
+      'en': 'English',
+      'es': 'Español',
+      'de': 'Deutsch',
+      'it': 'Italiano',
+      'pt': 'Português',
+      'ja': '日本語',
+      'ko': '한국어',
+      'zh': '中文',
+      'ru': 'Русский',
+      'id': 'Indonesia',
+    };
+    return labels[code] ?? code.toUpperCase();
+  }
+
+  String _bookKey(_NativeLibraryEntry entry) =>
+      '${entry.providerId}|${entry.item.id}|${entry.item.title}';
+
+  GlobalKey _keyForBook(_NativeLibraryEntry entry) =>
+      _bookKeys.putIfAbsent(_bookKey(entry), GlobalKey.new);
+
+  void _ensureSelectedBookVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _hubFocus != _HubFocus.books) return;
+      final visible = _visibleLibraryItems;
+      if (_librarySelectedIndex < 0 ||
+          _librarySelectedIndex >= visible.length) {
+        return;
+      }
+
+      final context = _keyForBook(visible[_librarySelectedIndex]).currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          alignment: 0.22,
+        );
+        return;
+      }
+
+      if (!_libraryScrollController.hasClients) return;
+      final row = _librarySelectedIndex ~/ _libraryColumns;
+      final top = row * _libraryRowExtent;
+      final position = _libraryScrollController.position;
+      final viewport = position.viewportDimension;
+      final current = position.pixels;
+      var target = current;
+      if (top < current) {
+        target = top;
+      } else if (top + _libraryRowExtent > current + viewport) {
+        target = top + _libraryRowExtent - viewport;
+      }
+      target = target.clamp(0.0, position.maxScrollExtent);
+      if ((target - current).abs() > 1) {
+        _libraryScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+        );
       }
     });
   }
 
   bool _navigateHorizontal(int delta) {
-    if (_view != _LibraryView.hub) return false;
-
-    if (_libraryFocused && _libraryItems.isNotEmpty) {
-      final next = (_librarySelectedIndex + delta)
-          .clamp(0, _libraryItems.length - 1)
-          .toInt();
-      if (next == _librarySelectedIndex) return false;
-      setState(() => _librarySelectedIndex = next);
+    if (_view == _LibraryView.addons) {
+      if (_addonSelectedIndex > 2) return false;
+      final next = (_addonSelectedIndex + delta).clamp(0, 2);
+      if (next == _addonSelectedIndex) return false;
+      setState(() => _addonSelectedIndex = next);
       return true;
     }
+    if (_view != _LibraryView.hub) return false;
 
-    final next = (_hubSelectedIndex + delta).clamp(0, 1).toInt();
-    if (next == _hubSelectedIndex) return false;
-    setState(() => _hubSelectedIndex = next);
-    return true;
+    switch (_hubFocus) {
+      case _HubFocus.shortcuts:
+        final next = (_hubSelectedIndex + delta).clamp(0, 1);
+        if (next == _hubSelectedIndex) return false;
+        setState(() => _hubSelectedIndex = next);
+        return true;
+      case _HubFocus.filters:
+        final next = (_filterSelectedIndex + delta).clamp(0, 2);
+        if (next == _filterSelectedIndex) return false;
+        setState(() => _filterSelectedIndex = next);
+        return true;
+      case _HubFocus.books:
+        final visible = _visibleLibraryItems;
+        if (visible.isEmpty) return false;
+        final next = (_librarySelectedIndex + delta).clamp(
+          0,
+          visible.length - 1,
+        );
+        if (next == _librarySelectedIndex) return false;
+        setState(() => _librarySelectedIndex = next);
+        _ensureSelectedBookVisible();
+        return true;
+    }
   }
 
   bool _navigateVertical(int delta) {
     if (_view == _LibraryView.addons) {
       if (_addonSelectionCount <= 0) return false;
-      final next = (_addonSelectedIndex + delta)
-          .clamp(0, _addonSelectionCount - 1)
-          .toInt();
+      final next = (_addonSelectedIndex + delta).clamp(
+        0,
+        _addonSelectionCount - 1,
+      );
       if (next == _addonSelectedIndex) return false;
       setState(() => _addonSelectedIndex = next);
       return true;
     }
+    if (_view != _LibraryView.hub) return false;
 
-    if (_libraryItems.isEmpty) return false;
-    if (!_libraryFocused) {
-      if (delta <= 0) return false;
-      setState(() {
-        _libraryFocused = true;
-        _librarySelectedIndex = _librarySelectedIndex
-            .clamp(0, _libraryItems.length - 1)
-            .toInt();
-      });
-      return true;
+    final visible = _visibleLibraryItems;
+    switch (_hubFocus) {
+      case _HubFocus.shortcuts:
+        if (delta <= 0 || _loadingLibrary) return false;
+        setState(() => _hubFocus = _HubFocus.filters);
+        return true;
+      case _HubFocus.filters:
+        if (delta < 0) {
+          setState(() => _hubFocus = _HubFocus.shortcuts);
+          return true;
+        }
+        if (visible.isEmpty) return false;
+        setState(() {
+          _hubFocus = _HubFocus.books;
+          _librarySelectedIndex = _librarySelectedIndex.clamp(
+            0,
+            visible.length - 1,
+          );
+        });
+        _ensureSelectedBookVisible();
+        return true;
+      case _HubFocus.books:
+        if (visible.isEmpty) return false;
+        final next = _librarySelectedIndex + (delta * _libraryColumns);
+        if (delta < 0 && next < 0) {
+          setState(() => _hubFocus = _HubFocus.filters);
+          return true;
+        }
+        final clamped = next.clamp(0, visible.length - 1);
+        if (clamped == _librarySelectedIndex) return false;
+        setState(() => _librarySelectedIndex = clamped);
+        _ensureSelectedBookVisible();
+        return true;
     }
-
-    final next = _librarySelectedIndex + (delta * _libraryColumns);
-    if (delta < 0 && next < 0) {
-      setState(() => _libraryFocused = false);
-      return true;
-    }
-
-    final clamped = next.clamp(0, _libraryItems.length - 1).toInt();
-    if (clamped == _librarySelectedIndex) return false;
-    setState(() => _librarySelectedIndex = clamped);
-    return true;
   }
 
   void _activateSelection() {
     if (_view == _LibraryView.hub) {
-      if (_libraryFocused &&
-          _librarySelectedIndex >= 0 &&
-          _librarySelectedIndex < _libraryItems.length) {
-        _openCatalogItem(_libraryItems[_librarySelectedIndex]);
+      if (_hubFocus == _HubFocus.shortcuts) {
+        if (_hubSelectedIndex == 0) {
+          setState(() {
+            _view = _LibraryView.addons;
+            _addonSelectedIndex = 0;
+          });
+        } else {
+          setState(() => _view = _LibraryView.local);
+        }
         return;
       }
 
-      if (_hubSelectedIndex == 0) {
-        setState(() {
-          _view = _LibraryView.addons;
-          _addonSelectedIndex = 0;
-          _libraryFocused = false;
-        });
-      } else {
-        _showMessage(AppLocale.libraryNextStep.getString(context));
+      if (_hubFocus == _HubFocus.filters) {
+        if (_filterSelectedIndex == 0) {
+          _cycleLanguageFilter();
+        } else if (_filterSelectedIndex == 1) {
+          _toggleAlphabeticalSort();
+        } else {
+          _jumpToNextLetter();
+        }
+        return;
+      }
+
+      final visible = _visibleLibraryItems;
+      if (_librarySelectedIndex >= 0 &&
+          _librarySelectedIndex < visible.length) {
+        _openCatalogItem(visible[_librarySelectedIndex]);
       }
       return;
     }
 
+    if (_view == _LibraryView.local) {
+      _backToHub(selectLocal: true);
+      return;
+    }
+
     if (_addonSelectedIndex == 0) {
-      _installFromUrl();
+      _backToHub();
     } else if (_addonSelectedIndex == 1) {
+      _installFromUrl();
+    } else if (_addonSelectedIndex == 2) {
       _installFromLocalManifest();
     } else {
-      final addonIndex = _addonSelectedIndex - 2;
+      final addonIndex = _addonSelectedIndex - 3;
       if (addonIndex >= 0 && addonIndex < _addons.length) {
         _showAddonDetails(_addons[addonIndex]);
       }
@@ -255,32 +460,93 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _back() {
-    if (_view == _LibraryView.addons) {
-      setState(() {
-        _view = _LibraryView.hub;
-        _hubSelectedIndex = 0;
-        _libraryFocused = false;
-      });
+    if (_view == _LibraryView.addons || _view == _LibraryView.local) {
+      _backToHub();
       return;
     }
 
-    if (_libraryFocused) {
-      setState(() => _libraryFocused = false);
+    if (_hubFocus == _HubFocus.books) {
+      setState(() => _hubFocus = _HubFocus.filters);
+    } else if (_hubFocus == _HubFocus.filters) {
+      setState(() => _hubFocus = _HubFocus.shortcuts);
     }
   }
 
+  void _backToHub({bool selectLocal = false}) {
+    setState(() {
+      _view = _LibraryView.hub;
+      _hubFocus = _HubFocus.shortcuts;
+      _hubSelectedIndex = selectLocal ? 1 : 0;
+    });
+  }
+
   Future<void> _deleteSelectedAddon() async {
-    if (_view != _LibraryView.addons || _addonSelectedIndex < 2) return;
-    final addonIndex = _addonSelectedIndex - 2;
+    if (_view != _LibraryView.addons || _addonSelectedIndex < 3) return;
+    final addonIndex = _addonSelectedIndex - 3;
     if (addonIndex < 0 || addonIndex >= _addons.length) return;
     await _confirmRemoveAddon(_addons[addonIndex]);
+  }
+
+  void _cycleLanguageFilter() {
+    final options = _languageOptions;
+    if (options.isEmpty) return;
+    var index = options.indexOf(_languageFilter);
+    if (index < 0) index = 0;
+    final next = options[(index + 1) % options.length];
+    setState(() {
+      _languageFilter = next;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+  }
+
+  void _toggleAlphabeticalSort() {
+    setState(() {
+      _sortAscending = !_sortAscending;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+  }
+
+  void _jumpToNextLetter() {
+    final visible = _visibleLibraryItems;
+    if (visible.isEmpty) return;
+    final letters = visible
+        .map((entry) => _firstLetter(entry.item.title))
+        .where((letter) => letter.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    if (letters.isEmpty) return;
+
+    final current = _alphabetAnchor;
+    final currentIndex = current == null ? -1 : letters.indexOf(current);
+    final nextLetter = letters[(currentIndex + 1) % letters.length];
+    final itemIndex = visible.indexWhere(
+      (entry) => _firstLetter(entry.item.title) == nextLetter,
+    );
+    if (itemIndex < 0) return;
+
+    setState(() {
+      _alphabetAnchor = nextLetter;
+      _hubFocus = _HubFocus.books;
+      _librarySelectedIndex = itemIndex;
+    });
+    _ensureSelectedBookVisible();
+  }
+
+  String _firstLetter(String title) {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return '';
+    final first = trimmed.substring(0, 1).toUpperCase();
+    return RegExp(r'[A-ZÀ-ÖØ-Þ0-9]').hasMatch(first) ? first : '#';
   }
 
   void _tapHubCard(int index) {
     SfxService().playNavSound();
     setState(() {
+      _hubFocus = _HubFocus.shortcuts;
       _hubSelectedIndex = index;
-      _libraryFocused = false;
     });
     _activateSelection();
   }
@@ -316,7 +582,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         builder: (dialogContext) => AlertDialog(
           title: Text(AppLocale.libraryAddonUrlTitle.getString(dialogContext)),
           content: SizedBox(
-            width: 430.r,
+            width: 520.r,
             child: TextField(
               controller: controller,
               autofocus: true,
@@ -346,9 +612,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                 final value = controller.text.trim();
                 if (value.isNotEmpty) Navigator.of(dialogContext).pop(value);
               },
-              child: Text(
-                AppLocale.libraryAddonInstall.getString(dialogContext),
-              ),
+              child: Text(AppLocale.libraryAddonInstall.getString(dialogContext)),
             ),
           ],
         ),
@@ -386,17 +650,17 @@ class LibraryScreenState extends State<LibraryScreen> {
                     .replaceFirst('{name}', addon.name),
         );
       }
-    } on LibraryAddonException catch (e) {
+    } on LibraryAddonException catch (error) {
       _showMessage(
         AppLocale.libraryAddonError
             .getString(context)
-            .replaceFirst('{error}', e.message),
+            .replaceFirst('{error}', error.message),
       );
-    } catch (e) {
+    } catch (error) {
       _showMessage(
         AppLocale.libraryAddonError
             .getString(context)
-            .replaceFirst('{error}', e.toString()),
+            .replaceFirst('{error}', error.toString()),
       );
     }
   }
@@ -442,17 +706,17 @@ class LibraryScreenState extends State<LibraryScreen> {
                     .replaceFirst('{name}', addon.name),
         );
       }
-    } on LibraryAddonException catch (e) {
+    } on LibraryAddonException catch (error) {
       _showMessage(
         AppLocale.libraryAddonError
             .getString(context)
-            .replaceFirst('{error}', e.message),
+            .replaceFirst('{error}', error.message),
       );
-    } catch (e) {
+    } catch (error) {
       _showMessage(
         AppLocale.libraryAddonError
             .getString(context)
-            .replaceFirst('{error}', e.toString()),
+            .replaceFirst('{error}', error.toString()),
       );
     }
   }
@@ -466,16 +730,15 @@ class LibraryScreenState extends State<LibraryScreen> {
       modal: true,
     );
     try {
-      final baseUrl = addon.baseUrl;
-      final location = baseUrl == null
+      final location = addon.baseUrl == null
           ? 'local'
-          : (Uri.tryParse(baseUrl)?.host ?? baseUrl);
+          : (Uri.tryParse(addon.baseUrl!)?.host ?? addon.baseUrl!);
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(addon.name),
           content: SizedBox(
-            width: 430.r,
+            width: 520.r,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -489,11 +752,10 @@ class LibraryScreenState extends State<LibraryScreen> {
                   SizedBox(height: 10.r),
                   Text(
                     'Tachiyomi/Mihon • ${addon.language ?? 'all'} • iOS metadata',
-                    style: Theme.of(dialogContext).textTheme.bodySmall
-                        ?.copyWith(
-                          color: Theme.of(dialogContext).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(dialogContext).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   if (addon.androidPackage != null)
                     Text(
@@ -505,7 +767,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 Text(
                   addon.origin,
                   style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(dialogContext).colorScheme.onSurface
+                    color: Theme.of(dialogContext)
+                        .colorScheme
+                        .onSurface
                         .withValues(alpha: 0.6),
                   ),
                 ),
@@ -532,6 +796,32 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
 
     final item = entry.item;
+    if (item.pageUrls.isNotEmpty) {
+      await _showPageReader(item.title, item.pageUrls, subtitle: item.subtitle);
+      return;
+    }
+
+    String text;
+    try {
+      _showMessage(
+        Localizations.localeOf(context).languageCode == 'fr'
+            ? 'Chargement du livre…'
+            : 'Loading book…',
+      );
+      text = await _catalogService.loadReadableText(item);
+    } on LibraryAddonException catch (error) {
+      if (item.description.isNotEmpty) {
+        text = item.description;
+      } else {
+        _showMessage(error.message);
+        return;
+      }
+    }
+    if (!mounted) return;
+    await _showTextReader(item, text);
+  }
+
+  Future<void> _showTextReader(LibraryCatalogItem item, String text) async {
     const layerId = 'library_catalog_reader';
     GamepadNavigationManager.pushLayer(
       layerId,
@@ -540,63 +830,207 @@ class LibraryScreenState extends State<LibraryScreen> {
       modal: true,
     );
     try {
-      if (item.pageUrls.isNotEmpty) {
-        await showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(item.title),
-            content: SizedBox(
-              width: 680.r,
-              height: 540.r,
-              child: ListView.separated(
-                itemCount: item.pageUrls.length,
-                separatorBuilder: (_, _) => SizedBox(height: 12.r),
-                itemBuilder: (_, index) => Image.network(
-                  item.pageUrls[index],
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          final size = MediaQuery.sizeOf(dialogContext);
+          final theme = Theme.of(dialogContext);
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.symmetric(horizontal: 22.r, vertical: 18.r),
+            child: NeoGlass(
+              role: GlassSurfaceRole.card,
+              borderRadius: BorderRadius.circular(18.r),
+              enableBackdropBlur: true,
+              showSheen: false,
+              child: SizedBox(
+                width: size.width * 0.94,
+                height: size.height * 0.88,
+                child: Padding(
+                  padding: EdgeInsets.all(18.r),
+                  child: Column(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (item.coverUrl != null) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(9.r),
+                              child: SizedBox(
+                                width: 74.r,
+                                height: 104.r,
+                                child: Image.network(
+                                  item.coverUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 16.r),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.title,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                if (item.subtitle.isNotEmpty) ...[
+                                  SizedBox(height: 5.r),
+                                  Text(
+                                    item.subtitle,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: AppLocale.close.getString(dialogContext),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: const Icon(Symbols.close_rounded),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 14.r),
+                      Divider(color: theme.colorScheme.outline.withValues(alpha: 0.18)),
+                      SizedBox(height: 8.r),
+                      Expanded(
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.fromLTRB(8.r, 4.r, 18.r, 28.r),
+                            child: SelectableText(
+                              text,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                height: 1.55,
+                                fontSize: 16.r.clamp(14.0, 20.0),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(AppLocale.close.getString(dialogContext)),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
+          );
+        },
+      );
+    } finally {
+      GamepadNavigationManager.popLayer(layerId);
+    }
+  }
 
-      String text;
-      try {
-        text = await _catalogService.loadReadableText(item);
-      } on LibraryAddonException catch (error) {
-        if (item.description.isNotEmpty) {
-          text = item.description;
-        } else {
-          _showMessage(error.message);
-          return;
-        }
-      }
-      if (!mounted) return;
+  Future<void> _showPageReader(
+    String title,
+    List<String> pages, {
+    String subtitle = '',
+  }) async {
+    const layerId = 'library_page_reader';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    try {
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(item.title),
-          content: SizedBox(
-            width: 680.r,
-            height: 540.r,
-            child: SingleChildScrollView(child: SelectableText(text)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(AppLocale.close.getString(dialogContext)),
+        builder: (dialogContext) {
+          final size = MediaQuery.sizeOf(dialogContext);
+          final theme = Theme.of(dialogContext);
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.symmetric(horizontal: 18.r, vertical: 14.r),
+            child: NeoGlass(
+              role: GlassSurfaceRole.card,
+              borderRadius: BorderRadius.circular(18.r),
+              enableBackdropBlur: true,
+              showSheen: false,
+              child: SizedBox(
+                width: size.width * 0.95,
+                height: size.height * 0.90,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(18.r, 12.r, 10.r, 8.r),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                if (subtitle.isNotEmpty)
+                                  Text(
+                                    subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(
+                                        alpha: 0.65,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: const Icon(Symbols.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.separated(
+                        cacheExtent: 1800.r,
+                        padding: EdgeInsets.fromLTRB(14.r, 6.r, 14.r, 24.r),
+                        itemCount: pages.length,
+                        separatorBuilder: (_, __) => SizedBox(height: 10.r),
+                        itemBuilder: (_, index) => Image.network(
+                          pages[index],
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, progress) {
+                            if (progress == null) return child;
+                            return SizedBox(
+                              height: 300.r,
+                              child: const Center(child: CircularProgressIndicator()),
+                            );
+                          },
+                          errorBuilder: (_, __, ___) => SizedBox(
+                            height: 160.r,
+                            child: const Center(
+                              child: Icon(Symbols.broken_image_rounded),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        ),
+          );
+        },
       );
     } finally {
       GamepadNavigationManager.popLayer(layerId);
@@ -606,9 +1040,15 @@ class LibraryScreenState extends State<LibraryScreen> {
   Future<void> _openMangaDexTitle(LibraryCatalogItem item) async {
     final mangaId = item.raw['mangadexId']?.toString().trim() ?? item.id;
     final localeLanguage = Localizations.localeOf(context).languageCode;
-    final languages = <String>{localeLanguage, 'en'}.toList();
+    final languages = <String>{
+      if (_languageFilter != 'all') _languageFilter,
+      localeLanguage,
+      'en',
+    }.toList();
 
-    _showMessage('Chargement des chapitres…');
+    _showMessage(
+      localeLanguage == 'fr' ? 'Chargement des chapitres…' : 'Loading chapters…',
+    );
     List<LibraryMangaDexChapter> chapters;
     try {
       chapters = await _mangaDexService.loadChapters(
@@ -618,13 +1058,15 @@ class LibraryScreenState extends State<LibraryScreen> {
     } on LibraryAddonException catch (error) {
       _showMessage(error.message);
       return;
-    } catch (error) {
-      _showMessage(error.toString());
-      return;
     }
-    if (!mounted) return;
-    if (chapters.isEmpty) {
-      _showMessage('Aucun chapitre disponible dans les langues sélectionnées.');
+    if (!mounted || chapters.isEmpty) {
+      if (mounted) {
+        _showMessage(
+          localeLanguage == 'fr'
+              ? 'Aucun chapitre disponible dans les langues sélectionnées.'
+              : 'No chapters are available in the selected languages.',
+        );
+      }
       return;
     }
 
@@ -639,129 +1081,97 @@ class LibraryScreenState extends State<LibraryScreen> {
     try {
       selectedChapter = await showDialog<LibraryMangaDexChapter>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(item.title),
-          content: SizedBox(
-            width: 680.r,
-            height: 520.r,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (item.description.isNotEmpty) ...[
-                  Text(
-                    item.description,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(dialogContext).textTheme.bodySmall,
-                  ),
-                  SizedBox(height: 12.r),
-                ],
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: chapters.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (_, index) {
-                      final chapter = chapters[index];
-                      final details = <String>[
-                        if (chapter.volume.isNotEmpty)
-                          'Vol. ${chapter.volume}',
-                        if (chapter.chapter.isNotEmpty)
-                          'Ch. ${chapter.chapter}',
-                        if (chapter.language.isNotEmpty)
-                          chapter.language.toUpperCase(),
-                      ].join(' • ');
-                      return ListTile(
-                        title: Text(chapter.displayTitle),
-                        subtitle: details.isEmpty ? null : Text(details),
-                        trailing: const Icon(Symbols.menu_book_rounded),
-                        onTap: () => Navigator.of(dialogContext).pop(chapter),
-                      );
-                    },
-                  ),
+        builder: (dialogContext) {
+          final size = MediaQuery.sizeOf(dialogContext);
+          final theme = Theme.of(dialogContext);
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.symmetric(horizontal: 24.r, vertical: 18.r),
+            child: NeoGlass(
+              role: GlassSurfaceRole.card,
+              borderRadius: BorderRadius.circular(18.r),
+              enableBackdropBlur: true,
+              showSheen: false,
+              child: SizedBox(
+                width: size.width * 0.92,
+                height: size.height * 0.86,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(18.r, 14.r, 8.r, 8.r),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: const Icon(Symbols.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (item.description.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(18.r, 0, 18.r, 10.r),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            item.description,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: EdgeInsets.fromLTRB(12.r, 4.r, 12.r, 20.r),
+                        itemCount: chapters.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, index) {
+                          final chapter = chapters[index];
+                          final details = <String>[
+                            if (chapter.volume.isNotEmpty) 'Vol. ${chapter.volume}',
+                            if (chapter.chapter.isNotEmpty) 'Ch. ${chapter.chapter}',
+                            if (chapter.language.isNotEmpty)
+                              chapter.language.toUpperCase(),
+                          ].join(' • ');
+                          return ListTile(
+                            title: Text(chapter.displayTitle),
+                            subtitle: details.isEmpty ? null : Text(details),
+                            trailing: const Icon(Symbols.menu_book_rounded),
+                            onTap: () => Navigator.of(dialogContext).pop(chapter),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(AppLocale.close.getString(dialogContext)),
-            ),
-          ],
-        ),
+          );
+        },
       );
     } finally {
       GamepadNavigationManager.popLayer(layerId);
     }
 
     if (!mounted || selectedChapter == null) return;
-    await _openMangaDexChapter(item.title, selectedChapter);
-  }
-
-  Future<void> _openMangaDexChapter(
-    String mangaTitle,
-    LibraryMangaDexChapter chapter,
-  ) async {
-    _showMessage('Chargement du chapitre…');
-    List<String> pages;
-    try {
-      pages = await _mangaDexService.loadChapterPages(chapter.id);
-    } on LibraryAddonException catch (error) {
-      _showMessage(error.message);
-      return;
-    } catch (error) {
-      _showMessage(error.toString());
-      return;
-    }
+    final pages = await _mangaDexService.loadChapterPages(selectedChapter.id);
     if (!mounted) return;
-
-    const layerId = 'library_mangadex_reader';
-    GamepadNavigationManager.pushLayer(
-      layerId,
-      onActivate: () {},
-      onDeactivate: () {},
-      modal: true,
+    await _showPageReader(
+      '${item.title} — ${selectedChapter.displayTitle}',
+      pages,
+      subtitle: selectedChapter.language.toUpperCase(),
     );
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text('$mangaTitle — ${chapter.displayTitle}'),
-          content: SizedBox(
-            width: 720.r,
-            height: 560.r,
-            child: ListView.separated(
-              cacheExtent: 1600.r,
-              itemCount: pages.length,
-              separatorBuilder: (_, _) => SizedBox(height: 10.r),
-              itemBuilder: (_, index) => Image.network(
-                pages[index],
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return SizedBox(
-                    height: 300.r,
-                    child: const Center(child: CircularProgressIndicator()),
-                  );
-                },
-                errorBuilder: (_, __, ___) => SizedBox(
-                  height: 160.r,
-                  child: const Center(child: Icon(Symbols.broken_image_rounded)),
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(AppLocale.close.getString(dialogContext)),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      GamepadNavigationManager.popLayer(layerId);
-    }
   }
 
   Future<void> _confirmRemoveAddon(LibraryAddon addon) async {
@@ -779,9 +1189,7 @@ class LibraryScreenState extends State<LibraryScreen> {
             context: context,
             barrierDismissible: false,
             builder: (dialogContext) => AlertDialog(
-              title: Text(
-                AppLocale.libraryAddonRemoveTitle.getString(dialogContext),
-              ),
+              title: Text(AppLocale.libraryAddonRemoveTitle.getString(dialogContext)),
               content: Text(
                 AppLocale.libraryAddonRemoveBody
                     .getString(dialogContext)
@@ -808,9 +1216,12 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _addonService.remove(addon.id);
     await _loadAddons();
     if (!mounted) return;
-    _addonSelectedIndex = _addonSelectedIndex
-        .clamp(0, (_addonSelectionCount - 1).clamp(0, 9999).toInt())
-        .toInt();
+    setState(() {
+      _addonSelectedIndex = _addonSelectedIndex.clamp(
+        0,
+        (_addonSelectionCount - 1).clamp(0, 9999),
+      );
+    });
     _showMessage(
       AppLocale.libraryAddonRemoved
           .getString(context)
@@ -823,9 +1234,11 @@ class LibraryScreenState extends State<LibraryScreen> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(24.r, 54.r, 24.r, 18.r),
-        child: _view == _LibraryView.hub
-            ? _buildHub(context)
-            : _buildAddons(context),
+        child: switch (_view) {
+          _LibraryView.hub => _buildHub(context),
+          _LibraryView.addons => _buildAddons(context),
+          _LibraryView.local => _buildLocalLibrary(context),
+        },
       ),
     );
   }
@@ -880,12 +1293,13 @@ class LibraryScreenState extends State<LibraryScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildHeader(context),
-        SizedBox(height: 22.r),
+        SizedBox(height: 20.r),
         Row(
           children: [
             Expanded(
               child: _LibraryEntryCard(
-                selected: !_libraryFocused && _hubSelectedIndex == 0,
+                selected:
+                    _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 0,
                 icon: Symbols.extension_rounded,
                 title: AppLocale.libraryAddons.getString(context),
                 subtitle: AppLocale.libraryAddonsSubtitle.getString(context),
@@ -895,7 +1309,8 @@ class LibraryScreenState extends State<LibraryScreen> {
             SizedBox(width: 14.r),
             Expanded(
               child: _LibraryEntryCard(
-                selected: !_libraryFocused && _hubSelectedIndex == 1,
+                selected:
+                    _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 1,
                 icon: Symbols.folder_open_rounded,
                 title: AppLocale.libraryLocal.getString(context),
                 subtitle: AppLocale.libraryLocalSubtitle.getString(context),
@@ -904,8 +1319,81 @@ class LibraryScreenState extends State<LibraryScreen> {
             ),
           ],
         ),
-        SizedBox(height: 14.r),
+        SizedBox(height: 12.r),
+        _buildFilters(context),
+        SizedBox(height: 10.r),
         Expanded(child: _buildNativeLibrary(context, theme)),
+      ],
+    );
+  }
+
+  Widget _buildFilters(BuildContext context) {
+    final locale = Localizations.localeOf(context).languageCode;
+    final visible = _visibleLibraryItems;
+    final countLabel = locale == 'fr'
+        ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
+        : '${visible.length} title${visible.length == 1 ? '' : 's'}';
+
+    return Row(
+      children: [
+        Expanded(
+          child: _FilterControl(
+            selected:
+                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 0,
+            icon: Symbols.translate_rounded,
+            label: locale == 'fr' ? 'Langue' : 'Language',
+            value: _languageLabel(_languageFilter),
+            onTap: () {
+              setState(() {
+                _hubFocus = _HubFocus.filters;
+                _filterSelectedIndex = 0;
+              });
+              _cycleLanguageFilter();
+            },
+          ),
+        ),
+        SizedBox(width: 10.r),
+        Expanded(
+          child: _FilterControl(
+            selected:
+                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 1,
+            icon: Symbols.sort_by_alpha_rounded,
+            label: locale == 'fr' ? 'Tri' : 'Sort',
+            value: _sortAscending ? 'A → Z' : 'Z → A',
+            onTap: () {
+              setState(() {
+                _hubFocus = _HubFocus.filters;
+                _filterSelectedIndex = 1;
+              });
+              _toggleAlphabeticalSort();
+            },
+          ),
+        ),
+        SizedBox(width: 10.r),
+        Expanded(
+          child: _FilterControl(
+            selected:
+                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 2,
+            icon: Symbols.abc_rounded,
+            label: locale == 'fr' ? 'Index' : 'Index',
+            value: _alphabetAnchor == null ? 'A–Z' : _alphabetAnchor!,
+            onTap: () {
+              setState(() {
+                _hubFocus = _HubFocus.filters;
+                _filterSelectedIndex = 2;
+              });
+              _jumpToNextLetter();
+            },
+          ),
+        ),
+        SizedBox(width: 12.r),
+        Text(
+          countLabel,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.58),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -915,56 +1403,39 @@ class LibraryScreenState extends State<LibraryScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_libraryItems.isEmpty) {
-      final hasInstalledSources = _addons.isNotEmpty;
+    final visible = _visibleLibraryItems;
+    if (visible.isEmpty) {
+      final hasContent = _libraryItems.isNotEmpty;
       return Align(
-        alignment: const Alignment(0, -0.55),
-        child: Padding(
-          padding: EdgeInsets.only(top: 12.r, bottom: 34.r),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Symbols.collections_bookmark_rounded,
-                size: 36.r,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+        alignment: const Alignment(0, -0.48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Symbols.collections_bookmark_rounded,
+              size: 38.r,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+            ),
+            SizedBox(height: 8.r),
+            Text(
+              hasContent
+                  ? (Localizations.localeOf(context).languageCode == 'fr'
+                        ? 'Aucun livre pour ce filtre'
+                        : 'No books match this filter')
+                  : AppLocale.libraryEmptyTitle.getString(context),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
-              SizedBox(height: 8.r),
+            ),
+            SizedBox(height: 5.r),
+            if (_catalogFailures > 0)
               Text(
-                hasInstalledSources
-                    ? 'Aucun contenu disponible'
-                    : AppLocale.libraryEmptyTitle.getString(context),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+                '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error.withValues(alpha: 0.85),
                 ),
               ),
-              SizedBox(height: 4.r),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 620.r),
-                child: Text(
-                  hasInstalledSources
-                      ? 'Les sources sont installées, mais aucune ne fournit encore un catalogue natif compatible avec NeoStation sur iOS.'
-                      : AppLocale.libraryEmptySubtitle.getString(context),
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.visible,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
-                    height: 1.25,
-                  ),
-                ),
-              ),
-              if (_catalogFailures > 0) ...[
-                SizedBox(height: 6.r),
-                Text(
-                  '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error.withValues(alpha: 0.85),
-                  ),
-                ),
-              ],
-            ],
-          ),
+          ],
         ),
       );
     }
@@ -974,32 +1445,46 @@ class LibraryScreenState extends State<LibraryScreen> {
         const targetExtent = 155.0;
         final columns = (constraints.maxWidth / targetExtent)
             .floor()
-            .clamp(2, 8)
-            .toInt();
+            .clamp(2, 8);
         _libraryColumns = columns;
+        final totalSpacing = (columns - 1) * 12.r;
+        final cardWidth = (constraints.maxWidth - totalSpacing) / columns;
+        _libraryRowExtent = (cardWidth / 0.68) + 12.r;
 
         return GridView.builder(
-          padding: EdgeInsets.only(bottom: 28.r),
+          controller: _libraryScrollController,
+          cacheExtent: _libraryRowExtent * 2.4,
+          padding: EdgeInsets.only(bottom: 32.r),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             mainAxisSpacing: 12.r,
             crossAxisSpacing: 12.r,
             childAspectRatio: 0.68,
           ),
-          itemCount: _libraryItems.length,
+          itemCount: visible.length,
           itemBuilder: (context, index) {
-            final entry = _libraryItems[index];
-            return _LibraryCatalogCard(
-              item: entry.item,
-              selected: _libraryFocused && _librarySelectedIndex == index,
-              onTap: () {
-                SfxService().playNavSound();
-                setState(() {
-                  _libraryFocused = true;
-                  _librarySelectedIndex = index;
-                });
-                _openCatalogItem(entry);
-              },
+            final entry = visible[index];
+            final languages = _itemLanguageCodes(entry);
+            final languageLabel = languages.isEmpty
+                ? ''
+                : languages.map((code) => code.toUpperCase()).take(2).join(' • ');
+            return KeyedSubtree(
+              key: _keyForBook(entry),
+              child: _LibraryCatalogCard(
+                item: entry.item,
+                languageLabel: languageLabel,
+                selected:
+                    _hubFocus == _HubFocus.books &&
+                    _librarySelectedIndex == index,
+                onTap: () {
+                  SfxService().playNavSound();
+                  setState(() {
+                    _hubFocus = _HubFocus.books;
+                    _librarySelectedIndex = index;
+                  });
+                  _openCatalogItem(entry);
+                },
+              ),
             );
           },
         );
@@ -1014,18 +1499,16 @@ class LibraryScreenState extends State<LibraryScreen> {
       children: [
         _buildHeader(
           context,
-          trailing: IconButton(
-            tooltip: AppLocale.back.getString(context),
-            onPressed: _back,
+          trailing: FilledButton.tonalIcon(
+            onPressed: _backToHub,
             icon: const Icon(Symbols.arrow_back_rounded),
+            label: Text(AppLocale.back.getString(context)),
           ),
         ),
         SizedBox(height: 18.r),
         Text(
           AppLocale.libraryAddons.getString(context),
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         SizedBox(height: 10.r),
         Row(
@@ -1033,24 +1516,32 @@ class LibraryScreenState extends State<LibraryScreen> {
             Expanded(
               child: _LibraryEntryCard(
                 selected: _addonSelectedIndex == 0,
-                icon: Symbols.language_rounded,
-                title: AppLocale.libraryAddonAddUrl.getString(context),
-                subtitle: AppLocale.libraryAddonAddUrlSubtitle.getString(
-                  context,
-                ),
+                icon: Symbols.arrow_back_rounded,
+                title: AppLocale.back.getString(context),
+                subtitle: Localizations.localeOf(context).languageCode == 'fr'
+                    ? 'Revenir à la Bibliothèque et choisir une autre section.'
+                    : 'Return to the Library and choose another section.',
                 onTap: () => _tapAddonSelection(0),
               ),
             ),
-            SizedBox(width: 14.r),
+            SizedBox(width: 10.r),
             Expanded(
               child: _LibraryEntryCard(
                 selected: _addonSelectedIndex == 1,
+                icon: Symbols.language_rounded,
+                title: AppLocale.libraryAddonAddUrl.getString(context),
+                subtitle: AppLocale.libraryAddonAddUrlSubtitle.getString(context),
+                onTap: () => _tapAddonSelection(1),
+              ),
+            ),
+            SizedBox(width: 10.r),
+            Expanded(
+              child: _LibraryEntryCard(
+                selected: _addonSelectedIndex == 2,
                 icon: Symbols.file_open_rounded,
                 title: AppLocale.libraryAddonImportFile.getString(context),
-                subtitle: AppLocale.libraryAddonImportFileSubtitle.getString(
-                  context,
-                ),
-                onTap: () => _tapAddonSelection(1),
+                subtitle: AppLocale.libraryAddonImportFileSubtitle.getString(context),
+                onTap: () => _tapAddonSelection(2),
               ),
             ),
           ],
@@ -1058,41 +1549,100 @@ class LibraryScreenState extends State<LibraryScreen> {
         SizedBox(height: 14.r),
         Text(
           AppLocale.libraryAddonInstalledSources.getString(context),
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         SizedBox(height: 8.r),
         Expanded(
           child: _loadingAddons
               ? const Center(child: CircularProgressIndicator())
               : _addons.isEmpty
-              ? Align(
-                  alignment: const Alignment(0, -0.5),
-                  child: Text(
-                    AppLocale.libraryEmptyTitle.getString(context),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(
-                        alpha: 0.62,
+                  ? Align(
+                      alignment: const Alignment(0, -0.5),
+                      child: Text(
+                        AppLocale.libraryEmptyTitle.getString(context),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      cacheExtent: 1200.r,
+                      padding: EdgeInsets.only(bottom: 26.r),
+                      itemCount: _addons.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 8.r),
+                      itemBuilder: (context, index) {
+                        final addon = _addons[index];
+                        return _AddonRow(
+                          addon: addon,
+                          selected: _addonSelectedIndex == index + 3,
+                          onTap: () => _tapAddonSelection(index + 3),
+                          onDelete: () => _confirmRemoveAddon(addon),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocalLibrary(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(
+          context,
+          trailing: FilledButton.tonalIcon(
+            onPressed: () => _backToHub(selectLocal: true),
+            icon: const Icon(Symbols.arrow_back_rounded),
+            label: Text(AppLocale.back.getString(context)),
+          ),
+        ),
+        SizedBox(height: 24.r),
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 620.r),
+              child: NeoGlass(
+                role: GlassSurfaceRole.card,
+                borderRadius: BorderRadius.circular(16.r),
+                enableBackdropBlur: false,
+                showSheen: true,
+                padding: EdgeInsets.all(24.r),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Symbols.folder_open_rounded,
+                      size: 46.r,
+                      color: theme.colorScheme.primary,
+                    ),
+                    SizedBox(height: 12.r),
+                    Text(
+                      AppLocale.libraryLocal.getString(context),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                  ),
-                )
-              : ListView.separated(
-                  cacheExtent: 1200.r,
-                  padding: EdgeInsets.only(bottom: 26.r),
-                  itemCount: _addons.length,
-                  separatorBuilder: (_, _) => SizedBox(height: 8.r),
-                  itemBuilder: (context, index) {
-                    final addon = _addons[index];
-                    return _AddonRow(
-                      addon: addon,
-                      selected: _addonSelectedIndex == index + 2,
-                      onTap: () => _tapAddonSelection(index + 2),
-                      onDelete: () => _confirmRemoveAddon(addon),
-                    );
-                  },
+                    SizedBox(height: 7.r),
+                    Text(
+                      AppLocale.libraryNextStep.getString(context),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
+                      ),
+                    ),
+                    SizedBox(height: 16.r),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _backToHub(selectLocal: true),
+                      icon: const Icon(Symbols.arrow_back_rounded),
+                      label: Text(AppLocale.back.getString(context)),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -1174,9 +1724,7 @@ class _LibraryEntryCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.62,
-                        ),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
                       ),
                     ),
                   ],
@@ -1195,14 +1743,92 @@ class _LibraryEntryCard extends StatelessWidget {
   }
 }
 
+class _FilterControl extends StatelessWidget {
+  const _FilterControl({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final radius = BorderRadius.circular(10.r);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 130),
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outline.withValues(alpha: 0.16),
+          width: selected ? 2.r : 1.r,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.r, vertical: 9.r),
+            child: Row(
+              children: [
+                Icon(icon, size: 20.r, color: theme.colorScheme.primary),
+                SizedBox(width: 8.r),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+                        ),
+                      ),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Symbols.expand_more_rounded,
+                  size: 18.r,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LibraryCatalogCard extends StatelessWidget {
   const _LibraryCatalogCard({
     required this.item,
+    required this.languageLabel,
     required this.selected,
     required this.onTap,
   });
 
   final LibraryCatalogItem item;
+  final String languageLabel;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1244,35 +1870,59 @@ class _LibraryCatalogCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(7.r),
-                    child: SizedBox.expand(
-                      child: item.coverUrl == null
-                          ? ColoredBox(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.10,
-                              ),
-                              child: Icon(
-                                Symbols.menu_book_rounded,
-                                color: theme.colorScheme.primary,
-                                size: 34.r,
-                              ),
-                            )
-                          : Image.network(
-                              item.coverUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => ColoredBox(
-                                color: theme.colorScheme.primary.withValues(
-                                  alpha: 0.10,
-                                ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(7.r),
+                        child: item.coverUrl == null
+                            ? ColoredBox(
+                                color: theme.colorScheme.primary.withValues(alpha: 0.10),
                                 child: Icon(
                                   Symbols.menu_book_rounded,
                                   color: theme.colorScheme.primary,
                                   size: 34.r,
                                 ),
+                              )
+                            : Image.network(
+                                item.coverUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => ColoredBox(
+                                  color: theme.colorScheme.primary.withValues(
+                                    alpha: 0.10,
+                                  ),
+                                  child: Icon(
+                                    Symbols.menu_book_rounded,
+                                    color: theme.colorScheme.primary,
+                                    size: 34.r,
+                                  ),
+                                ),
+                              ),
+                      ),
+                      if (languageLabel.isNotEmpty)
+                        Positioned(
+                          top: 6.r,
+                          right: 6.r,
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6.r,
+                              vertical: 3.r,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.68),
+                              borderRadius: BorderRadius.circular(6.r),
+                            ),
+                            child: Text(
+                              languageLabel,
+                              style: TextStyle(
+                                fontSize: 9.r.clamp(8.0, 12.0),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                    ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 SizedBox(height: 7.r),
@@ -1322,15 +1972,9 @@ class _AddonRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final radius = BorderRadius.circular(10.r);
-    final baseUrl = addon.baseUrl;
-    final host = baseUrl == null
+    final location = addon.baseUrl == null
         ? 'local'
-        : (Uri.tryParse(baseUrl)?.host ?? baseUrl);
-    final compatibility = switch (addon.sourceKind) {
-      LibrarySourceKind.catalog => 'catalogue natif',
-      LibrarySourceKind.localLibrary => 'local',
-      LibrarySourceKind.metadataOnly => 'métadonnées iOS',
-    };
+        : (Uri.tryParse(addon.baseUrl!)?.host ?? addon.baseUrl!);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 140),
@@ -1339,7 +1983,7 @@ class _AddonRow extends StatelessWidget {
         border: Border.all(
           color: selected
               ? theme.colorScheme.primary
-              : theme.colorScheme.outline.withValues(alpha: 0.15),
+              : theme.colorScheme.outline.withValues(alpha: 0.14),
           width: selected ? 2.r : 1.r,
         ),
       ),
@@ -1348,64 +1992,46 @@ class _AddonRow extends StatelessWidget {
         borderRadius: radius,
         enableBackdropBlur: false,
         showSheen: false,
-        child: InkWell(
+        child: ListTile(
           onTap: onTap,
-          borderRadius: radius,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 13.r, vertical: 10.r),
-            child: Row(
-              children: [
-                Container(
-                  width: 40.r,
-                  height: 40.r,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(9.r),
-                  ),
+          leading: addon.iconUrl == null
+              ? CircleAvatar(
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
                   child: Icon(
-                    Symbols.extension_rounded,
+                    addon.isTachiyomiRepositorySource
+                        ? Symbols.extension_rounded
+                        : Symbols.menu_book_rounded,
                     color: theme.colorScheme.primary,
-                    size: 22.r,
+                  ),
+                )
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(8.r),
+                  child: Image.network(
+                    addon.iconUrl!,
+                    width: 40.r,
+                    height: 40.r,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Symbols.menu_book_rounded,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
-                SizedBox(width: 12.r),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        addon.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(height: 2.r),
-                      Text(
-                        'v${addon.version} • $host • $compatibility',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.58,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: AppLocale.delete.getString(context),
-                  onPressed: onDelete,
-                  icon: Icon(
-                    Symbols.delete_rounded,
-                    color: theme.colorScheme.error,
-                    size: 21.r,
-                  ),
-                ),
-              ],
-            ),
+          title: Text(
+            addon.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            'v${addon.version} • $location${addon.language == null ? '' : ' • ${addon.language!.toUpperCase()}'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: IconButton(
+            tooltip: AppLocale.delete.getString(context),
+            onPressed: onDelete,
+            icon: const Icon(Symbols.delete_outline_rounded),
           ),
         ),
       ),
