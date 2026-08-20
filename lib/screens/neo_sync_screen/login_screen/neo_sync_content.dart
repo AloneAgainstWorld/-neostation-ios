@@ -806,6 +806,9 @@ class NeoSyncContentState extends State<NeoSyncContent>
           lowerPath.startsWith('v2/states/switch/melonx/game/');
       final isArmsx2Save = lowerPath.startsWith('v2/saves/ps2/armsx2/');
       final isArmsx2State = lowerPath.startsWith('v2/states/ps2/armsx2/');
+      final isRpcs3 =
+          lowerPath.startsWith('v2/saves/ps3/rpcs3/game/') ||
+          lowerPath.startsWith('v2/states/ps3/rpcs3/game/');
 
       String key;
       String label;
@@ -814,6 +817,11 @@ class NeoSyncContentState extends State<NeoSyncContent>
             ? file.gameName.trim()
             : _readableGameNameFromV2Path(file.fileName);
         key = 'melonx:${label.toLowerCase()}';
+      } else if (isRpcs3) {
+        label = file.gameName.trim().isNotEmpty
+            ? file.gameName.trim()
+            : _readableGameNameFromV2Path(file.fileName);
+        key = 'rpcs3:${label.toLowerCase()}';
       } else if (isArmsx2Save || isArmsx2State) {
         label = file.gameName.trim().isNotEmpty
             ? file.gameName.trim()
