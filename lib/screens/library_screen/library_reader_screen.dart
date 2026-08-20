@@ -205,7 +205,7 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
               widget.text ?? '',
               style: theme.textTheme.bodyLarge?.copyWith(
                 height: 1.62,
-                fontSize: 16.r.clamp(14.0, 21.0),
+                fontSize: 16.r.clamp(14.0, 21.0).toDouble(),
               ),
             ),
           ),

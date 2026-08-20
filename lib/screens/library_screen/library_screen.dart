@@ -144,7 +144,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       _addons = addons;
       _loadingAddons = false;
       if (_addonSelectedIndex >= _addonSelectionCount) {
-        _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999);
+        _addonSelectedIndex = (_addonSelectionCount - 1).clamp(0, 9999).toInt();
       }
     });
     await _refreshNativeLibrary(addons);
@@ -328,7 +328,7 @@ class LibraryScreenState extends State<LibraryScreen> {
   bool _navigateHorizontal(int delta) {
     if (_view == _LibraryView.addons) {
       if (_addonSelectedIndex > 2) return false;
-      final next = (_addonSelectedIndex + delta).clamp(0, 2);
+      final next = (_addonSelectedIndex + delta).clamp(0, 2).toInt();
       if (next == _addonSelectedIndex) return false;
       setState(() => _addonSelectedIndex = next);
       return true;
@@ -337,12 +337,12 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     switch (_hubFocus) {
       case _HubFocus.shortcuts:
-        final next = (_hubSelectedIndex + delta).clamp(0, 1);
+        final next = (_hubSelectedIndex + delta).clamp(0, 1).toInt();
         if (next == _hubSelectedIndex) return false;
         setState(() => _hubSelectedIndex = next);
         return true;
       case _HubFocus.filters:
-        final next = (_filterSelectedIndex + delta).clamp(0, 2);
+        final next = (_filterSelectedIndex + delta).clamp(0, 2).toInt();
         if (next == _filterSelectedIndex) return false;
         setState(() => _filterSelectedIndex = next);
         return true;
@@ -352,7 +352,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         final next = (_librarySelectedIndex + delta).clamp(
           0,
           visible.length - 1,
-        );
+        ).toInt();
         if (next == _librarySelectedIndex) return false;
         setState(() => _librarySelectedIndex = next);
         _ensureSelectedBookVisible();
@@ -366,7 +366,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       final next = (_addonSelectedIndex + delta).clamp(
         0,
         _addonSelectionCount - 1,
-      );
+      ).toInt();
       if (next == _addonSelectedIndex) return false;
       setState(() => _addonSelectedIndex = next);
       return true;
@@ -390,7 +390,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           _librarySelectedIndex = _librarySelectedIndex.clamp(
             0,
             visible.length - 1,
-          );
+          ).toInt();
         });
         _ensureSelectedBookVisible();
         return true;
@@ -401,7 +401,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           setState(() => _hubFocus = _HubFocus.filters);
           return true;
         }
-        final clamped = next.clamp(0, visible.length - 1);
+        final clamped = next.clamp(0, visible.length - 1).toInt();
         if (clamped == _librarySelectedIndex) return false;
         setState(() => _librarySelectedIndex = clamped);
         _ensureSelectedBookVisible();
@@ -549,7 +549,7 @@ class LibraryScreenState extends State<LibraryScreen> {
     final size = MediaQuery.sizeOf(context);
     final left = 24.r;
     final top = 190.r;
-    final right = (size.width - 360.r).clamp(24.0, size.width - 48.0);
+    final right = (size.width - 360.r).clamp(24.0, size.width - 48.0).toDouble();
     return RelativeRect.fromLTRB(left, top, right, 0);
   }
 
@@ -980,106 +980,6 @@ class LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
     );
-  }
-) async {
-    const layerId = 'library_page_reader';
-    GamepadNavigationManager.pushLayer(
-      layerId,
-      onActivate: () {},
-      onDeactivate: () {},
-      modal: true,
-    );
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          final size = MediaQuery.sizeOf(dialogContext);
-          final theme = Theme.of(dialogContext);
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(horizontal: 18.r, vertical: 14.r),
-            child: NeoGlass(
-              role: GlassSurfaceRole.card,
-              borderRadius: BorderRadius.circular(18.r),
-              enableBackdropBlur: true,
-              showSheen: false,
-              child: SizedBox(
-                width: size.width * 0.95,
-                height: size.height * 0.90,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(18.r, 12.r, 10.r, 8.r),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                if (subtitle.isNotEmpty)
-                                  Text(
-                                    subtitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(
-                                        alpha: 0.65,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            icon: const Icon(Symbols.close_rounded),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.separated(
-                        cacheExtent: 1800.r,
-                        padding: EdgeInsets.fromLTRB(14.r, 6.r, 14.r, 24.r),
-                        itemCount: pages.length,
-                        separatorBuilder: (_, __) => SizedBox(height: 10.r),
-                        itemBuilder: (_, index) => Image.network(
-                          pages[index],
-                          fit: BoxFit.contain,
-                          loadingBuilder: (context, child, progress) {
-                            if (progress == null) return child;
-                            return SizedBox(
-                              height: 300.r,
-                              child: const Center(child: CircularProgressIndicator()),
-                            );
-                          },
-                          errorBuilder: (_, __, ___) => SizedBox(
-                            height: 160.r,
-                            child: const Center(
-                              child: Icon(Symbols.broken_image_rounded),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    } finally {
-      GamepadNavigationManager.popLayer(layerId);
-    }
   }
 
   Future<void> _openMangaDexTitle(LibraryCatalogItem item) async {
