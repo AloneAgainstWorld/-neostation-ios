@@ -55,6 +55,8 @@ class _NativeLibraryEntry {
   final LibraryCatalogItem item;
 
   bool get isMangaDex => providerId == LibraryMangaDexService.providerId;
+
+  bool get isSourceCard => item.raw['neoStationSourceCard'] == true;
 }
 
 class LibraryScreenState extends State<LibraryScreen> {
@@ -181,6 +183,42 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _refreshNativeLibrary(addons);
   }
 
+  _NativeLibraryEntry _sourceEntryForAddon(LibraryAddon addon) {
+    final isAnime =
+        addon.androidPackage?.contains('animeextension') == true;
+    final runtimeLabel = addon.isAidokuRepositorySource
+        ? 'Aidoku'
+        : (isAnime ? 'Aniyomi' : 'Tachiyomi / Mihon');
+    final language = addon.language?.trim().toLowerCase();
+    final languageLabel = language == null || language.isEmpty
+        ? 'ALL'
+        : language.toUpperCase();
+
+    return _NativeLibraryEntry(
+      providerId: addon.id,
+      source: addon,
+      item: LibraryCatalogItem(
+        id: 'source:${addon.id}',
+        title: addon.name,
+        mediaType: isAnime ? LibraryMediaType.anime : LibraryMediaType.manga,
+        subtitle: '$runtimeLabel • $languageLabel',
+        description: Localizations.localeOf(context).languageCode == 'fr'
+            ? 'Source installée depuis un dépôt externe. Ouvrez-la pour afficher ses informations.'
+            : 'Source installed from an external repository. Open it to view its details.',
+        coverUrl: addon.iconUrl,
+        content: null,
+        contentUrl: null,
+        pageUrls: const [],
+        raw: <String, dynamic>{
+          'neoStationSourceCard': true,
+          'language': language,
+          'repositoryOrigin': addon.repositoryOrigin,
+          'runtime': runtimeLabel,
+        },
+      ),
+    );
+  }
+
   Future<void> _refreshNativeLibrary([List<LibraryAddon>? installed]) async {
     final addons = installed ?? _addons;
     if (mounted) {
@@ -208,6 +246,10 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
 
     for (final addon in addons) {
+      if (addon.isRepositorySource && addon.isMetadataOnlyOnIos) {
+        entries.add(_sourceEntryForAddon(addon));
+        continue;
+      }
       if (!addon.canBrowseOnIos) continue;
       try {
         final items = await _catalogService.loadCatalog(addon);
@@ -1027,6 +1069,11 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
+    if (entry.isSourceCard && entry.source != null) {
+      await _showAddonDetails(entry.source!);
+      return;
+    }
+
     if (entry.isMangaDex) {
       await _openMangaDexTitle(entry.item);
       return;
@@ -1481,8 +1528,8 @@ class LibraryScreenState extends State<LibraryScreen> {
     final locale = Localizations.localeOf(context).languageCode;
     final visible = _visibleLibraryItems;
     final countLabel = locale == 'fr'
-        ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
-        : '${visible.length} title${visible.length == 1 ? '' : 's'}';
+        ? '${visible.length} élément${visible.length > 1 ? 's' : ''}'
+        : '${visible.length} item${visible.length == 1 ? '' : 's'}';
 
     return Row(
       children: [
@@ -1655,6 +1702,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                             child: _LibraryCatalogCard(
                               item: entry.item,
                               languageLabel: languageLabel,
+                              isSourceCard: entry.isSourceCard,
                               selected:
                                   _hubFocus == _HubFocus.books &&
                                   _librarySelectedIndex == index,
@@ -1766,7 +1814,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                           addon: addon,
                           selected: _addonSelectedIndex == index + 3,
                           onTap: () => _tapAddonSelection(index + 3),
-                          onDelete: () => _confirmRemoveAddon(addon),
+                          onDelete: () => addon.isRepositorySource
+                              ? _chooseRemoveSourceOrRepository(addon)
+                              : _confirmRemoveAddon(addon),
                         );
                       },
                     ),
@@ -2013,12 +2063,14 @@ class _LibraryCatalogCard extends StatelessWidget {
   const _LibraryCatalogCard({
     required this.item,
     required this.languageLabel,
+    required this.isSourceCard,
     required this.selected,
     required this.onTap,
   });
 
   final LibraryCatalogItem item;
   final String languageLabel;
+  final bool isSourceCard;
   final bool selected;
   final VoidCallback onTap;
 
@@ -2069,7 +2121,9 @@ class _LibraryCatalogCard extends StatelessWidget {
                             ? ColoredBox(
                                 color: theme.colorScheme.primary.withValues(alpha: 0.10),
                                 child: Icon(
-                                  Symbols.menu_book_rounded,
+                                  isSourceCard
+                                      ? Symbols.extension_rounded
+                                      : Symbols.menu_book_rounded,
                                   color: theme.colorScheme.primary,
                                   size: 34.r,
                                 ),
@@ -2082,7 +2136,9 @@ class _LibraryCatalogCard extends StatelessWidget {
                                     alpha: 0.10,
                                   ),
                                   child: Icon(
-                                    Symbols.menu_book_rounded,
+                                    isSourceCard
+                                        ? Symbols.extension_rounded
+                                        : Symbols.menu_book_rounded,
                                     color: theme.colorScheme.primary,
                                     size: 34.r,
                                   ),
