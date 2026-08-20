@@ -1,0 +1,30 @@
+name: Apply Library Sources And Filters Patch
+
+on:
+  push:
+    branches:
+      - feature/library-native
+    paths:
+      - tooling/patch_library_sources_filters_repositories.py
+      - .github/workflows/apply-library-sources-filters-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/library-native
+      - name: Apply Library patch
+        run: python3 tooling/patch_library_sources_filters_repositories.py
+      - name: Commit Library changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- lib/services/library_addon_service.dart lib/screens/library_screen/library_screen.dart test/library_addon_service_test.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(library): add repository management and source filtering"
+          git push origin HEAD:feature/library-native
