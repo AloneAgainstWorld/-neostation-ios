@@ -11,6 +11,7 @@ import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/services/gamepad/gamepad_navigation_manager.dart';
 import 'package:neostation/services/library_addon_service.dart';
 import 'package:neostation/services/library_catalog_service.dart';
+import 'package:neostation/services/library_mangadex_service.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
@@ -40,15 +41,23 @@ class LibraryScreen extends StatefulWidget {
 enum _LibraryView { hub, addons }
 
 class _NativeLibraryEntry {
-  const _NativeLibraryEntry({required this.source, required this.item});
+  const _NativeLibraryEntry({
+    required this.providerId,
+    required this.item,
+    this.source,
+  });
 
-  final LibraryAddon source;
+  final String providerId;
+  final LibraryAddon? source;
   final LibraryCatalogItem item;
+
+  bool get isMangaDex => providerId == LibraryMangaDexService.providerId;
 }
 
 class LibraryScreenState extends State<LibraryScreen> {
   final LibraryAddonService _addonService = LibraryAddonService.instance;
   final LibraryCatalogService _catalogService = LibraryCatalogService.instance;
+  final LibraryMangaDexService _mangaDexService = LibraryMangaDexService.instance;
 
   _LibraryView _view = _LibraryView.hub;
   int _hubSelectedIndex = 0;
@@ -104,6 +113,22 @@ class LibraryScreenState extends State<LibraryScreen> {
     final entries = <_NativeLibraryEntry>[];
     var failures = 0;
 
+    // MangaDex is the first built-in iOS-native provider. It feeds NeoStation's
+    // own catalog UI; its website is never embedded or opened.
+    try {
+      final nativeItems = await _mangaDexService.loadPopular();
+      for (final item in nativeItems) {
+        entries.add(
+          _NativeLibraryEntry(
+            providerId: LibraryMangaDexService.providerId,
+            item: item,
+          ),
+        );
+      }
+    } catch (_) {
+      failures++;
+    }
+
     for (final addon in addons) {
       // Repository entries backed only by Android APK runtime are intentionally
       // ignored here. They become visible automatically once a native adapter
@@ -112,7 +137,13 @@ class LibraryScreenState extends State<LibraryScreen> {
       try {
         final items = await _catalogService.loadCatalog(addon);
         for (final item in items) {
-          entries.add(_NativeLibraryEntry(source: addon, item: item));
+          entries.add(
+            _NativeLibraryEntry(
+              providerId: addon.id,
+              source: addon,
+              item: item,
+            ),
+          );
         }
       } catch (_) {
         failures++;
@@ -495,6 +526,11 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
+    if (entry.isMangaDex) {
+      await _openMangaDexTitle(entry.item);
+      return;
+    }
+
     final item = entry.item;
     const layerId = 'library_catalog_reader';
     GamepadNavigationManager.pushLayer(
@@ -553,6 +589,167 @@ class LibraryScreenState extends State<LibraryScreen> {
             width: 680.r,
             height: 540.r,
             child: SingleChildScrollView(child: SelectableText(text)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(AppLocale.close.getString(dialogContext)),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      GamepadNavigationManager.popLayer(layerId);
+    }
+  }
+
+  Future<void> _openMangaDexTitle(LibraryCatalogItem item) async {
+    final mangaId = item.raw['mangadexId']?.toString().trim() ?? item.id;
+    final localeLanguage = Localizations.localeOf(context).languageCode;
+    final languages = <String>{localeLanguage, 'en'}.toList();
+
+    _showMessage('Chargement des chapitres…');
+    List<LibraryMangaDexChapter> chapters;
+    try {
+      chapters = await _mangaDexService.loadChapters(
+        mangaId,
+        languages: languages,
+      );
+    } on LibraryAddonException catch (error) {
+      _showMessage(error.message);
+      return;
+    } catch (error) {
+      _showMessage(error.toString());
+      return;
+    }
+    if (!mounted) return;
+    if (chapters.isEmpty) {
+      _showMessage('Aucun chapitre disponible dans les langues sélectionnées.');
+      return;
+    }
+
+    const layerId = 'library_mangadex_chapters';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    LibraryMangaDexChapter? selectedChapter;
+    try {
+      selectedChapter = await showDialog<LibraryMangaDexChapter>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(item.title),
+          content: SizedBox(
+            width: 680.r,
+            height: 520.r,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (item.description.isNotEmpty) ...[
+                  Text(
+                    item.description,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                  SizedBox(height: 12.r),
+                ],
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: chapters.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final chapter = chapters[index];
+                      final details = <String>[
+                        if (chapter.volume.isNotEmpty)
+                          'Vol. ${chapter.volume}',
+                        if (chapter.chapter.isNotEmpty)
+                          'Ch. ${chapter.chapter}',
+                        if (chapter.language.isNotEmpty)
+                          chapter.language.toUpperCase(),
+                      ].join(' • ');
+                      return ListTile(
+                        title: Text(chapter.displayTitle),
+                        subtitle: details.isEmpty ? null : Text(details),
+                        trailing: const Icon(Symbols.menu_book_rounded),
+                        onTap: () => Navigator.of(dialogContext).pop(chapter),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(AppLocale.close.getString(dialogContext)),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      GamepadNavigationManager.popLayer(layerId);
+    }
+
+    if (!mounted || selectedChapter == null) return;
+    await _openMangaDexChapter(item.title, selectedChapter);
+  }
+
+  Future<void> _openMangaDexChapter(
+    String mangaTitle,
+    LibraryMangaDexChapter chapter,
+  ) async {
+    _showMessage('Chargement du chapitre…');
+    List<String> pages;
+    try {
+      pages = await _mangaDexService.loadChapterPages(chapter.id);
+    } on LibraryAddonException catch (error) {
+      _showMessage(error.message);
+      return;
+    } catch (error) {
+      _showMessage(error.toString());
+      return;
+    }
+    if (!mounted) return;
+
+    const layerId = 'library_mangadex_reader';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('$mangaTitle — ${chapter.displayTitle}'),
+          content: SizedBox(
+            width: 720.r,
+            height: 560.r,
+            child: ListView.separated(
+              cacheExtent: 1600.r,
+              itemCount: pages.length,
+              separatorBuilder: (_, _) => SizedBox(height: 10.r),
+              itemBuilder: (_, index) => Image.network(
+                pages[index],
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return SizedBox(
+                    height: 300.r,
+                    child: const Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (_, __, ___) => SizedBox(
+                  height: 160.r,
+                  child: const Center(child: Icon(Symbols.broken_image_rounded)),
+                ),
+              ),
+            ),
           ),
           actions: [
             TextButton(
