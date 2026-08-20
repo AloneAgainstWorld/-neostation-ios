@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select latest stable Xcode
+      - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -39,31 +39,26 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Prepare CI logs
-        run: mkdir -p build/ci
-
-      - name: Validate ScreenScraper environment
+      - name: Prepare build environment
         run: |
           set -euo pipefail
+          mkdir -p build/ci
           python3 - <<'PY'
           import os
           import pathlib
           import sys
-
           values = {
-              "SCREENSCRAPER_DEV_ID": os.environ.get("SCREENSCRAPER_DEV_ID", ""),
-              "SCREENSCRAPER_DEV_PASSWORD": os.environ.get("SCREENSCRAPER_DEV_PASSWORD", ""),
+              'SCREENSCRAPER_DEV_ID': os.environ.get('SCREENSCRAPER_DEV_ID', ''),
+              'SCREENSCRAPER_DEV_PASSWORD': os.environ.get('SCREENSCRAPER_DEV_PASSWORD', ''),
           }
-          missing = [name for name, value in values.items() if not value]
+          missing = [key for key, value in values.items() if not value]
           if missing:
-              print("Missing required GitHub Actions secrets: " + ", ".join(missing))
+              print('Missing required GitHub Actions secrets: ' + ', '.join(missing))
               sys.exit(1)
-          env_file = pathlib.Path(".env")
-          env_file.write_text(
-              "\n".join(f"{name}={value}" for name, value in values.items()) + "\n",
-              encoding="utf-8",
+          pathlib.Path('.env').write_text(
+              '\n'.join(f'{key}={value}' for key, value in values.items()) + '\n',
+              encoding='utf-8',
           )
-          env_file.chmod(0o600)
           PY
 
       - name: Resolve Flutter dependencies
@@ -71,42 +66,36 @@ jobs:
           set -o pipefail
           flutter pub get 2>&1 | tee build/ci/pub-get.log
 
-      - name: Patch flutter_localization for Swift 5
+      - name: Patch flutter_localization Swift 5 incompatibility
         run: |
           set -euo pipefail
           PLUGIN_FILE=$(find "$HOME/.pub-cache" \
             -path "*flutter_localization-0.4.1*/FlutterLocalizationPlugin.swift" \
             -print -quit)
-          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
-            echo "flutter_localization Swift source not found"
-            exit 1
-          fi
+          test -n "$PLUGIN_FILE"
+          test -f "$PLUGIN_FILE"
           python3 - "$PLUGIN_FILE" <<'PY'
           import pathlib
           import sys
-
           path = pathlib.Path(sys.argv[1])
           source = path.read_text(encoding='utf-8')
-          broken = 'binaryMessenger: registrar.messenger(),\n    )'
-          fixed = 'binaryMessenger: registrar.messenger()\n    )'
-          if broken in source:
-              path.write_text(source.replace(broken, fixed), encoding='utf-8')
-              print(f'Patched Swift 5 trailing argument comma in {path}')
-          elif fixed in source:
-              print(f'flutter_localization already Swift 5 compatible: {path}')
+          bad = 'registrar.messenger(),'
+          good = 'registrar.messenger()'
+          if bad in source:
+              source = source.replace(bad, good)
+              path.write_text(source, encoding='utf-8')
+              print('Patched flutter_localization Swift 5 trailing comma')
+          elif good in source:
+              print('flutter_localization is already compatible')
           else:
-              print('Unexpected flutter_localization Swift source; refusing blind patch')
-              sys.exit(1)
+              print(path.read_text(encoding='utf-8'))
+              raise SystemExit('Could not locate registrar.messenger() call')
           PY
 
-      - name: Test Library add-on service
+      - name: Run Library regression tests
         run: |
           set -o pipefail
           flutter test test/library_addon_service_test.dart 2>&1 | tee build/ci/test-addon.log
-
-      - name: Test Library catalog service
-        run: |
-          set -o pipefail
           flutter test test/library_catalog_service_test.dart 2>&1 | tee build/ci/test-catalog.log
 
       - name: Scaffold iOS platform if missing
@@ -120,7 +109,7 @@ jobs:
               .
           fi
 
-      - name: Configure iOS 18 and Info.plist
+      - name: Configure iOS
         run: |
           set -euo pipefail
           sed -i '' "s/platform :ios, '13.0'/platform :ios, '18.0'/" ios/Podfile
@@ -155,23 +144,19 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :LSApplicationQueriesSchemes:3 string melonx" "$PLIST"
           plutil -lint "$PLIST"
 
-      - name: Patch device_info_plus for runner SDK compatibility
+      - name: Patch device_info_plus for runner SDK
         run: |
           DEVICE_INFO_FILE=$(find "$HOME/.pub-cache" \
             -path "*device_info_plus*/FPPDeviceInfoPlusPlugin.m" \
-            2>/dev/null | head -1)
+            -print -quit)
           if [ -n "$DEVICE_INFO_FILE" ]; then
             sed -i '' '/isiOSAppOnVision/d' "$DEVICE_INFO_FILE"
           fi
 
-      - name: Generate app icons
+      - name: Generate iOS app icons
         run: |
           set -o pipefail
           dart run flutter_launcher_icons 2>&1 | tee build/ci/icons.log
-
-      - name: Force NeoStation fork iOS icon
-        run: |
-          set -o pipefail
           chmod +x build-utils/force_ios_fork_icon.sh
           build-utils/force_ios_fork_icon.sh 2>&1 | tee build/ci/fork-icon.log
 
@@ -180,7 +165,7 @@ jobs:
           set -o pipefail
           (cd ios && pod install --repo-update) 2>&1 | tee build/ci/pods.log
 
-      - name: Configure Flutter release build
+      - name: Configure Flutter release
         run: |
           set -o pipefail
           flutter build ios \
@@ -195,7 +180,6 @@ jobs:
           set -euo pipefail
           rm -rf build/ios/DerivedData build/ios/unsigned
           mkdir -p build/ios
-
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -213,23 +197,18 @@ jobs:
 
           APP_PATH=$(find build/ios/DerivedData/Build/Products/Release-iphoneos \
             -maxdepth 1 -type d -name '*.app' -print -quit)
-          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
-            echo "Unsigned Runner.app was not produced."
-            exit 1
-          fi
-
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
           mkdir -p build/ios/unsigned/Payload
           cp -R "$APP_PATH" build/ios/unsigned/Payload/Runner.app
-          (
-            cd build/ios/unsigned
-            zip -r ../../../NeoStation-Library-Native-unsigned.ipa Payload
-          )
+          (cd build/ios/unsigned && zip -qr ../../../NeoStation-Library-Native-unsigned.ipa Payload)
+          test -s NeoStation-Library-Native-unsigned.ipa
 
       - name: Remove temporary environment file
         if: always()
         run: rm -f .env
 
-      - name: Upload IPA artifact
+      - name: Upload build artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -240,68 +219,20 @@ jobs:
             build/ios/xcodebuild-unsigned.log
           if-no-files-found: warn
 
-      - name: Report exact failure on commit
-        if: failure()
+      - name: Report build result
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 - <<'PY'
-          import base64
-          import os
-          import pathlib
-          import re
-
-          candidates = [
-              pathlib.Path('build/ci/pub-get.log'),
-              pathlib.Path('build/ci/test-addon.log'),
-              pathlib.Path('build/ci/test-catalog.log'),
-              pathlib.Path('build/ci/icons.log'),
-              pathlib.Path('build/ci/fork-icon.log'),
-              pathlib.Path('build/ci/pods.log'),
-              pathlib.Path('build/ci/flutter-build.log'),
-              pathlib.Path('build/ios/xcodebuild-unsigned.log'),
-          ]
-          pattern = re.compile(
-              r'(error:|\berror\b|failed|failure|exception|could not|not found|undefined|requires|missing)',
-              re.IGNORECASE,
-          )
-          summary = 'Build failed before a detailed log was captured.'
-          for file in candidates:
-              if not file.exists() or file.stat().st_size == 0:
-                  continue
-              lines = file.read_text(encoding='utf-8', errors='replace').splitlines()
-              matches = [line.strip() for line in lines if pattern.search(line)]
-              if matches:
-                  summary = matches[-1]
-              elif lines:
-                  summary = lines[-1].strip()
-          for name in ('SCREENSCRAPER_DEV_ID', 'SCREENSCRAPER_DEV_PASSWORD'):
-              secret = os.environ.get(name, '')
-              if not secret:
-                  continue
-              summary = summary.replace(secret, '[redacted]')
-              encoded = base64.b64encode(secret.encode()).decode()
-              summary = summary.replace(encoded, '[redacted]')
-          summary = ' '.join(summary.split())
-          pathlib.Path('/tmp/library-native-diagnostic.txt').write_text(
-              (summary[:125] or 'Build failed'),
-              encoding='utf-8',
-          )
-          PY
-          description=$(cat /tmp/library-native-diagnostic.txt)
+          if [ -s NeoStation-Library-Native-unsigned.ipa ]; then
+            state=success
+            description="IPA build succeeded"
+          else
+            state=failure
+            description="IPA build failed; inspect workflow artifact logs"
+          fi
           gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state=failure \
+            -f state="$state" \
             -f context=library-native-diagnostic \
             -f description="$description" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-      - name: Report IPA success on commit
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -f state=success \
-            -f context=library-native-diagnostic \
-            -f description="IPA build succeeded" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
