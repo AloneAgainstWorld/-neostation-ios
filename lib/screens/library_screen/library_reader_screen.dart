@@ -59,6 +59,7 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
   double? _pendingBookmarkProgress;
   int _pageIndex = 0;
   bool _pageByPage = true;
+  bool _currentPageIsLong = false;
 
   String get _bookmarkKey {
     final identity = widget.bookmarkId?.trim().isNotEmpty == true
@@ -122,7 +123,10 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
     if (!widget.hasPages) return;
     final next = value.clamp(0, widget.pages.length - 1).toInt();
     if (next == _pageIndex) return;
-    setState(() => _pageIndex = next);
+    setState(() {
+      _pageIndex = next;
+      _currentPageIsLong = false;
+    });
     _fitToScreen();
   }
 
@@ -131,7 +135,12 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
   void _nextPage() => _setPageIndex(_pageIndex + 1);
 
   void _handlePageTap(TapUpDetails details, double width) {
-    if (!_pageByPage || _currentScale > 1.05 || width <= 0) return;
+    if (!_pageByPage ||
+        _currentPageIsLong ||
+        _currentScale > 1.05 ||
+        width <= 0) {
+      return;
+    }
     final x = details.localPosition.dx;
     if (x <= width * 0.42) {
       _previousPage();
@@ -491,41 +500,16 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
                 behavior: HitTestBehavior.opaque,
                 onTapUp: (details) =>
                     _handlePageTap(details, constraints.maxWidth),
-                child: InteractiveViewer(
+                child: _AdaptivePagedImage(
+                  key: ValueKey<String>(currentPage),
+                  url: currentPage,
+                  headers: widget.imageHeaders,
                   transformationController: _transformationController,
-                  minScale: 0.35,
-                  maxScale: 5.0,
-                  boundaryMargin: EdgeInsets.all(360.r),
-                  alignment: Alignment.center,
-                  panEnabled: true,
-                  scaleEnabled: true,
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(18.r, 66.r, 18.r, 24.r),
-                      child: Image.network(
-                        currentPage,
-                        headers: widget.imageHeaders,
-                        fit: BoxFit.contain,
-                        alignment: Alignment.center,
-                        loadingBuilder: (context, child, progress) {
-                          if (progress == null) return child;
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        },
-                        errorBuilder: (_, __, ___) => Center(
-                          child: Icon(
-                            Symbols.broken_image_rounded,
-                            size: 42.r,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.45),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  theme: theme,
+                  onLongPageChanged: (isLong) {
+                    if (!mounted || _currentPageIsLong == isLong) return;
+                    setState(() => _currentPageIsLong = isLong);
+                  },
                 ),
               ),
             ),
@@ -569,12 +553,13 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
                       vertical: 4.r,
                     ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surface
-                          .withValues(alpha: 0.72),
+                      color: theme.colorScheme.surface.withValues(alpha: 0.72),
                       borderRadius: BorderRadius.circular(9.r),
                     ),
                     child: Text(
-                      '${_pageIndex + 1} / ${widget.pages.length}',
+                      _currentPageIsLong
+                          ? '${_pageIndex + 1} / ${widget.pages.length} • ${_isFrench ? 'défilement vertical' : 'vertical scroll'}'
+                          : '${_pageIndex + 1} / ${widget.pages.length}',
                       style: TextStyle(
                         fontSize: 9.r,
                         fontWeight: FontWeight.w700,
@@ -650,3 +635,171 @@ class _LibraryReaderScreenState extends State<LibraryReaderScreen> {
   }
 
 }
+
+class _AdaptivePagedImage extends StatefulWidget {
+  const _AdaptivePagedImage({
+    super.key,
+    required this.url,
+    required this.headers,
+    required this.transformationController,
+    required this.theme,
+    required this.onLongPageChanged,
+  });
+
+  final String url;
+  final Map<String, String>? headers;
+  final TransformationController transformationController;
+  final ThemeData theme;
+  final ValueChanged<bool> onLongPageChanged;
+
+  @override
+  State<_AdaptivePagedImage> createState() => _AdaptivePagedImageState();
+}
+
+class _AdaptivePagedImageState extends State<_AdaptivePagedImage> {
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageListener;
+  bool _resolved = false;
+  bool _isLongPage = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resolveDimensions());
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdaptivePagedImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url || oldWidget.headers != widget.headers) {
+      _detachImageListener();
+      _resolved = false;
+      _isLongPage = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resolveDimensions());
+    }
+  }
+
+  @override
+  void dispose() {
+    _detachImageListener();
+    super.dispose();
+  }
+
+  void _detachImageListener() {
+    if (_imageStream != null && _imageListener != null) {
+      _imageStream!.removeListener(_imageListener!);
+    }
+    _imageStream = null;
+    _imageListener = null;
+  }
+
+  void _resolveDimensions() {
+    if (!mounted) return;
+    final provider = NetworkImage(widget.url, headers: widget.headers);
+    final stream = provider.resolve(createLocalImageConfiguration(context));
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        final width = info.image.width.toDouble();
+        final height = info.image.height.toDouble();
+        final isLong = width > 0 && height / width >= 2.35;
+        if (!mounted) return;
+        setState(() {
+          _resolved = true;
+          _isLongPage = isLong;
+        });
+        widget.onLongPageChanged(isLong);
+      },
+      onError: (_, __) {
+        if (!mounted) return;
+        setState(() {
+          _resolved = true;
+          _isLongPage = false;
+        });
+        widget.onLongPageChanged(false);
+      },
+    );
+    _imageStream = stream;
+    _imageListener = listener;
+    stream.addListener(listener);
+  }
+
+  Widget _networkImage({required BoxFit fit}) {
+    return Image.network(
+      widget.url,
+      headers: widget.headers,
+      fit: fit,
+      alignment: _isLongPage ? Alignment.topCenter : Alignment.center,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(child: CircularProgressIndicator());
+      },
+      errorBuilder: (_, __, ___) => Center(
+        child: Icon(
+          Symbols.broken_image_rounded,
+          size: 42.r,
+          color: widget.theme.colorScheme.onSurface.withValues(alpha: 0.45),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (_resolved && _isLongPage) {
+          var readableWidth = constraints.maxWidth * 0.74;
+          final maximumWidth = constraints.maxWidth - 76.r;
+          if (maximumWidth > 260.r && readableWidth > maximumWidth) {
+            readableWidth = maximumWidth;
+          }
+          if (readableWidth < constraints.maxWidth * 0.58) {
+            readableWidth = constraints.maxWidth * 0.58;
+          }
+
+          return InteractiveViewer(
+            transformationController: widget.transformationController,
+            constrained: false,
+            clipBehavior: Clip.none,
+            minScale: 0.35,
+            maxScale: 5.0,
+            boundaryMargin: EdgeInsets.symmetric(
+              horizontal: constraints.maxWidth * 0.42,
+              vertical: constraints.maxHeight * 1.2,
+            ),
+            alignment: Alignment.topCenter,
+            panEnabled: true,
+            scaleEnabled: true,
+            child: Padding(
+              padding: EdgeInsets.only(top: 68.r, bottom: 28.r),
+              child: SizedBox(
+                width: readableWidth,
+                child: _networkImage(fit: BoxFit.fitWidth),
+              ),
+            ),
+          );
+        }
+
+        return InteractiveViewer(
+          transformationController: widget.transformationController,
+          minScale: 0.35,
+          maxScale: 5.0,
+          boundaryMargin: EdgeInsets.all(360.r),
+          alignment: Alignment.center,
+          panEnabled: true,
+          scaleEnabled: true,
+          child: SizedBox(
+            width: constraints.maxWidth,
+            height: constraints.maxHeight,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(18.r, 66.r, 18.r, 24.r),
+              child: _networkImage(fit: BoxFit.contain),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+

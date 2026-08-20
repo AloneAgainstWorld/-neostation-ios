@@ -550,31 +550,57 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   bool _isAdultOrDoujinshi(_NativeLibraryEntry entry) {
+    bool explicitFlag(dynamic value) {
+      if (value == true) return true;
+      if (value is num) return value > 0;
+      final raw = value?.toString().trim().toLowerCase() ?? '';
+      if (raw.isEmpty) return false;
+      return raw == 'true' ||
+          raw == 'yes' ||
+          raw == '1' ||
+          raw.contains('nsfw') ||
+          raw.contains('adult') ||
+          raw.contains('explicit') ||
+          raw.contains('porn') ||
+          raw.contains('hentai');
+    }
+
     final provider = entry.source?.manifest['provider'];
     if (provider is Map) {
-      final nsfw = provider['nsfw'];
-      if (nsfw == true) return true;
-      if (nsfw is num) {
-        final isAidoku = entry.source?.isAidokuRepositorySource == true;
-        if ((isAidoku && nsfw >= 2) || (!isAidoku && nsfw > 0)) {
-          return true;
-        }
+      if (explicitFlag(provider['nsfw']) ||
+          explicitFlag(provider['adult']) ||
+          explicitFlag(provider['explicit'])) {
+        return true;
       }
       final rating = provider['contentRating']?.toString().toLowerCase() ?? '';
-      if (rating.contains('nsfw') ||
-          rating.contains('pornographic') ||
-          rating.contains('hentai') ||
-          rating == 'adult') {
+      if (RegExp(
+        r'(nsfw|porn|hentai|adult|explicit|mature|erotic|smut|18\+|r-?18)',
+        caseSensitive: false,
+      ).hasMatch(rating)) {
         return true;
       }
     }
 
-    String metadata = entry.item.title.toLowerCase();
+    final raw = entry.item.raw;
+    if (explicitFlag(raw['explicitContent']) ||
+        explicitFlag(raw['nsfw']) ||
+        explicitFlag(raw['adult']) ||
+        explicitFlag(raw['isAdult'])) {
+      return true;
+    }
+
+    String metadata = <String>[
+      entry.item.title,
+      entry.item.subtitle,
+      entry.item.description,
+      entry.source?.name ?? '',
+    ].join(' ').toLowerCase();
     try {
-      metadata = '$metadata ${jsonEncode(entry.item.raw).toLowerCase()}';
+      metadata = '$metadata ${jsonEncode(raw).toLowerCase()}';
     } catch (_) {}
+
     return RegExp(
-      r'\b(hentai|doujinshi|doujin|pornographic)\b',
+      r'(^|[^a-z0-9])(hentai|doujinshi|doujin|porn|pornographic|xxx|nsfw|r-?18|18\+|adult(?:s)?[ -]?only|explicit|uncensored|smut|erotic|erotica|ecchi|sexual[ -]?content|hardcore|fetish)([^a-z0-9]|$)',
       caseSensitive: false,
     ).hasMatch(metadata);
   }
@@ -2224,18 +2250,21 @@ class LibraryScreenState extends State<LibraryScreen> {
       required VoidCallback action,
     }) {
       return Expanded(
-        child: _FilterControl(
-          selected: _hubFocus == _HubFocus.filters && _filterSelectedIndex == index,
-          icon: icon,
-          label: label,
-          value: value,
-          onTap: () {
-            setState(() {
-              _hubFocus = _HubFocus.filters;
-              _filterSelectedIndex = index;
-            });
-            action();
-          },
+        child: SizedBox(
+          height: 190.r,
+          child: _FilterControl(
+            selected: _hubFocus == _HubFocus.filters && _filterSelectedIndex == index,
+            icon: icon,
+            label: label,
+            value: value,
+            onTap: () {
+              setState(() {
+                _hubFocus = _HubFocus.filters;
+                _filterSelectedIndex = index;
+              });
+              action();
+            },
+          ),
         ),
       );
     }
@@ -2734,59 +2763,96 @@ class _FilterControl extends StatelessWidget {
   final String value;
   final VoidCallback onTap;
 
+  List<String> get _verticalCharacters =>
+      label.trim().runes.map(String.fromCharCode).toList(growable: false);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final radius = BorderRadius.circular(10.r);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 130),
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.outline.withValues(alpha: 0.16),
-          width: selected ? 2.r : 1.r,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+    final characters = _verticalCharacters;
+    return Tooltip(
+      message: '$label : $value',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 130),
+        decoration: BoxDecoration(
           borderRadius: radius,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.r, vertical: 9.r),
-            child: Row(
-              children: [
-                Icon(icon, size: 20.r, color: theme.colorScheme.primary),
-                SizedBox(width: 8.r),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline.withValues(alpha: 0.16),
+            width: selected ? 2.r : 1.r,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 7.r, vertical: 9.r),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20.r, color: theme.colorScheme.primary),
+                  SizedBox(height: 7.r),
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final character in characters)
+                              SizedBox(
+                                height: 14.r,
+                                width: 18.r,
+                                child: Center(
+                                  child: Text(
+                                    character,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      height: 1,
+                                      fontWeight: FontWeight.w700,
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.72),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                      Text(
+                    ),
+                  ),
+                  SizedBox(height: 5.r),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 18.r,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
                         value,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelLarge?.copyWith(
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.62),
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                Icon(
-                  Symbols.expand_more_rounded,
-                  size: 18.r,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
-                ),
-              ],
+                  Icon(
+                    Symbols.expand_more_rounded,
+                    size: 17.r,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

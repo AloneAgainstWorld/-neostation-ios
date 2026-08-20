@@ -394,7 +394,18 @@ class LibraryAidokuNativeService {
         node.querySelector('img')?.attributes['data-src'] ??
             node.querySelector('img')?.attributes['src'],
       );
-      items.add(_catalogItem(config, id, title, href, coverUrl: cover));
+      final categories = _listingCategories(node);
+      items.add(
+        _catalogItem(
+          config,
+          id,
+          title,
+          href,
+          coverUrl: cover,
+          categories: categories,
+          explicitContent: _listingLooksExplicit(node, categories),
+        ),
+      );
     }
     final nextDisabled =
         document.querySelector('.pagination-disabled[aria-label*="Next"]') != null;
@@ -434,6 +445,31 @@ class LibraryAidokuNativeService {
       final cover = coverPath == null || coverPath.isEmpty
           ? null
           : _resolveHttps('https://api.phenix-scans.com', coverPath);
+      final categories = <String>[];
+      final rawGenres = manga['genres'];
+      if (rawGenres is List) {
+        for (final rawGenre in rawGenres) {
+          if (rawGenre is Map) {
+            final name = rawGenre['name']?.toString().trim() ?? '';
+            if (name.isNotEmpty) categories.add(name);
+          } else {
+            final name = rawGenre?.toString().trim() ?? '';
+            if (name.isNotEmpty) categories.add(name);
+          }
+        }
+      }
+      final explicitContent =
+          manga['nsfw'] == true ||
+          manga['adult'] == true ||
+          manga['isAdult'] == true ||
+          RegExp(
+            r'(hentai|doujin|porn|nsfw|adult|explicit|smut|erotic|ecchi|18\+|r-?18)',
+            caseSensitive: false,
+          ).hasMatch(<String>[
+            title,
+            manga['contentRating']?.toString() ?? '',
+            ...categories,
+          ].join(' '));
       items.add(
         _catalogItem(
           config,
@@ -442,6 +478,8 @@ class LibraryAidokuNativeService {
           '${config.baseUrl}/manga/$id',
           coverUrl: cover,
           description: manga['synopsis']?.toString().trim() ?? '',
+          categories: categories,
+          explicitContent: explicitContent,
         ),
       );
     }
@@ -482,7 +520,18 @@ class LibraryAidokuNativeService {
             image?.attributes['data-lazy-src'] ??
             image?.attributes['src'],
       );
-      items.add(_catalogItem(config, id, title, href, coverUrl: cover));
+      final categories = _listingCategories(node);
+      items.add(
+        _catalogItem(
+          config,
+          id,
+          title,
+          href,
+          coverUrl: cover,
+          categories: categories,
+          explicitContent: _listingLooksExplicit(node, categories),
+        ),
+      );
     }
     return items;
   }
@@ -820,6 +869,8 @@ class LibraryAidokuNativeService {
     String? coverUrl,
     String description = '',
     String? subtitle,
+    List<String> categories = const <String>[],
+    bool explicitContent = false,
   }) {
     return LibraryCatalogItem(
       id: id,
@@ -838,12 +889,45 @@ class LibraryAidokuNativeService {
         'mangaId': id,
         'mangaUrl': _resolveHttps(config.baseUrl, url) ?? url,
         'language': 'fr',
+        if (categories.isNotEmpty) 'categories': List<String>.unmodifiable(categories),
+        if (explicitContent) 'explicitContent': true,
         'imageHeaders': <String, String>{
           'User-Agent': _userAgent,
           'Referer': '${config.baseUrl}/',
         },
       }),
     );
+  }
+
+  List<String> _listingCategories(Element node) {
+    final categories = <String>{};
+    for (final element in node.querySelectorAll(
+      '.genres a, .mgen a, .seriestugenre a, [class*="genre"] a, '
+      '.post-content_item .summary-content a',
+    )) {
+      final value = element.text.trim();
+      if (value.isNotEmpty && value.length <= 80) categories.add(value);
+    }
+    return categories.toList(growable: false);
+  }
+
+  bool _listingLooksExplicit(Element node, List<String> categories) {
+    if (node.querySelector(
+          '.adult, .nsfw, .manga-title-badges.adult, [class*="adult"], '
+          '[class*="nsfw"], [data-content-rating="adult"]',
+        ) !=
+        null) {
+      return true;
+    }
+    final metadata = <String>[
+      node.attributes['class'] ?? '',
+      node.text,
+      ...categories,
+    ].join(' ');
+    return RegExp(
+      r'(^|[^a-z0-9])(hentai|doujinshi|doujin|porn|pornographic|xxx|nsfw|r-?18|18\+|adult(?:s)?[ -]?only|explicit|uncensored|smut|erotic|erotica|ecchi|sexual[ -]?content|hardcore|fetish)([^a-z0-9]|$)',
+      caseSensitive: false,
+    ).hasMatch(metadata);
   }
 
   String _mangaIdFromUrl(_AidokuWebConfig config, String rawUrl) {
