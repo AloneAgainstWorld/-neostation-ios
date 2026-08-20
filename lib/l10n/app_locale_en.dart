@@ -40,9 +40,9 @@ const Map<String, dynamic> appLocaleEn = {
   AppLocale.library: 'Library',
   AppLocale.libraryIntro:
       'Add sources and keep all your reading content in one place.',
-  AppLocale.libraryAddons: 'Add-ons',
+  AppLocale.libraryAddons: 'Directory',
   AppLocale.libraryAddonsSubtitle:
-      'Add external sources to expand your library.',
+      'Browse and add repositories or external sources.',
   AppLocale.libraryLocal: 'Local library',
   AppLocale.libraryLocalSubtitle: 'Your PDF, CBZ and other local content.',
   AppLocale.libraryEmptyTitle: 'No source installed yet',
@@ -57,7 +57,7 @@ const Map<String, dynamic> appLocaleEn = {
       'Install a NeoStation add-on from a local JSON file.',
   AppLocale.libraryAddonUrlTitle: 'Add Library source',
   AppLocale.libraryAddonUrlHelp:
-      'HTTPS manifest URL (schema neostation.library.v1).',
+      'HTTPS NeoStation manifest or Tachiyomi/Mihon repository URL.',
   AppLocale.libraryAddonInstall: 'Install',
   AppLocale.libraryAddonInstalling: 'Installing source…',
   AppLocale.libraryAddonInstalled: 'Installed {name}',

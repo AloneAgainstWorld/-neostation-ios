@@ -221,18 +221,27 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     _showMessage(AppLocale.libraryAddonInstalling.getString(context));
     try {
-      final result = await _addonService.installFromUrl(url);
+      final result = await _addonService.installDocumentFromUrl(url);
       await _loadAddons();
       if (!mounted) return;
-      _showMessage(
-        result.updated
-            ? AppLocale.libraryAddonUpdated
-                  .getString(context)
-                  .replaceFirst('{name}', result.addon.name)
-            : AppLocale.libraryAddonInstalled
-                  .getString(context)
-                  .replaceFirst('{name}', result.addon.name),
-      );
+      if (result.format == LibraryAddonDocumentFormat.tachiyomiRepository) {
+        _showMessage(
+          AppLocale.libraryAddonCount
+              .getString(context)
+              .replaceFirst('{count}', result.totalCount.toString()),
+        );
+      } else {
+        final addon = result.addons.single;
+        _showMessage(
+          result.updatedCount > 0
+              ? AppLocale.libraryAddonUpdated
+                    .getString(context)
+                    .replaceFirst('{name}', addon.name)
+              : AppLocale.libraryAddonInstalled
+                    .getString(context)
+                    .replaceFirst('{name}', addon.name),
+        );
+      }
     } on LibraryAddonException catch (e) {
       _showMessage(
         AppLocale.libraryAddonError
@@ -265,21 +274,30 @@ class LibraryScreenState extends State<LibraryScreen> {
       if (bytes == null) {
         throw const LibraryAddonException('Unable to read selected manifest.');
       }
-      final install = await _addonService.installFromJson(
+      final install = await _addonService.installDocumentFromJson(
         utf8.decode(bytes),
         origin: 'file:${picked.name}',
       );
       await _loadAddons();
       if (!mounted) return;
-      _showMessage(
-        install.updated
-            ? AppLocale.libraryAddonUpdated
-                  .getString(context)
-                  .replaceFirst('{name}', install.addon.name)
-            : AppLocale.libraryAddonInstalled
-                  .getString(context)
-                  .replaceFirst('{name}', install.addon.name),
-      );
+      if (install.format == LibraryAddonDocumentFormat.tachiyomiRepository) {
+        _showMessage(
+          AppLocale.libraryAddonCount
+              .getString(context)
+              .replaceFirst('{count}', install.totalCount.toString()),
+        );
+      } else {
+        final addon = install.addons.single;
+        _showMessage(
+          install.updatedCount > 0
+              ? AppLocale.libraryAddonUpdated
+                    .getString(context)
+                    .replaceFirst('{name}', addon.name)
+              : AppLocale.libraryAddonInstalled
+                    .getString(context)
+                    .replaceFirst('{name}', addon.name),
+        );
+      }
     } on LibraryAddonException catch (e) {
       _showMessage(
         AppLocale.libraryAddonError
@@ -318,6 +336,22 @@ class LibraryScreenState extends State<LibraryScreen> {
                 if (addon.description.isNotEmpty) ...[
                   SizedBox(height: 10.r),
                   Text(addon.description),
+                ],
+                if (addon.isTachiyomiRepositorySource) ...[
+                  SizedBox(height: 10.r),
+                  Text(
+                    'Tachiyomi/Mihon • ${addon.language ?? 'all'} • iOS metadata',
+                    style: Theme.of(dialogContext).textTheme.bodySmall
+                        ?.copyWith(
+                          color: Theme.of(dialogContext).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  if (addon.androidPackage != null)
+                    Text(
+                      addon.androidPackage!,
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
                 ],
                 SizedBox(height: 12.r),
                 Text(
