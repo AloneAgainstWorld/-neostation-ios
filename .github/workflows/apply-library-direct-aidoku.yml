@@ -1,11 +1,10 @@
-name: Apply Library Direct Aidoku Integration
+name: Normalize Library Reader Patch Anchor
 
 on:
   push:
     branches:
       - feature/library-native
     paths:
-      - tooling/patch_library_direct_aidoku.py
       - .github/workflows/apply-library-direct-aidoku.yml
 
 permissions:
@@ -18,15 +17,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/library-native
-      - name: Apply patch
-        run: python3 tooling/patch_library_direct_aidoku.py
-      - name: Commit patch
+      - name: Normalize reader comment anchor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/screens/library_screen/library_reader_screen.dart')
+          source = path.read_text(encoding='utf-8')
+          old = """  /// Stable identity used to persist a bookmark. When omitted, the reader
+  /// derives one from the visible title/subtitle and content type.
+"""
+          new = """  /// Stable identity used to persist a bookmark.
+  /// When omitted, the reader derives one from the visible title/subtitle and content type.
+"""
+          if old in source:
+              path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          elif new not in source:
+              raise SystemExit('Reader bookmark comment anchor not found')
+          PY
+      - name: Commit normalization
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- lib/screens/library_screen/library_screen.dart lib/screens/library_screen/library_reader_screen.dart
+          git add -- lib/screens/library_screen/library_reader_screen.dart
           git diff --cached --quiet && exit 0
-          git commit -m "feat(library): merge Aidoku manga into native catalog"
+          git commit -m "chore(library): normalize reader patch anchor"
           git push origin HEAD:feature/library-native
-
-# Explicit trigger after native source bridge landed.
