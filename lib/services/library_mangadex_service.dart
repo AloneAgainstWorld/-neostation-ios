@@ -70,6 +70,32 @@ class LibraryMangaDexService {
     return List.unmodifiable(items);
   }
 
+  Future<List<LibraryCatalogItem>> searchTitles(
+    String query, {
+    int limit = 40,
+  }) async {
+    final normalized = query.trim();
+    if (normalized.isEmpty) return const [];
+    final safeLimit = limit.clamp(1, 100).toInt();
+    final uri = Uri.https(_apiHost, '/manga', <String, dynamic>{
+      'title': normalized,
+      'limit': safeLimit.toString(),
+      'includes[]': <String>['cover_art', 'author'],
+      'contentRating[]': <String>['safe'],
+      'hasAvailableChapters': 'true',
+    });
+    final decoded = await _getJson(uri);
+    final data = decoded['data'];
+    if (data is! List) return const [];
+    final items = <LibraryCatalogItem>[];
+    for (final raw in data) {
+      if (raw is! Map) continue;
+      final item = _parseManga(Map<String, dynamic>.from(raw));
+      if (item != null) items.add(item);
+    }
+    return List<LibraryCatalogItem>.unmodifiable(items);
+  }
+
   Future<List<LibraryMangaDexChapter>> loadChapters(
     String mangaId, {
     required List<String> languages,

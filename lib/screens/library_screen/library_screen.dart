@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -88,20 +89,44 @@ class LibraryScreenState extends State<LibraryScreen> {
   int _catalogFailures = 0;
   List<LibraryAddon> _addons = const [];
   List<_NativeLibraryEntry> _libraryItems = const [];
+  List<_NativeLibraryEntry> _remoteSearchEntries = const [];
+  final Map<String, int> _aidokuNextPage = <String, int>{};
+  final Set<String> _aidokuExhausted = <String>{};
+  final Set<String> _aidokuLoading = <String>{};
+  int _aidokuRoundRobinCursor = 0;
+  String _titleQuery = '';
+  bool _searchingTitles = false;
+  int _searchGeneration = 0;
+
+  bool get _loadingMoreCatalogs => _aidokuLoading.isNotEmpty;
 
   int get _addonSelectionCount => 3 + _addons.length;
 
+  String _entryIdentity(_NativeLibraryEntry entry) =>
+      '${entry.providerId}|${entry.item.id}';
+
   List<_NativeLibraryEntry> get _visibleLibraryItems {
-    final items = _libraryItems.where((entry) {
+    final query = _titleQuery.trim().toLowerCase();
+    final seen = <String>{};
+    final items = <_NativeLibraryEntry>[];
+    for (final entry in <_NativeLibraryEntry>[
+      ..._libraryItems,
+      ..._remoteSearchEntries,
+    ]) {
+      if (!seen.add(_entryIdentity(entry))) continue;
+      if (query.isNotEmpty &&
+          !entry.item.title.toLowerCase().contains(query)) {
+        continue;
+      }
       if (_languageFilter != 'all' &&
           !_itemLanguageCodes(entry).contains(_languageFilter)) {
-        return false;
+        continue;
       }
       if (_sourceFilter != 'all' && entry.providerId != _sourceFilter) {
-        return false;
+        continue;
       }
-      return true;
-    }).toList();
+      items.add(entry);
+    }
     items.sort((a, b) {
       final comparison = a.item.title.toLowerCase().compareTo(
         b.item.title.toLowerCase(),
@@ -132,7 +157,17 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Map<String, String> get _sourceOptions {
-    final options = <String, String>{'all': 'all'};
+    final options = <String, String>{
+      'all': 'all',
+      LibraryMangaDexService.providerId: 'MangaDex',
+    };
+    for (final addon in _addons) {
+      if (addon.isAidokuRepositorySource && _aidokuNativeService.supports(addon)) {
+        options[addon.id] = addon.name;
+      } else if (addon.canBrowseOnIos) {
+        options[addon.id] = addon.name;
+      }
+    }
     for (final entry in _libraryItems) {
       final label = entry.isMangaDex
           ? 'MangaDex'
@@ -143,7 +178,10 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
     final pairs = options.entries.where((entry) => entry.key != 'all').toList()
       ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
-    return <String, String>{'all': 'all', for (final entry in pairs) entry.key: entry.value};
+    return <String, String>{
+      'all': 'all',
+      for (final entry in pairs) entry.key: entry.value,
+    };
   }
 
   String _sourceLabel(String id) {
@@ -159,6 +197,7 @@ class LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     LibraryScreen._currentState = this;
+    _libraryScrollController.addListener(_onLibraryScroll);
     _loadAddons();
   }
 
@@ -167,6 +206,7 @@ class LibraryScreenState extends State<LibraryScreen> {
     if (identical(LibraryScreen._currentState, this)) {
       LibraryScreen._currentState = null;
     }
+    _libraryScrollController.removeListener(_onLibraryScroll);
     _libraryScrollController.dispose();
     super.dispose();
   }
@@ -190,6 +230,10 @@ class LibraryScreenState extends State<LibraryScreen> {
       setState(() {
         _loadingLibrary = true;
         _catalogFailures = 0;
+        _remoteSearchEntries = const [];
+        _aidokuNextPage.clear();
+        _aidokuExhausted.clear();
+        _aidokuLoading.clear();
       });
     }
 
@@ -213,8 +257,8 @@ class LibraryScreenState extends State<LibraryScreen> {
     for (final addon in addons) {
       if (addon.isAidokuRepositorySource && _aidokuNativeService.supports(addon)) {
         try {
-          final items = await _aidokuNativeService.loadCatalog(addon);
-          for (final item in items) {
+          final page = await _aidokuNativeService.loadCatalogPage(addon, page: 1);
+          for (final item in page.items) {
             entries.add(
               _NativeLibraryEntry(
                 providerId: addon.id,
@@ -223,8 +267,13 @@ class LibraryScreenState extends State<LibraryScreen> {
               ),
             );
           }
+          _aidokuNextPage[addon.id] = 2;
+          if (!page.hasMore || page.items.isEmpty) {
+            _aidokuExhausted.add(addon.id);
+          }
         } catch (_) {
           failures++;
+          _aidokuExhausted.add(addon.id);
         }
         continue;
       }
@@ -248,12 +297,12 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     if (!mounted) return;
     setState(() {
-      _libraryItems = List.unmodifiable(entries);
+      _libraryItems = List<_NativeLibraryEntry>.unmodifiable(entries);
       _catalogFailures = failures;
       _loadingLibrary = false;
       _alphabetAnchor = null;
       if (_sourceFilter != 'all' &&
-          !_libraryItems.any((entry) => entry.providerId == _sourceFilter)) {
+          !_sourceOptions.containsKey(_sourceFilter)) {
         _sourceFilter = 'all';
       }
       final visible = _visibleLibraryItems;
@@ -263,6 +312,193 @@ class LibraryScreenState extends State<LibraryScreen> {
       } else if (_librarySelectedIndex >= visible.length) {
         _librarySelectedIndex = visible.length - 1;
       }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onLibraryScroll();
+    });
+    if (_titleQuery.trim().isNotEmpty) {
+      unawaited(_runTitleSearch(_titleQuery));
+    }
+  }
+
+  void _onLibraryScroll() {
+    if (!mounted ||
+        _loadingLibrary ||
+        _titleQuery.trim().isNotEmpty ||
+        !_libraryScrollController.hasClients) {
+      return;
+    }
+    final position = _libraryScrollController.position;
+    final threshold = position.viewportDimension * 2.2;
+    if (position.extentAfter <= (threshold < 900 ? 900 : threshold)) {
+      unawaited(_loadMoreAidokuCatalogs());
+    }
+  }
+
+  Future<void> _loadMoreAidokuCatalogs({String? preferredSourceId}) async {
+    if (!mounted || _loadingLibrary || _titleQuery.trim().isNotEmpty) return;
+    final capacity = 2 - _aidokuLoading.length;
+    if (capacity <= 0) return;
+
+    var candidates = _addons.where((addon) {
+      return addon.isAidokuRepositorySource &&
+          _aidokuNativeService.supports(addon) &&
+          !_aidokuExhausted.contains(addon.id) &&
+          !_aidokuLoading.contains(addon.id);
+    }).toList();
+    if (candidates.isEmpty) return;
+
+    final preferred = preferredSourceId ??
+        (_sourceFilter == 'all' ? null : _sourceFilter);
+    if (preferred != null) {
+      final matching = candidates.where((addon) => addon.id == preferred).toList();
+      if (matching.isNotEmpty) candidates = matching;
+    } else if (candidates.length > 1) {
+      final offset = _aidokuRoundRobinCursor % candidates.length;
+      candidates = <LibraryAddon>[
+        ...candidates.skip(offset),
+        ...candidates.take(offset),
+      ];
+      _aidokuRoundRobinCursor = (_aidokuRoundRobinCursor + capacity) % candidates.length;
+    }
+
+    final selected = candidates.take(capacity).toList();
+    if (selected.isEmpty) return;
+    setState(() {
+      for (final addon in selected) {
+        _aidokuLoading.add(addon.id);
+      }
+    });
+    await Future.wait(selected.map(_loadAidokuPage));
+  }
+
+  Future<void> _loadAidokuPage(LibraryAddon addon) async {
+    final pageNumber = _aidokuNextPage[addon.id] ?? 2;
+    try {
+      final page = await _aidokuNativeService.loadCatalogPage(
+        addon,
+        page: pageNumber,
+      );
+      if (!mounted) return;
+      final selectedVisible = _visibleLibraryItems;
+      final selectedIdentity = _librarySelectedIndex >= 0 &&
+              _librarySelectedIndex < selectedVisible.length
+          ? _entryIdentity(selectedVisible[_librarySelectedIndex])
+          : null;
+      final existing = _libraryItems
+          .map(_entryIdentity)
+          .toSet();
+      final additions = <_NativeLibraryEntry>[];
+      for (final item in page.items) {
+        final entry = _NativeLibraryEntry(
+          providerId: addon.id,
+          source: addon,
+          item: item,
+        );
+        if (existing.add(_entryIdentity(entry))) additions.add(entry);
+      }
+
+      setState(() {
+        if (additions.isNotEmpty) {
+          _libraryItems = List<_NativeLibraryEntry>.unmodifiable(
+            <_NativeLibraryEntry>[..._libraryItems, ...additions],
+          );
+          _aidokuNextPage[addon.id] = pageNumber + 1;
+        }
+        if (!page.hasMore || additions.isEmpty) {
+          _aidokuExhausted.add(addon.id);
+        }
+        _aidokuLoading.remove(addon.id);
+
+        if (selectedIdentity != null) {
+          final visible = _visibleLibraryItems;
+          final index = visible.indexWhere(
+            (entry) => _entryIdentity(entry) == selectedIdentity,
+          );
+          if (index >= 0) _librarySelectedIndex = index;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _aidokuLoading.remove(addon.id);
+        _aidokuExhausted.add(addon.id);
+        _catalogFailures++;
+      });
+    }
+  }
+
+  Future<void> _runTitleSearch(String rawQuery) async {
+    final query = rawQuery.trim();
+    final generation = ++_searchGeneration;
+    if (!mounted) return;
+    setState(() {
+      _titleQuery = query;
+      _remoteSearchEntries = const [];
+      _searchingTitles = query.isNotEmpty;
+      _librarySelectedIndex = 0;
+      _alphabetAnchor = null;
+    });
+    if (query.isEmpty) return;
+
+    final futures = <Future<List<_NativeLibraryEntry>>>[
+      () async {
+        try {
+          final items = await _mangaDexService.searchTitles(query);
+          return items
+              .map(
+                (item) => _NativeLibraryEntry(
+                  providerId: LibraryMangaDexService.providerId,
+                  item: item,
+                ),
+              )
+              .toList();
+        } catch (_) {
+          return <_NativeLibraryEntry>[];
+        }
+      }(),
+      for (final addon in _addons.where(
+        (addon) =>
+            addon.isAidokuRepositorySource &&
+            _aidokuNativeService.supports(addon),
+      ))
+        () async {
+          try {
+            final page = await _aidokuNativeService.loadCatalogPage(
+              addon,
+              page: 1,
+              query: query,
+            );
+            return page.items
+                .map(
+                  (item) => _NativeLibraryEntry(
+                    providerId: addon.id,
+                    source: addon,
+                    item: item,
+                  ),
+                )
+                .toList();
+          } catch (_) {
+            return <_NativeLibraryEntry>[];
+          }
+        }(),
+    ];
+
+    final groups = await Future.wait(futures);
+    if (!mounted || generation != _searchGeneration || _titleQuery != query) return;
+    final seen = <String>{};
+    final results = <_NativeLibraryEntry>[];
+    for (final group in groups) {
+      for (final entry in group) {
+        if (seen.add(_entryIdentity(entry))) results.add(entry);
+      }
+    }
+    setState(() {
+      _remoteSearchEntries = List<_NativeLibraryEntry>.unmodifiable(results);
+      _searchingTitles = false;
+      final visible = _visibleLibraryItems;
+      _librarySelectedIndex = visible.isEmpty ? 0 : 0;
     });
   }
 
@@ -398,7 +634,7 @@ class LibraryScreenState extends State<LibraryScreen> {
         setState(() => _hubSelectedIndex = next);
         return true;
       case _HubFocus.filters:
-        final next = (_filterSelectedIndex + delta).clamp(0, 3).toInt();
+        final next = (_filterSelectedIndex + delta).clamp(0, 4).toInt();
         if (next == _filterSelectedIndex) return false;
         setState(() => _filterSelectedIndex = next);
         return true;
@@ -486,8 +722,10 @@ class LibraryScreenState extends State<LibraryScreen> {
           _openSortMenu();
         } else if (_filterSelectedIndex == 2) {
           _openIndexMenu();
-        } else {
+        } else if (_filterSelectedIndex == 3) {
           _openSourceMenu();
+        } else {
+          _openTitleSearchDialog();
         }
         return;
       }
@@ -766,6 +1004,77 @@ class LibraryScreenState extends State<LibraryScreen> {
       _librarySelectedIndex = 0;
       _alphabetAnchor = null;
     });
+    if (selected != 'all') {
+      unawaited(_loadMoreAidokuCatalogs(preferredSourceId: selected));
+    }
+  }
+
+  Future<void> _openTitleSearchDialog() async {
+    final controller = TextEditingController(text: _titleQuery);
+    const layerId = 'library_title_search_dialog';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    String? result;
+    try {
+      result = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            Localizations.localeOf(dialogContext).languageCode == 'fr'
+                ? 'Rechercher un titre'
+                : 'Search titles',
+          ),
+          content: SizedBox(
+            width: 520.r,
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Symbols.search_rounded),
+                hintText: Localizations.localeOf(dialogContext).languageCode == 'fr'
+                    ? 'Livre, manga…'
+                    : 'Book, manga…',
+              ),
+              onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+            ),
+          ),
+          actions: [
+            if (_titleQuery.isNotEmpty)
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(''),
+                child: Text(
+                  Localizations.localeOf(dialogContext).languageCode == 'fr'
+                      ? 'Effacer'
+                      : 'Clear',
+                ),
+              ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(AppLocale.cancel.getString(dialogContext)),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              icon: const Icon(Symbols.search_rounded),
+              label: Text(
+                Localizations.localeOf(dialogContext).languageCode == 'fr'
+                    ? 'Rechercher'
+                    : 'Search',
+              ),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+      GamepadNavigationManager.popLayer(layerId);
+    }
+    if (!mounted || result == null) return;
+    await _runTitleSearch(result!);
   }
 
   void _tapHubCard(int index) {
@@ -1662,7 +1971,8 @@ class LibraryScreenState extends State<LibraryScreen> {
         SliverToBoxAdapter(child: SizedBox(height: 12.r)),
         SliverToBoxAdapter(child: _buildFilters(context)),
         SliverToBoxAdapter(child: SizedBox(height: 12.r)),
-        SliverToBoxAdapter(child: _buildNativeLibrary(context, theme)),
+        _buildNativeLibrarySliver(context, theme),
+        _buildCatalogProgressSliver(context),
         SliverToBoxAdapter(child: SizedBox(height: 42.r)),
       ],
     );
@@ -1672,207 +1982,255 @@ class LibraryScreenState extends State<LibraryScreen> {
   Widget _buildFilters(BuildContext context) {
     final locale = Localizations.localeOf(context).languageCode;
     final visible = _visibleLibraryItems;
-    final countLabel = locale == 'fr'
-        ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
-        : '${visible.length} title${visible.length == 1 ? '' : 's'}';
+    final countLabel = _titleQuery.isNotEmpty
+        ? (locale == 'fr'
+            ? '${visible.length} résultat${visible.length > 1 ? 's' : ''}'
+            : '${visible.length} result${visible.length == 1 ? '' : 's'}')
+        : (locale == 'fr'
+            ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
+            : '${visible.length} title${visible.length == 1 ? '' : 's'}');
 
-    return Row(
+    Widget control({
+      required int index,
+      required IconData icon,
+      required String label,
+      required String value,
+      required VoidCallback action,
+    }) {
+      return Expanded(
+        child: _FilterControl(
+          selected: _hubFocus == _HubFocus.filters && _filterSelectedIndex == index,
+          icon: icon,
+          label: label,
+          value: value,
+          onTap: () {
+            setState(() {
+              _hubFocus = _HubFocus.filters;
+              _filterSelectedIndex = index;
+            });
+            action();
+          },
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: _FilterControl(
-            selected:
-                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 0,
-            icon: Symbols.translate_rounded,
-            label: locale == 'fr' ? 'Langue' : 'Language',
-            value: _languageLabel(_languageFilter),
-            onTap: () {
-              setState(() {
-                _hubFocus = _HubFocus.filters;
-                _filterSelectedIndex = 0;
-              });
-              _openLanguageMenu();
-            },
-          ),
+        Row(
+          children: [
+            control(
+              index: 0,
+              icon: Symbols.translate_rounded,
+              label: locale == 'fr' ? 'Langue' : 'Language',
+              value: _languageLabel(_languageFilter),
+              action: _openLanguageMenu,
+            ),
+            SizedBox(width: 8.r),
+            control(
+              index: 1,
+              icon: Symbols.sort_by_alpha_rounded,
+              label: locale == 'fr' ? 'Tri' : 'Sort',
+              value: _sortAscending ? 'A → Z' : 'Z → A',
+              action: _openSortMenu,
+            ),
+            SizedBox(width: 8.r),
+            control(
+              index: 2,
+              icon: Symbols.abc_rounded,
+              label: 'Index',
+              value: _alphabetAnchor == null ? 'A–Z' : _alphabetAnchor!,
+              action: _openIndexMenu,
+            ),
+            SizedBox(width: 8.r),
+            control(
+              index: 3,
+              icon: Symbols.source_rounded,
+              label: 'Source',
+              value: _sourceLabel(_sourceFilter),
+              action: _openSourceMenu,
+            ),
+            SizedBox(width: 8.r),
+            control(
+              index: 4,
+              icon: Symbols.search_rounded,
+              label: locale == 'fr' ? 'Recherche' : 'Search',
+              value: _titleQuery.isEmpty
+                  ? (locale == 'fr' ? 'Titre' : 'Title')
+                  : _titleQuery,
+              action: _openTitleSearchDialog,
+            ),
+          ],
         ),
-        SizedBox(width: 10.r),
-        Expanded(
-          child: _FilterControl(
-            selected:
-                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 1,
-            icon: Symbols.sort_by_alpha_rounded,
-            label: locale == 'fr' ? 'Tri' : 'Sort',
-            value: _sortAscending ? 'A → Z' : 'Z → A',
-            onTap: () {
-              setState(() {
-                _hubFocus = _HubFocus.filters;
-                _filterSelectedIndex = 1;
-              });
-              _openSortMenu();
-            },
-          ),
-        ),
-        SizedBox(width: 10.r),
-        Expanded(
-          child: _FilterControl(
-            selected:
-                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 2,
-            icon: Symbols.abc_rounded,
-            label: 'Index',
-            value: _alphabetAnchor == null ? 'A–Z' : _alphabetAnchor!,
-            onTap: () {
-              setState(() {
-                _hubFocus = _HubFocus.filters;
-                _filterSelectedIndex = 2;
-              });
-              _openIndexMenu();
-            },
-          ),
-        ),
-        SizedBox(width: 10.r),
-        Expanded(
-          child: _FilterControl(
-            selected:
-                _hubFocus == _HubFocus.filters && _filterSelectedIndex == 3,
-            icon: Symbols.source_rounded,
-            label: locale == 'fr' ? 'Source' : 'Source',
-            value: _sourceLabel(_sourceFilter),
-            onTap: () {
-              setState(() {
-                _hubFocus = _HubFocus.filters;
-                _filterSelectedIndex = 3;
-              });
-              _openSourceMenu();
-            },
-          ),
-        ),
-        SizedBox(width: 12.r),
-        Text(
-          countLabel,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.58),
-            fontWeight: FontWeight.w600,
-          ),
+        SizedBox(height: 7.r),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (_searchingTitles) ...[
+              SizedBox(
+                width: 13.r,
+                height: 13.r,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 7.r),
+              Text(
+                locale == 'fr' ? 'Recherche dans les sources…' : 'Searching sources…',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              SizedBox(width: 12.r),
+            ],
+            Text(
+              countLabel,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.58),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-
-  Widget _buildNativeLibrary(BuildContext context, ThemeData theme) {
+  Widget _buildNativeLibrarySliver(BuildContext context, ThemeData theme) {
     if (_loadingLibrary) {
-      return SizedBox(
-        height: 220.r,
-        child: const Center(child: CircularProgressIndicator()),
+      return SliverToBoxAdapter(
+        child: SizedBox(
+          height: 220.r,
+          child: const Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
     final visible = _visibleLibraryItems;
     if (visible.isEmpty) {
-      final hasContent = _libraryItems.isNotEmpty;
-      return SizedBox(
-        height: 220.r,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Symbols.collections_bookmark_rounded,
-                size: 38.r,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
-              ),
-              SizedBox(height: 8.r),
-              Text(
-                hasContent
-                    ? (Localizations.localeOf(context).languageCode == 'fr'
-                          ? 'Aucun livre pour ce filtre'
-                          : 'No books match this filter')
-                    : AppLocale.libraryEmptyTitle.getString(context),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (_catalogFailures > 0) ...[
-                SizedBox(height: 5.r),
+      final hasContent = _libraryItems.isNotEmpty || _remoteSearchEntries.isNotEmpty;
+      return SliverToBoxAdapter(
+        child: SizedBox(
+          height: 220.r,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_searchingTitles)
+                  const CircularProgressIndicator()
+                else
+                  Icon(
+                    Symbols.collections_bookmark_rounded,
+                    size: 38.r,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+                  ),
+                SizedBox(height: 8.r),
                 Text(
-                  '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error.withValues(alpha: 0.85),
+                  _searchingTitles
+                      ? (Localizations.localeOf(context).languageCode == 'fr'
+                          ? 'Recherche dans les catalogues…'
+                          : 'Searching catalogs…')
+                      : hasContent
+                          ? (Localizations.localeOf(context).languageCode == 'fr'
+                              ? 'Aucun livre pour ce filtre'
+                              : 'No books match this filter')
+                          : AppLocale.libraryEmptyTitle.getString(context),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (_catalogFailures > 0) ...[
+                  SizedBox(height: 5.r),
+                  Text(
+                    '$_catalogFailures catalogue(s) n’ont pas pu être chargés.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       );
     }
 
-    return LayoutBuilder(
+    return SliverLayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1200 ? 6 : 5;
+        final columns = constraints.crossAxisExtent >= 1200 ? 6 : 5;
         _libraryColumns = columns;
         final spacing = 12.r;
         final totalSpacing = (columns - 1) * spacing;
-        final cardWidth = (constraints.maxWidth - totalSpacing) / columns;
+        final cardWidth = (constraints.crossAxisExtent - totalSpacing) / columns;
         final cardHeight = cardWidth / 0.68;
         _libraryRowExtent = cardHeight + spacing;
-        final rowCount = (visible.length + columns - 1) ~/ columns;
 
-        return Column(
-          children: [
-            for (var row = 0; row < rowCount; row++) ...[
-              if (row > 0) SizedBox(height: spacing),
-              SizedBox(
-                height: cardHeight,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var column = 0; column < columns; column++) ...[
-                      if (column > 0) SizedBox(width: spacing),
-                      Expanded(
-                        child: () {
-                          final index = row * columns + column;
-                          if (index >= visible.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final entry = visible[index];
-                          final languages = _itemLanguageCodes(entry);
-                          final languageLabel = languages.isEmpty
-                              ? ''
-                              : languages
-                                    .map((code) => code.toUpperCase())
-                                    .take(2)
-                                    .join(' • ');
-                          return KeyedSubtree(
-                            key: _keyForBook(entry),
-                            child: _LibraryCatalogCard(
-                              item: entry.item,
-                              languageLabel: languageLabel,
-                              selected:
-                                  _hubFocus == _HubFocus.books &&
-                                  _librarySelectedIndex == index,
-                              onTap: () {
-                                SfxService().playNavSound();
-                                setState(() {
-                                  _hubFocus = _HubFocus.books;
-                                  _librarySelectedIndex = index;
-                                });
-                                _openCatalogItem(entry);
-                              },
-                            ),
-                          );
-                        }(),
-                      ),
-                    ],
-                  ],
+        return SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+            childAspectRatio: 0.68,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final entry = visible[index];
+              final languages = _itemLanguageCodes(entry);
+              final languageLabel = languages.isEmpty
+                  ? ''
+                  : languages
+                      .map((code) => code.toUpperCase())
+                      .take(2)
+                      .join(' • ');
+              return KeyedSubtree(
+                key: _keyForBook(entry),
+                child: _LibraryCatalogCard(
+                  item: entry.item,
+                  languageLabel: languageLabel,
+                  selected:
+                      _hubFocus == _HubFocus.books &&
+                      _librarySelectedIndex == index,
+                  onTap: () {
+                    SfxService().playNavSound();
+                    setState(() {
+                      _hubFocus = _HubFocus.books;
+                      _librarySelectedIndex = index;
+                    });
+                    _openCatalogItem(entry);
+                  },
                 ),
-              ),
-            ],
-          ],
+              );
+            },
+            childCount: visible.length,
+            addAutomaticKeepAlives: false,
+          ),
         );
       },
     );
   }
 
+  Widget _buildCatalogProgressSliver(BuildContext context) {
+    if (!_loadingMoreCatalogs || _titleQuery.isNotEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 20.r),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 18.r,
+              height: 18.r,
+              child: const CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+            SizedBox(width: 10.r),
+            Text(
+              Localizations.localeOf(context).languageCode == 'fr'
+                  ? 'Chargement de la suite du catalogue…'
+                  : 'Loading more catalog titles…',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildAddons(BuildContext context) {
     final theme = Theme.of(context);

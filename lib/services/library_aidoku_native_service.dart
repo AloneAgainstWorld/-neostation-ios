@@ -29,6 +29,25 @@ class LibraryAidokuChapter {
   }
 }
 
+class LibraryAidokuCatalogPage {
+  const LibraryAidokuCatalogPage({
+    required this.items,
+    required this.page,
+    required this.hasMore,
+  });
+
+  final List<LibraryCatalogItem> items;
+  final int page;
+  final bool hasMore;
+}
+
+class _AidokuPageLoad {
+  const _AidokuPageLoad(this.items, this.hasMore);
+
+  final List<LibraryCatalogItem> items;
+  final bool hasMore;
+}
+
 enum _AidokuWebKind { madara, mangaStream, lelscan, phenix }
 
 class _AidokuWebConfig {
@@ -165,19 +184,38 @@ class LibraryAidokuNativeService {
     };
   }
 
+  Future<LibraryAidokuCatalogPage> loadCatalogPage(
+    LibraryAddon addon, {
+    int page = 1,
+    String query = '',
+  }) async {
+    final config = _config(addon);
+    final safePage = page < 1 ? 1 : page;
+    final normalizedQuery = query.trim();
+    final result = switch (config.kind) {
+      _AidokuWebKind.madara =>
+        await _loadMadaraCatalog(config, safePage, normalizedQuery),
+      _AidokuWebKind.mangaStream =>
+        await _loadMangaStreamCatalog(config, safePage, normalizedQuery),
+      _AidokuWebKind.lelscan =>
+        await _loadLelscanCatalog(config, safePage, normalizedQuery),
+      _AidokuWebKind.phenix =>
+        await _loadPhenixCatalog(config, safePage, normalizedQuery),
+    };
+    return LibraryAidokuCatalogPage(
+      items: List<LibraryCatalogItem>.unmodifiable(result.items),
+      page: safePage,
+      hasMore: result.hasMore,
+    );
+  }
+
   Future<List<LibraryCatalogItem>> loadCatalog(
     LibraryAddon addon, {
     int limit = 24,
   }) async {
-    final config = _config(addon);
-    final safeLimit = limit.clamp(1, 60).toInt();
-    final items = switch (config.kind) {
-      _AidokuWebKind.madara => await _loadMadaraCatalog(config),
-      _AidokuWebKind.mangaStream => await _loadMangaStreamCatalog(config),
-      _AidokuWebKind.lelscan => await _loadLelscanCatalog(config),
-      _AidokuWebKind.phenix => await _loadPhenixCatalog(config),
-    };
-    return List.unmodifiable(items.take(safeLimit));
+    final page = await loadCatalogPage(addon);
+    final safeLimit = limit.clamp(1, 100).toInt();
+    return List<LibraryCatalogItem>.unmodifiable(page.items.take(safeLimit));
   }
 
   Future<LibraryCatalogItem> loadDetails(
@@ -240,70 +278,110 @@ class LibraryAidokuNativeService {
     return config;
   }
 
-  Future<List<LibraryCatalogItem>> _loadMadaraCatalog(
+  Future<_AidokuPageLoad> _loadMadaraCatalog(
     _AidokuWebConfig config,
+    int page,
+    String query,
   ) async {
-    final uri = Uri.parse('${config.baseUrl}/wp-admin/admin-ajax.php');
-    final response = await _postForm(
-      uri,
-      <String, String>{
-        'action': 'madara_load_more',
-        'page': '0',
-        'template': 'madara-core/content/content-archive',
-        'vars[paged]': '1',
-        'vars[orderby]': 'meta_value_num',
-        'vars[template]': 'archive',
-        'vars[sidebar]': 'full',
-        'vars[post_type]': 'wp-manga',
-        'vars[post_status]': 'publish',
-        'vars[meta_key]': '_latest_update',
-        'vars[order]': 'desc',
-        'vars[meta_query][relation]': 'OR',
-        'vars[manga_archives_item_layout]': 'big_thumbnail',
-      },
-      referer: config.baseUrl,
-    );
-    var document = html_parser.parse(response);
-    var nodes = document.querySelectorAll('div.page-item-detail');
+    Document document;
+    List<Element> nodes;
 
-    if (nodes.isEmpty) {
-      final fallback = await _getText(
-        Uri.parse('${config.baseUrl}/${config.sourcePath}/'),
+    if (query.isNotEmpty) {
+      final uri = Uri.parse(config.baseUrl).replace(
+        queryParameters: <String, String>{
+          's': query,
+          'post_type': 'wp-manga',
+          if (page > 1) 'paged': page.toString(),
+        },
       );
-      document = html_parser.parse(fallback);
+      document = html_parser.parse(await _getText(uri));
       nodes = document.querySelectorAll(
-        'div.page-item-detail, div.c-tabs-item__content',
+        'div.c-tabs-item__content, div.row.c-tabs-item__content, div.page-item-detail',
       );
+    } else {
+      final uri = Uri.parse('${config.baseUrl}/wp-admin/admin-ajax.php');
+      final response = await _postForm(
+        uri,
+        <String, String>{
+          'action': 'madara_load_more',
+          'page': (page - 1).toString(),
+          'template': 'madara-core/content/content-archive',
+          'vars[paged]': page.toString(),
+          'vars[orderby]': 'meta_value_num',
+          'vars[template]': 'archive',
+          'vars[sidebar]': 'full',
+          'vars[post_type]': 'wp-manga',
+          'vars[post_status]': 'publish',
+          'vars[meta_key]': '_latest_update',
+          'vars[order]': 'desc',
+          'vars[meta_query][relation]': 'OR',
+          'vars[manga_archives_item_layout]': 'big_thumbnail',
+        },
+        referer: config.baseUrl,
+      );
+      document = html_parser.parse(response);
+      nodes = document.querySelectorAll('div.page-item-detail');
+
+      if (nodes.isEmpty) {
+        final fallbackUri = page <= 1
+            ? Uri.parse('${config.baseUrl}/${config.sourcePath}/')
+            : Uri.parse('${config.baseUrl}/${config.sourcePath}/page/$page/');
+        document = html_parser.parse(await _getText(fallbackUri));
+        nodes = document.querySelectorAll(
+          'div.page-item-detail, div.c-tabs-item__content',
+        );
+      }
     }
 
-    return _parseListingNodes(
+    final items = _parseListingNodes(
       config,
       nodes,
       titleSelectors: const ['h3.h5 > a', 'h3 a', 'a'],
     );
+    return _AidokuPageLoad(items, items.isNotEmpty);
   }
 
-  Future<List<LibraryCatalogItem>> _loadMangaStreamCatalog(
+  Future<_AidokuPageLoad> _loadMangaStreamCatalog(
     _AidokuWebConfig config,
+    int page,
+    String query,
   ) async {
-    final uri = Uri.parse(
-      '${config.baseUrl}/${config.traversePath}/?order=update',
-    );
+    final Uri uri;
+    if (query.isNotEmpty) {
+      uri = Uri.parse(
+        '${config.baseUrl}/${config.traversePath}/page/$page',
+      ).replace(queryParameters: <String, String>{'s': query});
+    } else if (page <= 1) {
+      uri = Uri.parse(
+        '${config.baseUrl}/${config.traversePath}/?order=update',
+      );
+    } else {
+      uri = Uri.parse(
+        '${config.baseUrl}/${config.traversePath}/?page=$page&order=update',
+      );
+    }
     final document = html_parser.parse(await _getText(uri));
     final nodes = document.querySelectorAll('.listupd .bsx');
-    return _parseListingNodes(
+    final items = _parseListingNodes(
       config,
       nodes,
       titleSelectors: const ['a'],
     );
+    return _AidokuPageLoad(items, items.isNotEmpty);
   }
 
-  Future<List<LibraryCatalogItem>> _loadLelscanCatalog(
+  Future<_AidokuPageLoad> _loadLelscanCatalog(
     _AidokuWebConfig config,
+    int page,
+    String query,
   ) async {
-    final document = html_parser.parse(
-      await _getText(Uri.parse('${config.baseUrl}/manga?page=1')),
+    final uri = Uri.parse('${config.baseUrl}/manga').replace(
+      queryParameters: <String, String>{
+        'page': page.toString(),
+        if (query.isNotEmpty) 'title': query,
+      },
     );
+    final document = html_parser.parse(await _getText(uri));
     final items = <LibraryCatalogItem>[];
     for (final node in document.querySelectorAll('div[id="card-real"]')) {
       final link = node.querySelector('a');
@@ -318,19 +396,33 @@ class LibraryAidokuNativeService {
       );
       items.add(_catalogItem(config, id, title, href, coverUrl: cover));
     }
-    return items;
+    final nextDisabled =
+        document.querySelector('.pagination-disabled[aria-label*="Next"]') != null;
+    return _AidokuPageLoad(items, items.isNotEmpty && !nextDisabled);
   }
 
-  Future<List<LibraryCatalogItem>> _loadPhenixCatalog(
+  Future<_AidokuPageLoad> _loadPhenixCatalog(
     _AidokuWebConfig config,
+    int page,
+    String query,
   ) async {
-    final decoded = await _getJson(
-      Uri.parse(
-        'https://api.phenix-scans.com/front/manga?sort=updatedAt&page=1&limit=30',
-      ),
-    );
+    final Uri uri;
+    if (query.isNotEmpty) {
+      uri = Uri.parse('https://api.phenix-scans.com/front/manga/search').replace(
+        queryParameters: <String, String>{'query': query},
+      );
+    } else {
+      uri = Uri.parse('https://api.phenix-scans.com/front/manga').replace(
+        queryParameters: <String, String>{
+          'sort': 'updatedAt',
+          'page': page.toString(),
+          'limit': '30',
+        },
+      );
+    }
+    final decoded = await _getJson(uri);
     final rawMangas = decoded['mangas'];
-    if (rawMangas is! List) return const [];
+    if (rawMangas is! List) return const _AidokuPageLoad([], false);
     final items = <LibraryCatalogItem>[];
     for (final raw in rawMangas) {
       if (raw is! Map) continue;
@@ -353,7 +445,10 @@ class LibraryAidokuNativeService {
         ),
       );
     }
-    return items;
+    if (query.isNotEmpty) return _AidokuPageLoad(items, false);
+    final pagination = decoded['pagination'];
+    final hasMore = pagination is Map && pagination['hasNextPage'] == true;
+    return _AidokuPageLoad(items, hasMore);
   }
 
   List<LibraryCatalogItem> _parseListingNodes(

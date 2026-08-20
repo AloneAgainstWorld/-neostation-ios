@@ -59,4 +59,16 @@ void main() {
       expect(service.unsupportedReason(addon), isNotNull, reason: sourceId);
     }
   });
+
+  test('catalog page model preserves pagination metadata', () {
+    const page = LibraryAidokuCatalogPage(
+      items: [],
+      page: 3,
+      hasMore: true,
+    );
+    expect(page.page, 3);
+    expect(page.hasMore, isTrue);
+    expect(page.items, isEmpty);
+  });
+
 }
