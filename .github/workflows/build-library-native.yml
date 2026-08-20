@@ -192,3 +192,5 @@ jobs:
             NeoStation-Library-Native-unsigned.ipa
             build/ios/xcodebuild-unsigned.log
           if-no-files-found: warn
+
+# Rebuild requested 2026-08-20T13:43+02:00
