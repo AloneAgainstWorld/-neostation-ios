@@ -71,6 +71,34 @@ jobs:
           set -o pipefail
           flutter pub get 2>&1 | tee build/ci/pub-get.log
 
+      - name: Patch flutter_localization for Swift 5
+        run: |
+          set -euo pipefail
+          PLUGIN_FILE=$(find "$HOME/.pub-cache" \
+            -path "*flutter_localization-0.4.1*/FlutterLocalizationPlugin.swift" \
+            -print -quit)
+          if [ -z "$PLUGIN_FILE" ] || [ ! -f "$PLUGIN_FILE" ]; then
+            echo "flutter_localization Swift source not found"
+            exit 1
+          fi
+          python3 - "$PLUGIN_FILE" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text(encoding='utf-8')
+          broken = 'binaryMessenger: registrar.messenger(),\n    )'
+          fixed = 'binaryMessenger: registrar.messenger()\n    )'
+          if broken in source:
+              path.write_text(source.replace(broken, fixed), encoding='utf-8')
+              print(f'Patched Swift 5 trailing argument comma in {path}')
+          elif fixed in source:
+              print(f'flutter_localization already Swift 5 compatible: {path}')
+          else:
+              print('Unexpected flutter_localization Swift source; refusing blind patch')
+              sys.exit(1)
+          PY
+
       - name: Test Library add-on service
         run: |
           set -o pipefail
