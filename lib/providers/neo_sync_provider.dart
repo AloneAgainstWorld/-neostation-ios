@@ -213,7 +213,9 @@ class NeoSyncProvider extends ChangeNotifier {
   /// NeoSync stores some payloads as `.neosync.gz`; exports must contain the
   /// original emulator save bytes so the archive is independently recoverable.
   Future<List<int>> downloadOnlineFileBytes(NeoSyncFile cloudFile) async {
-    final result = await _neoSyncService.downloadFile(cloudFile.id);
+    final result = LegacyNeoSyncService.isLegacyId(cloudFile.id)
+        ? await _legacyNeoSyncService.downloadFile(cloudFile.id)
+        : await _neoSyncService.downloadFile(cloudFile.id);
     if (result['success'] != true || result['data'] == null) {
       throw Exception(result['message'] ?? 'Failed to download file');
     }
