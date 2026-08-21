@@ -238,5 +238,6 @@ write(test_path, test)
 
 # Apply the native iOS Fin folder scanner after the compatibility patches above.
 runpy.run_path(str(ROOT / "tools/apply_fin_native_scan_fix.py"), run_name="__main__")
+runpy.run_path(str(ROOT / "tools/apply_fin_native_scan_fix_followup.py"), run_name="__main__")
 
 print("Completed Fin classifier helper, Manga Provider import, and native Fin scan fixes.")
