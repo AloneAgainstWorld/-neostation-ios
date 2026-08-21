@@ -23,6 +23,7 @@ jobs:
     env:
       SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
       SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+      GOOGLE_BOOKS_API_KEY: ${{ secrets.GOOGLE_BOOKS_API_KEY }}
 
     steps:
       - name: Checkout repository
@@ -47,14 +48,18 @@ jobs:
           import os
           import pathlib
           import sys
-          values = {
+          required = {
               'SCREENSCRAPER_DEV_ID': os.environ.get('SCREENSCRAPER_DEV_ID', ''),
               'SCREENSCRAPER_DEV_PASSWORD': os.environ.get('SCREENSCRAPER_DEV_PASSWORD', ''),
           }
-          missing = [key for key, value in values.items() if not value]
+          missing = [key for key, value in required.items() if not value]
           if missing:
               print('Missing required GitHub Actions secrets: ' + ', '.join(missing))
               sys.exit(1)
+          values = {
+              **required,
+              'GOOGLE_BOOKS_API_KEY': os.environ.get('GOOGLE_BOOKS_API_KEY', ''),
+          }
           pathlib.Path('.env').write_text(
               '\n'.join(f'{key}={value}' for key, value in values.items()) + '\n',
               encoding='utf-8',
@@ -88,12 +93,19 @@ jobs:
               raise SystemExit('Could not locate iOS registrar.messenger() call')
           PY
 
-      - name: Run Library regression tests
+      - name: Run Library and Fin regression tests
         run: |
           set -o pipefail
           flutter test test/library_addon_service_test.dart 2>&1 | tee build/ci/test-addon.log
           flutter test test/library_catalog_service_test.dart 2>&1 | tee build/ci/test-catalog.log
           flutter test test/library_aidoku_native_service_test.dart 2>&1 | tee build/ci/test-aidoku-native.log
+          flutter test test/library_metadata_provider_service_test.dart 2>&1 | tee build/ci/test-manga-providers.log
+          flutter test test/fin_library_service_test.dart 2>&1 | tee build/ci/test-fin.log
+
+      - name: Analyze Flutter sources
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | tee build/ci/analyze.log
 
       - name: Scaffold iOS platform if missing
         run: |
@@ -233,5 +245,3 @@ jobs:
             -f context=library-native-diagnostic \
             -f description="$description" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-# Direct imported manga catalog + keyboard lifecycle fix.
