@@ -7,7 +7,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
   statuses: write
 
 concurrency:
@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: feature/library-native
+          fetch-depth: 0
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -39,6 +42,19 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      - name: Apply source-declared Library acquisitions
+        run: |
+          set -euo pipefail
+          python3 tools/apply_library_acquisition_integration.py
+          dart format \
+            lib/services/library_catalog_service.dart \
+            lib/services/library_metadata_provider_service.dart \
+            lib/services/library_download_service.dart \
+            lib/screens/library_screen/library_screen.dart \
+            lib/screens/library_screen/library_pdf_reader_screen.dart \
+            test/library_acquisition_service_test.dart
+          git diff --check
 
       - name: Prepare build environment
         run: |
@@ -100,12 +116,32 @@ jobs:
           flutter test test/library_catalog_service_test.dart 2>&1 | tee build/ci/test-catalog.log
           flutter test test/library_aidoku_native_service_test.dart 2>&1 | tee build/ci/test-aidoku-native.log
           flutter test test/library_metadata_provider_service_test.dart 2>&1 | tee build/ci/test-manga-providers.log
+          flutter test test/library_acquisition_service_test.dart 2>&1 | tee build/ci/test-library-acquisition.log
           flutter test test/fin_library_service_test.dart 2>&1 | tee build/ci/test-fin.log
 
       - name: Analyze Flutter sources
         run: |
           set -o pipefail
           flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | tee build/ci/analyze.log
+
+      - name: Commit validated Library acquisition sources
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/services/library_catalog_service.dart \
+            lib/services/library_metadata_provider_service.dart \
+            lib/services/library_download_service.dart \
+            lib/screens/library_screen/library_screen.dart \
+            lib/screens/library_screen/library_pdf_reader_screen.dart \
+            test/library_acquisition_service_test.dart
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: add source-declared Library downloads"
+            git push origin HEAD:feature/library-native
+          else
+            echo "Library acquisition sources already committed."
+          fi
 
       - name: Scaffold iOS platform if missing
         run: |
