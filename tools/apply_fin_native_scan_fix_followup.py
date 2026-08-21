@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -132,4 +133,18 @@ if signature not in fin:
     fin = fin.replace(marker, method + marker, 1)
 
 write(fin_path, fin)
+
+# The workflow's historical git-add list predates the Dart side of the native
+# bookmark scanner. Stage it here so the later validated-source commit persists
+# the wrapper together with the Swift implementation and Fin service.
+subprocess.run(
+    [
+        "git",
+        "add",
+        "packages/external_folder_access/lib/external_folder_access.dart",
+    ],
+    cwd=ROOT,
+    check=True,
+)
+
 print("Completed native Fin discovery method insertion.")
