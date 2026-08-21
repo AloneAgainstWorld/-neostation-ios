@@ -1,0 +1,726 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:external_folder_access/external_folder_access.dart';
+import 'package:flutter/foundation.dart';
+import 'package:neostation/data/datasources/sqlite_service.dart';
+import 'package:neostation/main.dart' show rootNavigatorKey;
+import 'package:neostation/providers/sqlite_config_provider.dart';
+import 'package:neostation/providers/sqlite_database_provider.dart';
+import 'package:neostation/repositories/system_repository.dart';
+import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
+import 'package:neostation/services/logger_service.dart';
+import 'package:path/path.dart' as path;
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// One GameCube or Wii title discovered in Fin's Files-visible game folder.
+class FinLibraryGame {
+  const FinLibraryGame({
+    required this.fileName,
+    required this.relativePath,
+    required this.systemFolder,
+    required this.title,
+    this.gameId,
+  });
+
+  final String fileName;
+  final String relativePath;
+  final String systemFolder;
+  final String title;
+  final String? gameId;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'fileName': fileName,
+    'relativePath': relativePath,
+    'systemFolder': systemFolder,
+    'title': title,
+    'gameId': gameId,
+  };
+
+  factory FinLibraryGame.fromJson(Map<String, dynamic> json) {
+    return FinLibraryGame(
+      fileName: json['fileName']?.toString() ?? '',
+      relativePath: json['relativePath']?.toString() ?? '',
+      systemFolder: json['systemFolder']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      gameId: json['gameId']?.toString(),
+    );
+  }
+}
+
+class FinSyncResult {
+  const FinSyncResult({
+    required this.discoveredGames,
+    required this.gameCubeGames,
+    required this.wiiGames,
+    required this.skippedGames,
+    required this.virtualRows,
+    required this.physicalRows,
+    required this.removedRows,
+  });
+
+  final int discoveredGames;
+  final int gameCubeGames;
+  final int wiiGames;
+  final int skippedGames;
+  final int virtualRows;
+  final int physicalRows;
+  final int removedRows;
+}
+
+/// Imports Fin's GameCube/Wii library into NeoStation and launches it through
+/// the user-installed `NeoStation+Fin` Apple Shortcut.
+///
+/// Fin exposes its game files in the Files app. NeoStation bookmarks that
+/// folder, classifies each image as GameCube or Wii, and stores virtual
+/// `fin://launch?...` rows when no matching physical NeoStation ROM exists.
+/// The virtual row carries only a relative path. The Shortcut resolves that
+/// path inside Fin/Games and hands the resulting file to Fin's own Shortcuts
+/// action, so no unstable iOS sandbox path is persisted.
+class FinLibraryService {
+  FinLibraryService._();
+
+  static final _log = LoggerService.instance;
+
+  static const String bookmarkKey = 'fin-games';
+  static const String _prefsKey = 'fin_library_cache_v1';
+  static const String _syncCompletedKey = 'fin_library_sync_completed_v1';
+  static const String _virtualScheme = 'fin';
+
+  static const Set<String> _supportedExtensions = <String>{
+    '.iso',
+    '.wia',
+    '.rvz',
+    '.nkit',
+    '.m3u',
+    '.dol',
+    '.elf',
+    '.gcm',
+    '.tgc',
+    '.gcz',
+    '.ciso',
+    '.wbfs',
+    '.wad',
+  };
+
+  static const Set<String> _gameCubeExtensions = <String>{
+    '.gcm',
+    '.tgc',
+    '.gcz',
+  };
+
+  static const Set<String> _wiiExtensions = <String>{
+    '.ciso',
+    '.wbfs',
+    '.wad',
+  };
+
+  static String? _linkedGamesPath;
+  static List<FinLibraryGame>? _cache;
+  static bool _syncCompleted = false;
+  static int _lastSkippedGames = 0;
+
+  static String? get linkedGamesPath {
+    final value = _linkedGamesPath;
+    if (value == null || value.isEmpty) return null;
+    return Directory(value).existsSync() ? value : null;
+  }
+
+  static bool get isLinked => linkedGamesPath != null;
+  static bool get hasSyncedLibrary => _syncCompleted;
+  static int get syncedGameCount => _cache?.length ?? 0;
+  static int get gameCubeCount =>
+      _cache?.where((game) => game.systemFolder == 'gc').length ?? 0;
+  static int get wiiCount =>
+      _cache?.where((game) => game.systemFolder == 'wii').length ?? 0;
+  static int get skippedGameCount => _lastSkippedGames;
+
+  static bool isVirtualLibraryPath(String romPath) {
+    final uri = Uri.tryParse(romPath);
+    return uri != null &&
+        uri.scheme.toLowerCase() == _virtualScheme &&
+        uri.host.toLowerCase() == 'launch';
+  }
+
+  /// Restores the bookmark and cached library before the provider graph exists.
+  static Future<void> initialize() async {
+    await loadCachedLibrary();
+    if (!Platform.isIOS) return;
+
+    try {
+      final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      if (selected != null) {
+        _linkedGamesPath = await _normalizeGamesRoot(selected);
+      }
+    } catch (error) {
+      _log.w('FinLibraryService: could not restore linked Games folder: $error');
+    }
+  }
+
+  /// Restores Fin rows after SQLite providers are ready. A readable live folder
+  /// is authoritative; otherwise the last cache keeps the two console cards
+  /// populated until the bookmark can be linked again.
+  static Future<void> restoreAfterDatabaseReady({
+    required SqliteConfigProvider configProvider,
+    required SqliteDatabaseProvider databaseProvider,
+  }) async {
+    await loadCachedLibrary();
+    if (!Platform.isIOS) return;
+
+    final root = await _resolveLinkedGamesRoot();
+    if (root != null && await Directory(root).exists()) {
+      try {
+        final discovery = await discoverLibrary(root);
+        await _importIntoNeoStation(discovery.games);
+        await _replaceCache(discovery.games, skipped: discovery.skipped);
+        await databaseProvider.loadGamesForSystem('gc');
+        await databaseProvider.loadGamesForSystem('wii');
+        await configProvider.refreshDetectedSystems();
+        _log.i(
+          'FinLibraryService: reconciled ${discovery.games.length} live game(s) '
+          'after database initialization.',
+        );
+        return;
+      } catch (error) {
+        _log.w('FinLibraryService: live startup reconcile failed: $error');
+      }
+    }
+
+    final cache = _cache;
+    if (!_syncCompleted || cache == null || cache.isEmpty) return;
+    try {
+      await _importIntoNeoStation(cache);
+      await databaseProvider.loadGamesForSystem('gc');
+      await databaseProvider.loadGamesForSystem('wii');
+      await configProvider.refreshDetectedSystems();
+      _log.i('FinLibraryService: restored ${cache.length} cached game(s).');
+    } catch (error) {
+      _log.e('FinLibraryService: cache restore failed: $error');
+    }
+  }
+
+  /// Lets the user select either Fin itself or its Games folder and immediately
+  /// performs a library sync. Returns null when the picker is cancelled.
+  static Future<FinSyncResult?> linkAndSync() async {
+    if (!Platform.isIOS) return null;
+
+    final selected = await ExternalFolderAccess.pickAndBookmarkFolder(
+      key: bookmarkKey,
+    );
+    if (selected == null) return null;
+
+    final normalized = await _normalizeGamesRoot(selected);
+    if (normalized == null) {
+      throw const FormatException(
+        'Select Fin/Games (or the Fin folder that contains Games).',
+      );
+    }
+
+    _linkedGamesPath = normalized;
+    return syncLinkedLibrary();
+  }
+
+  static Future<FinSyncResult> syncLinkedLibrary() async {
+    final root = await _resolveLinkedGamesRoot();
+    if (root == null) {
+      throw StateError('Fin Games folder is not linked.');
+    }
+
+    final discovery = await discoverLibrary(root);
+    final importResult = await _importIntoNeoStation(discovery.games);
+    await _replaceCache(discovery.games, skipped: discovery.skipped);
+    await _refreshNeoStationUi();
+
+    final gameCubeGames =
+        discovery.games.where((game) => game.systemFolder == 'gc').length;
+    final wiiGames =
+        discovery.games.where((game) => game.systemFolder == 'wii').length;
+
+    _log.i(
+      'FinLibraryService: ${discovery.games.length} games '
+      '($gameCubeGames GameCube, $wiiGames Wii), '
+      '${discovery.skipped} unclassified, '
+      '${importResult.virtualRows} virtual rows, '
+      '${importResult.physicalRows} physical rows, '
+      '${importResult.removedRows} stale rows removed.',
+    );
+
+    return FinSyncResult(
+      discoveredGames: discovery.games.length,
+      gameCubeGames: gameCubeGames,
+      wiiGames: wiiGames,
+      skippedGames: discovery.skipped,
+      virtualRows: importResult.virtualRows,
+      physicalRows: importResult.physicalRows,
+      removedRows: importResult.removedRows,
+    );
+  }
+
+  /// Scans the linked Fin folder and classifies formats without relying on
+  /// filenames. RVZ/WIA carries an explicit Dolphin disc_type in header 2;
+  /// ordinary disc images use the standard Wii/GameCube magic words.
+  @visibleForTesting
+  static Future<({List<FinLibraryGame> games, int skipped})> discoverLibrary(
+    String gamesRoot,
+  ) async {
+    final root = Directory(path.normalize(gamesRoot));
+    if (!await root.exists()) {
+      return (games: const <FinLibraryGame>[], skipped: 0);
+    }
+
+    final games = <FinLibraryGame>[];
+    var skipped = 0;
+    final visitedPlaylists = <String>{};
+
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final extension = path.extension(entity.path).toLowerCase();
+      if (!_supportedExtensions.contains(extension)) continue;
+
+      final info = await detectDiscInfo(
+        entity,
+        visitedPlaylists: visitedPlaylists,
+      );
+      if (info == null) {
+        skipped++;
+        continue;
+      }
+
+      var relative = path.relative(entity.path, from: root.path);
+      relative = relative.replaceAll('\\', '/');
+      final fileName = path.basename(entity.path);
+      var title = path.basenameWithoutExtension(fileName);
+      if (title.toLowerCase().endsWith('.nkit')) {
+        title = title.substring(0, title.length - 5);
+      }
+
+      games.add(
+        FinLibraryGame(
+          fileName: fileName,
+          relativePath: relative,
+          systemFolder: info.systemFolder,
+          title: title,
+          gameId: info.gameId,
+        ),
+      );
+    }
+
+    games.sort((a, b) {
+      final systemCompare = a.systemFolder.compareTo(b.systemFolder);
+      if (systemCompare != 0) return systemCompare;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+    return (games: List<FinLibraryGame>.unmodifiable(games), skipped: skipped);
+  }
+
+  /// Public only for deterministic unit tests and diagnostics.
+  @visibleForTesting
+  static Future<({String systemFolder, String? gameId})?> detectDiscInfo(
+    File file, {
+    Set<String>? visitedPlaylists,
+  }) async {
+    final extension = path.extension(file.path).toLowerCase();
+    if (!_supportedExtensions.contains(extension)) return null;
+
+    if (_gameCubeExtensions.contains(extension)) {
+      return (systemFolder: 'gc', gameId: null);
+    }
+    if (_wiiExtensions.contains(extension)) {
+      return (systemFolder: 'wii', gameId: null);
+    }
+
+    if (extension == '.m3u') {
+      final visited = visitedPlaylists ?? <String>{};
+      final normalized = path.normalize(file.path).toLowerCase();
+      if (!visited.add(normalized)) return null;
+      try {
+        final lines = await file.readAsLines();
+        for (var raw in lines) {
+          raw = raw.trim();
+          if (raw.isEmpty || raw.startsWith('#')) continue;
+          if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+            raw = raw.substring(1, raw.length - 1);
+          }
+          final candidate = File(
+            path.isAbsolute(raw) ? raw : path.join(file.parent.path, raw),
+          );
+          if (!await candidate.exists()) continue;
+          final nested = await detectDiscInfo(
+            candidate,
+            visitedPlaylists: visited,
+          );
+          if (nested != null) return nested;
+        }
+      } catch (_) {}
+      return _pathHint(file.path);
+    }
+
+    Uint8List bytes;
+    try {
+      final handle = await file.open();
+      try {
+        bytes = Uint8List.fromList(await handle.read(0x100));
+      } finally {
+        await handle.close();
+      }
+    } catch (_) {
+      return _pathHint(file.path);
+    }
+
+    // Dolphin RVZ/WIA Header 1 is 0x48 bytes. Header 2 starts with a big-endian
+    // disc_type: 1 = GameCube, 2 = Wii, followed by a 0x80-byte raw disc header.
+    if (bytes.length >= 0x5e &&
+        (_startsWith(bytes, const <int>[0x52, 0x56, 0x5a, 0x01]) ||
+            _startsWith(bytes, const <int>[0x57, 0x49, 0x41, 0x01]))) {
+      final data = ByteData.sublistView(bytes);
+      final discType = data.getUint32(0x48, Endian.big);
+      final gameId = _readGameId(bytes, 0x58);
+      if (discType == 1) return (systemFolder: 'gc', gameId: gameId);
+      if (discType == 2) return (systemFolder: 'wii', gameId: gameId);
+    }
+
+    // Standard optical-disc header magic used by Dolphin.
+    if (bytes.length >= 0x20) {
+      final data = ByteData.sublistView(bytes);
+      final wiiMagic = data.getUint32(0x18, Endian.big);
+      final gameCubeMagic = data.getUint32(0x1c, Endian.big);
+      final gameId = _readGameId(bytes, 0);
+      if (wiiMagic == 0x5d1c9ea3) {
+        return (systemFolder: 'wii', gameId: gameId);
+      }
+      if (gameCubeMagic == 0xc2339f3d) {
+        return (systemFolder: 'gc', gameId: gameId);
+      }
+    }
+
+    return _pathHint(file.path);
+  }
+
+  static ({String systemFolder, String? gameId})? _pathHint(String value) {
+    final normalized = value
+        .replaceAll('\\', '/')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+    if (RegExp(r'(^| )game ?cube( |$)|(^| )gc( |$)').hasMatch(normalized)) {
+      return (systemFolder: 'gc', gameId: null);
+    }
+    if (RegExp(r'(^| )wii( |$)').hasMatch(normalized)) {
+      return (systemFolder: 'wii', gameId: null);
+    }
+    return null;
+  }
+
+  static bool _startsWith(Uint8List bytes, List<int> prefix) {
+    if (bytes.length < prefix.length) return false;
+    for (var i = 0; i < prefix.length; i++) {
+      if (bytes[i] != prefix[i]) return false;
+    }
+    return true;
+  }
+
+  static String? _readGameId(Uint8List bytes, int offset) {
+    if (bytes.length < offset + 6) return null;
+    final values = bytes.sublist(offset, offset + 6);
+    if (values.any((value) => value < 0x21 || value > 0x7e)) return null;
+    return String.fromCharCodes(values);
+  }
+
+  static Future<({int virtualRows, int physicalRows, int removedRows})>
+  _importIntoNeoStation(List<FinLibraryGame> games) async {
+    final gameCube = await SystemRepository.getSystemByFolderName('gc');
+    final wii = await SystemRepository.getSystemByFolderName('wii');
+    if (gameCube?.id == null || wii?.id == null) {
+      throw StateError('NeoStation GameCube/Wii system definitions were not found.');
+    }
+
+    final systems = <String, int>{
+      'gc': gameCube!.id!,
+      'wii': wii!.id!,
+    };
+    final db = await SqliteService.getDatabase();
+    final physicalBySystem = <String, Set<String>>{
+      'gc': <String>{},
+      'wii': <String>{},
+    };
+
+    for (final entry in systems.entries) {
+      final rows = await db.rawQuery(
+        'SELECT filename, rom_path FROM user_roms WHERE app_system_id = ?',
+        [entry.value],
+      );
+      for (final row in rows) {
+        final fileName = row['filename']?.toString().trim();
+        final romPath = row['rom_path']?.toString() ?? '';
+        if (fileName == null || fileName.isEmpty || isVirtualLibraryPath(romPath)) {
+          continue;
+        }
+        physicalBySystem[entry.key]!.add(fileName.toLowerCase());
+      }
+    }
+
+    final desiredBySystem = <String, Set<String>>{
+      'gc': <String>{},
+      'wii': <String>{},
+    };
+    var virtualRows = 0;
+    var physicalRows = 0;
+
+    await db.transaction((txn) async {
+      for (final game in games) {
+        final systemId = systems[game.systemFolder];
+        if (systemId == null) continue;
+
+        if (physicalBySystem[game.systemFolder]!.contains(
+          game.fileName.toLowerCase(),
+        )) {
+          physicalRows++;
+          continue;
+        }
+
+        final virtualPath = Uri(
+          scheme: _virtualScheme,
+          host: 'launch',
+          queryParameters: <String, String>{
+            'system': game.systemFolder,
+            'path': game.relativePath,
+            'game': game.fileName,
+          },
+        ).toString();
+        desiredBySystem[game.systemFolder]!.add(virtualPath);
+
+        await txn.rawInsert(
+          '''
+          INSERT INTO user_roms
+            (app_system_id, app_emulator_unique_id, app_emulator_os_id,
+             filename, rom_path, title_id, title_name, created_at, updated_at)
+          VALUES (?, NULL, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          ON CONFLICT(rom_path) DO UPDATE SET
+            app_system_id = excluded.app_system_id,
+            filename = excluded.filename,
+            title_id = CASE
+              WHEN excluded.title_id IS NOT NULL AND excluded.title_id != ''
+              THEN excluded.title_id ELSE user_roms.title_id END,
+            title_name = CASE
+              WHEN user_roms.title_name IS NULL OR user_roms.title_name = ''
+              THEN excluded.title_name ELSE user_roms.title_name END,
+            updated_at = datetime('now')
+          ''',
+          [
+            systemId,
+            game.fileName,
+            virtualPath,
+            game.gameId,
+            game.title,
+          ],
+        );
+        virtualRows++;
+      }
+    });
+
+    var removedRows = 0;
+    for (final entry in systems.entries) {
+      final virtualRowsInDb = await db.rawQuery(
+        "SELECT rom_path FROM user_roms WHERE app_system_id = ? AND rom_path LIKE 'fin://%'",
+        [entry.value],
+      );
+      final desired = desiredBySystem[entry.key]!;
+      final stale = virtualRowsInDb
+          .map((row) => row['rom_path']?.toString() ?? '')
+          .where((romPath) => romPath.isNotEmpty && !desired.contains(romPath))
+          .toList();
+      if (stale.isEmpty) continue;
+
+      await db.transaction((txn) async {
+        const batchSize = 100;
+        for (var i = 0; i < stale.length; i += batchSize) {
+          final end = (i + batchSize < stale.length) ? i + batchSize : stale.length;
+          final batch = stale.sublist(i, end);
+          final placeholders = List.filled(batch.length, '?').join(',');
+          removedRows += await txn.rawDelete(
+            'DELETE FROM user_roms WHERE app_system_id = ? '
+            'AND rom_path IN ($placeholders)',
+            [entry.value, ...batch],
+          );
+        }
+      });
+    }
+
+    for (final entry in systems.entries) {
+      final countRows = await db.rawQuery(
+        'SELECT COUNT(*) AS count FROM user_roms WHERE app_system_id = ?',
+        [entry.value],
+      );
+      final count = int.tryParse('${countRows.first['count'] ?? 0}') ?? 0;
+      if (count > 0) {
+        await SystemRepository.addDetectedSystem(entry.value, entry.key);
+      } else {
+        await SystemRepository.removeDetectedSystem(entry.value);
+      }
+    }
+
+    return (
+      virtualRows: virtualRows,
+      physicalRows: physicalRows,
+      removedRows: removedRows,
+    );
+  }
+
+  static Future<void> _refreshNeoStationUi() async {
+    try {
+      final context = rootNavigatorKey.currentContext;
+      if (context == null) return;
+      final databaseProvider = Provider.of<SqliteDatabaseProvider>(
+        context,
+        listen: false,
+      );
+      await databaseProvider.loadGamesForSystem('gc');
+      await databaseProvider.loadGamesForSystem('wii');
+      await Provider.of<SqliteConfigProvider>(
+        context,
+        listen: false,
+      ).refreshDetectedSystems();
+    } catch (error) {
+      _log.e('FinLibraryService: UI refresh failed: $error');
+    }
+  }
+
+  /// Launches a Fin-backed row through the user-created Apple Shortcut. The
+  /// input is deliberately the relative path under Fin/Games, not an absolute
+  /// app-container path, so it survives Fin updates and reinstalls.
+  static Future<bool> launchGameByRomPath(String romPath) async {
+    String? relativePath;
+
+    if (isVirtualLibraryPath(romPath)) {
+      final uri = Uri.tryParse(romPath);
+      relativePath = uri?.queryParameters['path'] ?? uri?.queryParameters['game'];
+    } else {
+      await loadCachedLibrary();
+      final normalized = path.basename(romPath).toLowerCase();
+      for (final game in _cache ?? const <FinLibraryGame>[]) {
+        if (game.fileName.toLowerCase() == normalized) {
+          relativePath = game.relativePath;
+          break;
+        }
+      }
+    }
+
+    final input = relativePath?.trim();
+    if (input == null || input.isEmpty) return false;
+
+    try {
+      return await IosShortcutJitLaunchService.run(
+        shortcutName: IosShortcutJitLaunchService.finShortcutName,
+        input: input.replaceAll('\\', '/'),
+      );
+    } catch (error) {
+      _log.e('FinLibraryService: Shortcut launch failed: $error');
+      return false;
+    }
+  }
+
+  static Future<String?> _resolveLinkedGamesRoot() async {
+    final cached = linkedGamesPath;
+    if (cached != null) return cached;
+    if (!Platform.isIOS) return null;
+
+    try {
+      final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
+        key: bookmarkKey,
+      );
+      if (selected == null) return null;
+      final normalized = await _normalizeGamesRoot(selected);
+      if (normalized != null) _linkedGamesPath = normalized;
+      return normalized;
+    } catch (error) {
+      _log.w('FinLibraryService: failed resolving bookmark: $error');
+      return null;
+    }
+  }
+
+  static Future<String?> _normalizeGamesRoot(String selected) async {
+    final root = Directory(path.normalize(selected));
+    if (!await root.exists()) return null;
+
+    final base = path.basename(root.path).toLowerCase();
+    if (base == 'games' || base == 'software') return root.path;
+
+    for (final name in const <String>['Games', 'games', 'Software', 'software']) {
+      final child = Directory(path.join(root.path, name));
+      if (await child.exists()) return child.path;
+    }
+
+    try {
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is File &&
+            _supportedExtensions.contains(path.extension(entity.path).toLowerCase())) {
+          return root.path;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<void> loadCachedLibrary() async {
+    if (_cache != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _syncCompleted = prefs.getBool(_syncCompletedKey) ?? false;
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null || raw.isEmpty) {
+        _cache = <FinLibraryGame>[];
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        _cache = <FinLibraryGame>[];
+        return;
+      }
+      _lastSkippedGames = int.tryParse('${decoded['skipped'] ?? 0}') ?? 0;
+      final rawGames = decoded['games'];
+      if (rawGames is! List) {
+        _cache = <FinLibraryGame>[];
+        return;
+      }
+      _cache = rawGames
+          .whereType<Map>()
+          .map((value) => FinLibraryGame.fromJson(Map<String, dynamic>.from(value)))
+          .where(
+            (game) =>
+                game.fileName.isNotEmpty &&
+                game.relativePath.isNotEmpty &&
+                (game.systemFolder == 'gc' || game.systemFolder == 'wii'),
+          )
+          .toList(growable: false);
+    } catch (error) {
+      _log.e('FinLibraryService: failed loading cache: $error');
+      _cache = <FinLibraryGame>[];
+    }
+  }
+
+  static Future<void> _replaceCache(
+    List<FinLibraryGame> games, {
+    required int skipped,
+  }) async {
+    _cache = List<FinLibraryGame>.unmodifiable(games);
+    _lastSkippedGames = skipped;
+    _syncCompleted = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefsKey,
+        jsonEncode(<String, dynamic>{
+          'schema': 1,
+          'skipped': skipped,
+          'games': games.map((game) => game.toJson()).toList(),
+        }),
+      );
+      await prefs.setBool(_syncCompletedKey, true);
+    } catch (error) {
+      _log.e('FinLibraryService: failed persisting cache: $error');
+    }
+  }
+}
