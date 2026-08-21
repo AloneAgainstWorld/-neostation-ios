@@ -7,6 +7,7 @@ on:
       - feature/library-native
     paths:
       - tools/apply_fin_metadata_integration.py
+      - tools/fix_fin_system_id.py
       - .github/workflows/apply-fin-metadata-integration.yml
   workflow_dispatch: {}
 
@@ -36,7 +37,9 @@ jobs:
           cache: true
 
       - name: Apply integration patch
-        run: python3 tools/apply_fin_metadata_integration.py
+        run: |
+          python3 tools/apply_fin_metadata_integration.py
+          python3 tools/fix_fin_system_id.py
 
       - name: Install dependencies
         run: flutter pub get
