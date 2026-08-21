@@ -54,10 +54,7 @@ class LibraryDownloadService {
 
     final fileName = await _availableFileName(
       downloads,
-      suggestedFileName(
-        title: title,
-        acquisition: acquisition,
-      ),
+      suggestedFileName(title: title, acquisition: acquisition),
     );
     final destination = File(path.join(downloads.path, fileName));
 
@@ -138,7 +135,8 @@ class LibraryDownloadService {
 
     final uri = Uri.tryParse(acquisition.url);
     var extension = uri == null ? '' : path.extension(uri.path).toLowerCase();
-    if (extension.length > 10 || !RegExp(r'^\.[a-z0-9]{1,9}$').hasMatch(extension)) {
+    if (extension.length > 10 ||
+        !RegExp(r'^\.[a-z0-9]{1,9}$').hasMatch(extension)) {
       extension = '';
     }
     if (extension.isEmpty) {
@@ -155,14 +153,19 @@ class LibraryDownloadService {
   }
 
   static String _normalizedFormat(LibraryAcquisitionLink acquisition) {
-    final explicit = acquisition.format.trim().toLowerCase().replaceAll('.', '');
+    final explicit = acquisition.format.trim().toLowerCase().replaceAll(
+      '.',
+      '',
+    );
     if (explicit.isNotEmpty) return explicit;
     final mime = acquisition.mimeType.toLowerCase();
     if (mime.contains('epub')) return 'epub';
     if (mime.contains('pdf')) return 'pdf';
     if (mime.contains('zip')) return 'cbz';
     final uri = Uri.tryParse(acquisition.url);
-    final ext = uri == null ? '' : path.extension(uri.path).toLowerCase().replaceAll('.', '');
+    final ext = uri == null
+        ? ''
+        : path.extension(uri.path).toLowerCase().replaceAll('.', '');
     return ext;
   }
 

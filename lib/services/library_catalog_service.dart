@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:archive/archive_io.dart';
 import 'package:http/http.dart' as http;
@@ -7,13 +8,41 @@ import 'package:xml/xml.dart';
 
 import 'library_addon_service.dart';
 
-enum LibraryMediaType {
-  book,
-  manga,
-  novel,
-  comic,
-  anime,
-  unknown,
+enum LibraryMediaType { book, manga, novel, comic, anime, unknown }
+
+/// A source-declared acquisition action for a Library item.
+///
+/// NeoStation never discovers alternate copies on its own: every URL in this
+/// model must come directly from the selected provider or user-installed
+/// Library source.
+class LibraryAcquisitionLink {
+  const LibraryAcquisitionLink({
+    required this.label,
+    required this.url,
+    required this.action,
+    this.format = '',
+    this.mimeType = '',
+  });
+
+  final String label;
+  final String url;
+
+  /// `download` stores the provider-supplied file locally. `read` opens the
+  /// provider's official web reader.
+  final String action;
+  final String format;
+  final String mimeType;
+
+  bool get canDownload => action == 'download';
+  bool get isExternalReader => action == 'read';
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'label': label,
+    'url': url,
+    'action': action,
+    if (format.isNotEmpty) 'format': format,
+    if (mimeType.isNotEmpty) 'mimeType': mimeType,
+  };
 }
 
 class LibraryCatalogItem {
@@ -28,6 +57,7 @@ class LibraryCatalogItem {
     required this.contentUrl,
     required this.pageUrls,
     required this.raw,
+    this.acquisitionLinks = const <LibraryAcquisitionLink>[],
   });
 
   final String id;
@@ -40,6 +70,7 @@ class LibraryCatalogItem {
   final String? contentUrl;
   final List<String> pageUrls;
   final Map<String, dynamic> raw;
+  final List<LibraryAcquisitionLink> acquisitionLinks;
 
   bool get hasReadableContent =>
       (content != null && content!.trim().isNotEmpty) ||
@@ -62,8 +93,9 @@ class LibraryCatalogItem {
       final candidate = value?.toString().trim();
       if (candidate == null || candidate.isEmpty) return null;
       final parsed = Uri.tryParse(candidate);
-      final resolved =
-          parsed != null && parsed.hasScheme ? parsed : baseUri.resolve(candidate);
+      final resolved = parsed != null && parsed.hasScheme
+          ? parsed
+          : baseUri.resolve(candidate);
       if (resolved.scheme != 'https' || resolved.host.isEmpty) return null;
       return resolved.toString();
     }
@@ -95,8 +127,77 @@ class LibraryCatalogItem {
       }
     }
 
-    final inlineContent =
-        text(const ['content', 'text', 'body', 'markdown']);
+    final acquisitionLinks = <LibraryAcquisitionLink>[];
+    final acquisitionUrls = <String>{};
+
+    void addAcquisition(
+      dynamic value, {
+      String fallbackLabel = 'Download',
+      String fallbackAction = 'download',
+      String fallbackFormat = '',
+      String fallbackMimeType = '',
+    }) {
+      if (value == null) return;
+      if (value is Iterable && value is! String) {
+        for (final entry in value) {
+          addAcquisition(
+            entry,
+            fallbackLabel: fallbackLabel,
+            fallbackAction: fallbackAction,
+            fallbackFormat: fallbackFormat,
+            fallbackMimeType: fallbackMimeType,
+          );
+        }
+        return;
+      }
+
+      dynamic rawUrl = value;
+      var label = fallbackLabel;
+      var action = fallbackAction;
+      var format = fallbackFormat;
+      var mimeType = fallbackMimeType;
+      if (value is Map) {
+        rawUrl = value['url'] ?? value['href'] ?? value['downloadUrl'];
+        label = value['label']?.toString().trim() ?? label;
+        action = value['action']?.toString().trim().toLowerCase() ?? action;
+        format = value['format']?.toString().trim().toLowerCase() ?? format;
+        mimeType =
+            value['mimeType']?.toString().trim().toLowerCase() ??
+            value['type']?.toString().trim().toLowerCase() ??
+            mimeType;
+      }
+
+      final url = resolveUrl(rawUrl);
+      if (url == null || !acquisitionUrls.add(url)) return;
+      if (action != 'read' && action != 'download') action = 'download';
+      acquisitionLinks.add(
+        LibraryAcquisitionLink(
+          label: label.isEmpty ? fallbackLabel : label,
+          url: url,
+          action: action,
+          format: format,
+          mimeType: mimeType,
+        ),
+      );
+    }
+
+    addAcquisition(raw['acquisitionLinks']);
+    addAcquisition(raw['downloadUrl']);
+    addAcquisition(raw['downloadUrls']);
+    addAcquisition(
+      raw['epubUrl'],
+      fallbackLabel: 'EPUB',
+      fallbackFormat: 'epub',
+      fallbackMimeType: 'application/epub+zip',
+    );
+    addAcquisition(
+      raw['pdfUrl'],
+      fallbackLabel: 'PDF',
+      fallbackFormat: 'pdf',
+      fallbackMimeType: 'application/pdf',
+    );
+
+    final inlineContent = text(const ['content', 'text', 'body', 'markdown']);
 
     return LibraryCatalogItem(
       id: id.isEmpty ? title : id,
@@ -113,6 +214,7 @@ class LibraryCatalogItem {
       ),
       pageUrls: List.unmodifiable(pageUrls),
       raw: Map<String, dynamic>.unmodifiable(raw),
+      acquisitionLinks: List.unmodifiable(acquisitionLinks),
     );
   }
 }
@@ -239,6 +341,41 @@ class LibraryCatalogService {
     return text;
   }
 
+  Future<String> loadReadableFile(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw const LibraryAddonException(
+        'Downloaded Library file no longer exists.',
+      );
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      throw const LibraryAddonException('Downloaded Library file is empty.');
+    }
+    if (bytes.length > _maxReaderBytes) {
+      throw const LibraryAddonException(
+        'This downloaded item is too large for the integrated text reader.',
+      );
+    }
+
+    final extension = path.extension(file.path).toLowerCase();
+    if (extension == '.epub') {
+      return _decodeEpubText(bytes);
+    }
+    if (extension == '.txt' ||
+        extension == '.md' ||
+        extension == '.html' ||
+        extension == '.htm' ||
+        extension == '.xhtml') {
+      final body = utf8.decode(bytes, allowMalformed: true);
+      final text = _markupToText(body);
+      if (text.isNotEmpty) return text;
+    }
+    throw const LibraryAddonException(
+      'This downloaded format is not supported by the integrated text reader.',
+    );
+  }
+
   static List<LibraryCatalogItem> parseGallicaOpdsDocument(
     String rawXml, {
     required Uri baseUri,
@@ -254,8 +391,8 @@ class LibraryCatalogService {
 
     final items = <LibraryCatalogItem>[];
     for (final entry in document.descendants.whereType<XmlElement>().where(
-          (element) => element.name.local == 'entry',
-        )) {
+      (element) => element.name.local == 'entry',
+    )) {
       final title = _directChildText(entry, 'title');
       if (title.isEmpty) continue;
 
@@ -279,8 +416,8 @@ class LibraryCatalogService {
       String? acquisitionUrl;
       String? coverUrl;
       for (final link in entry.children.whereType<XmlElement>().where(
-            (element) => element.name.local == 'link',
-          )) {
+        (element) => element.name.local == 'link',
+      )) {
         final rel = link.getAttribute('rel')?.trim() ?? '';
         final type = link.getAttribute('type')?.trim().toLowerCase() ?? '';
         final href = link.getAttribute('href')?.trim() ?? '';
@@ -333,14 +470,15 @@ class LibraryCatalogService {
       maxBytes: _maxReaderBytes,
       accept: 'application/epub+zip, application/octet-stream',
     );
+    return _decodeEpubText(response.bodyBytes);
+  }
 
+  static String _decodeEpubText(List<int> bytes) {
     Archive archive;
     try {
-      archive = ZipDecoder().decodeBytes(response.bodyBytes);
+      archive = ZipDecoder().decodeBytes(bytes);
     } catch (_) {
-      throw const LibraryAddonException(
-        'Unable to open the EPUB returned by Gallica.',
-      );
+      throw const LibraryAddonException('Unable to open this EPUB.');
     }
 
     final files = <String, ArchiveFile>{};
@@ -370,25 +508,18 @@ class LibraryCatalogService {
 
     final result = sections.join('\n\n').trim();
     if (result.isEmpty) {
-      throw const LibraryAddonException(
-        'The EPUB contains no readable text.',
-      );
+      throw const LibraryAddonException('The EPUB contains no readable text.');
     }
     return result;
   }
 
-  static List<ArchiveFile> _epubReadingOrder(
-    Map<String, ArchiveFile> files,
-  ) {
-    final fallback = files.entries
-        .where((entry) {
-          final name = entry.key.toLowerCase();
-          return name.endsWith('.xhtml') ||
-              name.endsWith('.html') ||
-              name.endsWith('.htm');
-        })
-        .toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+  static List<ArchiveFile> _epubReadingOrder(Map<String, ArchiveFile> files) {
+    final fallback = files.entries.where((entry) {
+      final name = entry.key.toLowerCase();
+      return name.endsWith('.xhtml') ||
+          name.endsWith('.html') ||
+          name.endsWith('.htm');
+    }).toList()..sort((a, b) => a.key.compareTo(b.key));
 
     try {
       final containerFile = files['META-INF/container.xml'];
@@ -422,8 +553,8 @@ class LibraryCatalogService {
       final opf = XmlDocument.parse(opfXml);
       final manifest = <String, String>{};
       for (final item in opf.descendants.whereType<XmlElement>().where(
-            (element) => element.name.local == 'item',
-          )) {
+        (element) => element.name.local == 'item',
+      )) {
         final id = item.getAttribute('id')?.trim() ?? '';
         final href = item.getAttribute('href')?.trim() ?? '';
         final mediaType = item.getAttribute('media-type')?.trim() ?? '';
@@ -440,8 +571,8 @@ class LibraryCatalogService {
       final ordered = <ArchiveFile>[];
       final seen = <String>{};
       for (final itemRef in opf.descendants.whereType<XmlElement>().where(
-            (element) => element.name.local == 'itemref',
-          )) {
+        (element) => element.name.local == 'itemref',
+      )) {
         final idRef = itemRef.getAttribute('idref')?.trim() ?? '';
         final href = manifest[idRef];
         if (href == null) continue;
@@ -577,7 +708,9 @@ class LibraryCatalogService {
     if (candidate == null) {
       throw LibraryAddonException('$field is not a valid URL.');
     }
-    final resolved = candidate.hasScheme ? candidate : base.resolveUri(candidate);
+    final resolved = candidate.hasScheme
+        ? candidate
+        : base.resolveUri(candidate);
     if (resolved.scheme != 'https' || resolved.host.isEmpty) {
       throw LibraryAddonException('$field must resolve to HTTPS.');
     }

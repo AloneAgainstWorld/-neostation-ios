@@ -83,7 +83,9 @@ class LibraryMetadataProviderService {
     final raw = await rootBundle.loadString(manifestAsset);
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
-      throw const FormatException('Metadata provider registry is not an object.');
+      throw const FormatException(
+        'Metadata provider registry is not an object.',
+      );
     }
     final manifest = Map<String, dynamic>.from(decoded);
     if (manifest['schemaVersion'] != 1) {
@@ -98,7 +100,9 @@ class LibraryMetadataProviderService {
     }
     final rawProviders = manifest['providers'];
     if (rawProviders is! List) {
-      throw const FormatException('Metadata provider registry has no providers.');
+      throw const FormatException(
+        'Metadata provider registry has no providers.',
+      );
     }
 
     final parsed = <LibraryMetadataProviderDefinition>[];
@@ -132,7 +136,8 @@ class LibraryMetadataProviderService {
 
     final selected = _providers
         .where(
-          (provider) => providerIds == null || providerIds.contains(provider.id),
+          (provider) =>
+              providerIds == null || providerIds.contains(provider.id),
         )
         .toList();
     final output = <String, List<LibraryCatalogItem>>{};
@@ -170,7 +175,9 @@ class LibraryMetadataProviderService {
     int limit = 8,
   }) async {
     await initialize();
-    final provider = _providers.where((item) => item.id == providerId).firstOrNull;
+    final provider = _providers
+        .where((item) => item.id == providerId)
+        .firstOrNull;
     if (provider == null) return const <LibraryCatalogItem>[];
     final safePage = page < 1 ? 1 : page;
     final safeLimit = limit.clamp(1, 25).toInt();
@@ -178,14 +185,16 @@ class LibraryMetadataProviderService {
     return switch (provider.id) {
       'bnf' => _searchBnf(provider, query, safePage, safeLimit),
       'anilist' => _searchAniList(provider, query, safePage, safeLimit),
-      'mangaupdates' =>
-        _searchMangaUpdates(provider, query, safePage, safeLimit),
+      'mangaupdates' => _searchMangaUpdates(
+        provider,
+        query,
+        safePage,
+        safeLimit,
+      ),
       'kitsu' => _searchKitsu(provider, query, safePage, safeLimit),
-      'openlibrary' =>
-        _searchOpenLibrary(provider, query, safePage, safeLimit),
+      'openlibrary' => _searchOpenLibrary(provider, query, safePage, safeLimit),
       'jikan' => _searchJikan(provider, query, safePage, safeLimit),
-      'googlebooks' =>
-        _searchGoogleBooks(provider, query, safePage, safeLimit),
+      'googlebooks' => _searchGoogleBooks(provider, query, safePage, safeLimit),
       _ => const <LibraryCatalogItem>[],
     };
   }
@@ -279,7 +288,9 @@ class LibraryMetadataProviderService {
               !role.contains('art')) {
             continue;
           }
-          final name = _asMap(_asMap(edge?['node'])?['name'])?['full']?.toString();
+          final name = _asMap(
+            _asMap(edge?['node'])?['name'],
+          )?['full']?.toString();
           if (name != null && name.trim().isNotEmpty) authors.add(name.trim());
         }
       }
@@ -379,10 +390,7 @@ class LibraryMetadataProviderService {
         ..._namesFromUnknown(record['categories']),
       }.toList();
       final image = _imageFromMangaUpdates(record['image']);
-      final sourceUrl = _firstHttps(<dynamic>[
-        record['url'],
-        result['url'],
-      ]);
+      final sourceUrl = _firstHttps(<dynamic>[record['url'], result['url']]);
       final normalized = <String, dynamic>{
         ...record,
         'provider': provider.id,
@@ -540,7 +548,9 @@ class LibraryMetadataProviderService {
       final year = raw['first_publish_year']?.toString() ?? '';
       final key = raw['key']?.toString() ?? '';
       final coverId = raw['cover_i']?.toString();
-      final sourceUrl = key.startsWith('/') ? 'https://openlibrary.org$key' : null;
+      final sourceUrl = key.startsWith('/')
+          ? 'https://openlibrary.org$key'
+          : null;
       final normalized = <String, dynamic>{
         ...raw,
         'provider': provider.id,
@@ -660,6 +670,52 @@ class LibraryMetadataProviderService {
     return List.unmodifiable(items);
   }
 
+  /// Extracts only official acquisition/read links explicitly returned by
+  /// Google Books. No alternate-copy lookup is performed.
+  static List<LibraryAcquisitionLink> googleBooksAcquisitionsFromAccessInfo(
+    Map<String, dynamic>? accessInfo,
+  ) {
+    if (accessInfo == null) return const <LibraryAcquisitionLink>[];
+    final links = <LibraryAcquisitionLink>[];
+    final seen = <String>{};
+
+    void addDownload(
+      String label,
+      String format,
+      String mimeType,
+      dynamic node,
+    ) {
+      final map = _asMap(node);
+      if (map == null || map['isAvailable'] != true) return;
+      final url = _https(map['downloadLink']);
+      if (url == null || !seen.add(url)) return;
+      links.add(
+        LibraryAcquisitionLink(
+          label: label,
+          url: url,
+          action: 'download',
+          format: format,
+          mimeType: mimeType,
+        ),
+      );
+    }
+
+    addDownload('EPUB', 'epub', 'application/epub+zip', accessInfo['epub']);
+    addDownload('PDF', 'pdf', 'application/pdf', accessInfo['pdf']);
+
+    final webReader = _https(accessInfo['webReaderLink']);
+    if (webReader != null && seen.add(webReader)) {
+      links.add(
+        LibraryAcquisitionLink(
+          label: 'Google Books',
+          url: webReader,
+          action: 'read',
+        ),
+      );
+    }
+    return List<LibraryAcquisitionLink>.unmodifiable(links);
+  }
+
   Future<List<LibraryCatalogItem>> _searchGoogleBooks(
     LibraryMetadataProviderDefinition provider,
     String query,
@@ -680,9 +736,10 @@ class LibraryMetadataProviderService {
     if (_googleBooksApiKey.trim().isNotEmpty) {
       params['key'] = _googleBooksApiKey.trim();
     }
-    final uri = _joinEndpoint(base, endpointPath).replace(
-      queryParameters: params,
-    );
+    final uri = _joinEndpoint(
+      base,
+      endpointPath,
+    ).replace(queryParameters: params);
     final response = await _get(uri);
     final decoded = _asMap(_decodeJson(response));
     final rawItems = decoded?['items'];
@@ -699,6 +756,11 @@ class LibraryMetadataProviderService {
       final year = _yearFromDate(volume['publishedDate']);
       final images = _asMap(volume['imageLinks']);
       final accessInfo = _asMap(raw['accessInfo']);
+      final acquisitions = googleBooksAcquisitionsFromAccessInfo(accessInfo);
+      final epubDownload = acquisitions
+          .where((link) => link.canDownload && link.format == 'epub')
+          .map((link) => link.url)
+          .firstOrNull;
       final sourceUrl = _firstHttps(<dynamic>[
         volume['infoLink'],
         volume['canonicalVolumeLink'],
@@ -730,6 +792,7 @@ class LibraryMetadataProviderService {
         'publisher': volume['publisher'],
         'previewUrl': _https(volume['previewLink']),
         'webReaderLink': _https(accessInfo?['webReaderLink']),
+        'acquisitionLinks': acquisitions.map((link) => link.toJson()).toList(),
       };
       items.add(
         _item(
@@ -748,6 +811,9 @@ class LibraryMetadataProviderService {
             images?['thumbnail'],
           ]),
           raw: normalized,
+          contentUrl: epubDownload,
+          contentType: epubDownload == null ? null : 'application/epub+zip',
+          acquisitionLinks: acquisitions,
         ),
       );
     }
@@ -764,6 +830,10 @@ class LibraryMetadataProviderService {
     String? coverUrl,
     List<String> authors = const <String>[],
     String year = '',
+    String? contentUrl,
+    String? contentType,
+    List<LibraryAcquisitionLink> acquisitionLinks =
+        const <LibraryAcquisitionLink>[],
   }) {
     final subtitleParts = <String>[
       if (authors.isNotEmpty) authors.take(2).join(', '),
@@ -777,13 +847,18 @@ class LibraryMetadataProviderService {
       description: description,
       coverUrl: _https(coverUrl),
       content: null,
-      contentUrl: null,
+      contentUrl: contentUrl,
       pageUrls: const <String>[],
+      acquisitionLinks: List<LibraryAcquisitionLink>.unmodifiable(
+        acquisitionLinks,
+      ),
       raw: Map<String, dynamic>.unmodifiable(<String, dynamic>{
         ...raw,
         'provider': provider.id,
         'providerName': provider.name,
         'metadataOnly': true,
+        if (contentType != null && contentType.isNotEmpty)
+          'contentType': contentType,
       }),
     );
   }
@@ -819,9 +894,9 @@ class LibraryMetadataProviderService {
       'coverage',
     };
     final items = <LibraryCatalogItem>[];
-    final recordData = document.descendants
-        .whereType<XmlElement>()
-        .where((element) => element.name.local == 'recordData');
+    final recordData = document.descendants.whereType<XmlElement>().where(
+      (element) => element.name.local == 'recordData',
+    );
 
     for (final record in recordData) {
       final values = <String, List<String>>{};
@@ -829,7 +904,8 @@ class LibraryMetadataProviderService {
         final name = element.name.local;
         if (!fields.contains(name)) continue;
         final text = element.innerText.trim();
-        if (text.isNotEmpty) values.putIfAbsent(name, () => <String>[]).add(text);
+        if (text.isNotEmpty)
+          values.putIfAbsent(name, () => <String>[]).add(text);
       }
       final titles = values['title'] ?? const <String>[];
       if (titles.isEmpty) continue;
@@ -840,7 +916,8 @@ class LibraryMetadataProviderService {
         ...identifiers,
         ...?values['description'],
       ]);
-      final id = ark ??
+      final id =
+          ark ??
           isbns.where((value) => value.length == 13).firstOrNull ??
           isbns.firstOrNull ??
           identifiers.firstOrNull ??
@@ -848,23 +925,27 @@ class LibraryMetadataProviderService {
       final sourceUrl = ark == null ? null : 'https://catalogue.bnf.fr/$ark';
       final coverUrl = ark != null
           ? Uri.parse(
-              'https://openapi.bnf.fr/couverture/image/image/recupererImage',
-            ).replace(
-              queryParameters: <String, String>{
-                'idArk': ark,
-                'couverture': '1',
-              },
-            ).toString()
+                  'https://openapi.bnf.fr/couverture/image/image/recupererImage',
+                )
+                .replace(
+                  queryParameters: <String, String>{
+                    'idArk': ark,
+                    'couverture': '1',
+                  },
+                )
+                .toString()
           : (isbns.isEmpty
                 ? null
                 : Uri.parse(
-                    'https://openapi.bnf.fr/couverture/image/image/recupererImage',
-                  ).replace(
-                    queryParameters: <String, String>{
-                      'ISBN': isbns.first,
-                      'couverture': '1',
-                    },
-                  ).toString());
+                        'https://openapi.bnf.fr/couverture/image/image/recupererImage',
+                      )
+                      .replace(
+                        queryParameters: <String, String>{
+                          'ISBN': isbns.first,
+                          'couverture': '1',
+                        },
+                      )
+                      .toString());
       final authors = values['creator'] ?? const <String>[];
       final dates = values['date'] ?? const <String>[];
       final raw = <String, dynamic>{
@@ -900,7 +981,6 @@ class LibraryMetadataProviderService {
           content: null,
           contentUrl: null,
           pageUrls: const <String>[],
-          videoUrls: const <String>[],
           raw: Map<String, dynamic>.unmodifiable(raw),
         ),
       );
@@ -935,9 +1015,7 @@ class LibraryMetadataProviderService {
     );
     for (final value in values) {
       final upper = value.toUpperCase();
-      final compact = value
-          .replaceAll(RegExp(r'[^0-9Xx]'), '')
-          .toUpperCase();
+      final compact = value.replaceAll(RegExp(r'[^0-9Xx]'), '').toUpperCase();
       String? isbn;
       if (upper.contains('ISBN')) {
         final match = pattern.firstMatch(value);
@@ -946,7 +1024,8 @@ class LibraryMetadataProviderService {
           final candidate = raw
               .replaceAll(RegExp(r'[^0-9Xx]'), '')
               .toUpperCase();
-          if (candidate.length == 10 || candidate.length == 13) isbn = candidate;
+          if (candidate.length == 10 || candidate.length == 13)
+            isbn = candidate;
         }
       } else if (compact.length == 10 || compact.length == 13) {
         isbn = compact;
@@ -1038,16 +1117,18 @@ class LibraryMetadataProviderService {
 
   static String _yearFromDate(dynamic value) {
     final text = value?.toString().trim() ?? '';
-    final match = RegExp(r'(^|[^0-9])(19|20)[0-9]{2}([^0-9]|$)').firstMatch(text);
+    final match = RegExp(r'(^|[^0-9])(19|20)[0-9]{2}([^0-9]|$)')
+        .firstMatch(text);
     if (match == null) return '';
-    return RegExp(r'(19|20)[0-9]{2}').firstMatch(match.group(0)!)?.group(0) ?? '';
+    return RegExp(r'(19|20)[0-9]{2}').firstMatch(match.group(0)!)?.group(0) ??
+        '';
   }
 
   static String _cleanText(dynamic value) {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty) return '';
     if (!text.contains('<') || !text.contains('>')) return text;
-    return html_parser.parseFragment(text).text.trim();
+    return (html_parser.parseFragment(text).text ?? '').trim();
   }
 
   static dynamic _decodeJson(http.Response response) {
@@ -1097,9 +1178,7 @@ class LibraryMetadataProviderService {
 
   static void _validateResponse(Uri uri, http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-        '${uri.host} returned HTTP ${response.statusCode}.',
-      );
+      throw StateError('${uri.host} returned HTTP ${response.statusCode}.');
     }
     if (response.bodyBytes.length > _maxBodyBytes) {
       throw StateError('${uri.host} returned an unexpectedly large response.');

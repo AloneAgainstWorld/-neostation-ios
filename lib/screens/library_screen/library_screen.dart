@@ -8,12 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:neostation/l10n/app_locale.dart';
 import 'package:neostation/services/gamepad/gamepad_navigation_manager.dart';
 import 'package:neostation/services/library_addon_service.dart';
 import 'package:neostation/services/library_aidoku_native_service.dart';
 import 'package:neostation/services/library_catalog_service.dart';
+import 'package:neostation/services/library_download_service.dart';
 import 'package:neostation/services/library_mangadex_service.dart';
 import 'package:neostation/services/library_metadata_provider_service.dart';
 import 'package:neostation/services/sfx_service.dart';
@@ -21,6 +23,7 @@ import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
 
 import 'library_reader_screen.dart';
+import 'library_pdf_reader_screen.dart';
 
 /// Native reading Library for iOS.
 ///
@@ -66,7 +69,8 @@ class LibraryScreenState extends State<LibraryScreen> {
   final LibraryAidokuNativeService _aidokuNativeService =
       LibraryAidokuNativeService.instance;
   final LibraryCatalogService _catalogService = LibraryCatalogService.instance;
-  final LibraryMangaDexService _mangaDexService = LibraryMangaDexService.instance;
+  final LibraryMangaDexService _mangaDexService =
+      LibraryMangaDexService.instance;
   final LibraryMetadataProviderService _metadataProviderService =
       LibraryMetadataProviderService.instance;
 
@@ -100,8 +104,9 @@ class LibraryScreenState extends State<LibraryScreen> {
   int _aidokuRoundRobinCursor = 0;
   String _titleQuery = '';
   final TextEditingController _titleSearchController = TextEditingController();
-  final FocusNode _titleSearchFocusNode =
-      FocusNode(debugLabel: 'library_inline_title_search');
+  final FocusNode _titleSearchFocusNode = FocusNode(
+    debugLabel: 'library_inline_title_search',
+  );
   Timer? _titleSearchDebounce;
   bool _titleSearchMode = false;
   bool _titleSearchFiltersExpanded = false;
@@ -125,8 +130,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       ..._remoteSearchEntries,
     ]) {
       if (!seen.add(_entryIdentity(entry))) continue;
-      if (query.isNotEmpty &&
-          !entry.item.title.toLowerCase().contains(query)) {
+      if (query.isNotEmpty && !entry.item.title.toLowerCase().contains(query)) {
         continue;
       }
       if (_hideAdultContent && _isAdultOrDoujinshi(entry)) {
@@ -177,7 +181,8 @@ class LibraryScreenState extends State<LibraryScreen> {
       ..._metadataProviderService.providerLabels,
     };
     for (final addon in _addons) {
-      if (addon.isAidokuRepositorySource && _aidokuNativeService.supports(addon)) {
+      if (addon.isAidokuRepositorySource &&
+          _aidokuNativeService.supports(addon)) {
         options[addon.id] = addon.name;
       } else if (addon.canBrowseOnIos) {
         options[addon.id] = addon.name;
@@ -187,9 +192,9 @@ class LibraryScreenState extends State<LibraryScreen> {
       final label = entry.isMangaDex
           ? 'MangaDex'
           : (_metadataProviderService.labelFor(entry.providerId) ??
-              (entry.source?.name.trim().isNotEmpty == true
-                  ? entry.source!.name.trim()
-                  : entry.providerId));
+                (entry.source?.name.trim().isNotEmpty == true
+                    ? entry.source!.name.trim()
+                    : entry.providerId));
       options[entry.providerId] = label;
     }
     final pairs = options.entries.where((entry) => entry.key != 'all').toList()
@@ -288,9 +293,11 @@ class LibraryScreenState extends State<LibraryScreen> {
         )
         .toList();
     const initialCatalogConcurrency = 3;
-    for (var offset = 0;
-        offset < aidokuAddons.length;
-        offset += initialCatalogConcurrency) {
+    for (
+      var offset = 0;
+      offset < aidokuAddons.length;
+      offset += initialCatalogConcurrency
+    ) {
       final batch = aidokuAddons
           .skip(offset)
           .take(initialCatalogConcurrency)
@@ -414,10 +421,12 @@ class LibraryScreenState extends State<LibraryScreen> {
     }).toList();
     if (candidates.isEmpty) return;
 
-    final preferred = preferredSourceId ??
-        (_sourceFilter == 'all' ? null : _sourceFilter);
+    final preferred =
+        preferredSourceId ?? (_sourceFilter == 'all' ? null : _sourceFilter);
     if (preferred != null) {
-      final matching = candidates.where((addon) => addon.id == preferred).toList();
+      final matching = candidates
+          .where((addon) => addon.id == preferred)
+          .toList();
       if (matching.isNotEmpty) candidates = matching;
     } else if (candidates.length > 1) {
       final offset = _aidokuRoundRobinCursor % candidates.length;
@@ -425,7 +434,8 @@ class LibraryScreenState extends State<LibraryScreen> {
         ...candidates.skip(offset),
         ...candidates.take(offset),
       ];
-      _aidokuRoundRobinCursor = (_aidokuRoundRobinCursor + capacity) % candidates.length;
+      _aidokuRoundRobinCursor =
+          (_aidokuRoundRobinCursor + capacity) % candidates.length;
     }
 
     final selected = candidates.take(capacity).toList();
@@ -447,13 +457,12 @@ class LibraryScreenState extends State<LibraryScreen> {
       );
       if (!mounted) return;
       final selectedVisible = _visibleLibraryItems;
-      final selectedIdentity = _librarySelectedIndex >= 0 &&
+      final selectedIdentity =
+          _librarySelectedIndex >= 0 &&
               _librarySelectedIndex < selectedVisible.length
           ? _entryIdentity(selectedVisible[_librarySelectedIndex])
           : null;
-      final existing = _libraryItems
-          .map(_entryIdentity)
-          .toSet();
+      final existing = _libraryItems.map(_entryIdentity).toSet();
       final additions = <_NativeLibraryEntry>[];
       for (final item in page.items) {
         final entry = _NativeLibraryEntry(
@@ -517,9 +526,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       final entries = <_NativeLibraryEntry>[];
       for (final group in groups.entries) {
         for (final item in group.value) {
-          entries.add(
-            _NativeLibraryEntry(providerId: group.key, item: item),
-          );
+          entries.add(_NativeLibraryEntry(providerId: group.key, item: item));
         }
       }
       return entries;
@@ -586,7 +593,8 @@ class LibraryScreenState extends State<LibraryScreen> {
     ];
 
     final groups = await Future.wait(futures);
-    if (!mounted || generation != _searchGeneration || _titleQuery != query) return;
+    if (!mounted || generation != _searchGeneration || _titleQuery != query)
+      return;
     final seen = <String>{};
     final results = <_NativeLibraryEntry>[];
     for (final group in groups) {
@@ -608,7 +616,11 @@ class LibraryScreenState extends State<LibraryScreen> {
       if (value is num) return value > 0;
       final raw = value?.toString().trim().toLowerCase() ?? '';
       if (raw.isEmpty) return false;
-      if (raw == 'true' || raw == 'yes' || raw == '1' || raw == '2' || raw == '3') {
+      if (raw == 'true' ||
+          raw == 'yes' ||
+          raw == '1' ||
+          raw == '2' ||
+          raw == '3') {
         return true;
       }
       return _strictAdultPattern.hasMatch(raw);
@@ -651,7 +663,8 @@ class LibraryScreenState extends State<LibraryScreen> {
       final value = raw[key];
       if (value is bool || value is num) {
         if (explicitFlag(value)) return true;
-      } else if (value != null && _strictAdultPattern.hasMatch(value.toString())) {
+      } else if (value != null &&
+          _strictAdultPattern.hasMatch(value.toString())) {
         return true;
       }
     }
@@ -768,7 +781,8 @@ class LibraryScreenState extends State<LibraryScreen> {
         return;
       }
 
-      final context = _keyForBook(visible[_librarySelectedIndex]).currentContext;
+      final context = _keyForBook(visible[_librarySelectedIndex])
+          .currentContext;
       if (context != null) {
         Scrollable.ensureVisible(
           context,
@@ -826,10 +840,9 @@ class LibraryScreenState extends State<LibraryScreen> {
       case _HubFocus.books:
         final visible = _visibleLibraryItems;
         if (visible.isEmpty) return false;
-        final next = (_librarySelectedIndex + delta).clamp(
-          0,
-          visible.length - 1,
-        ).toInt();
+        final next = (_librarySelectedIndex + delta)
+            .clamp(0, visible.length - 1)
+            .toInt();
         if (next == _librarySelectedIndex) return false;
         setState(() => _librarySelectedIndex = next);
         _ensureSelectedBookVisible();
@@ -840,7 +853,9 @@ class LibraryScreenState extends State<LibraryScreen> {
   bool _navigateVertical(int delta) {
     if (_view == _LibraryView.manage) {
       if (_addons.isEmpty) return false;
-      final next = (_addonSelectedIndex + delta).clamp(0, _addons.length - 1).toInt();
+      final next = (_addonSelectedIndex + delta)
+          .clamp(0, _addons.length - 1)
+          .toInt();
       if (next == _addonSelectedIndex) return false;
       setState(() => _addonSelectedIndex = next);
       return true;
@@ -848,10 +863,9 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     if (_view == _LibraryView.addons) {
       if (_addonSelectionCount <= 0) return false;
-      final next = (_addonSelectedIndex + delta).clamp(
-        0,
-        _addonSelectionCount - 1,
-      ).toInt();
+      final next = (_addonSelectedIndex + delta)
+          .clamp(0, _addonSelectionCount - 1)
+          .toInt();
       if (next == _addonSelectedIndex) return false;
       setState(() => _addonSelectedIndex = next);
       return true;
@@ -872,10 +886,9 @@ class LibraryScreenState extends State<LibraryScreen> {
         if (visible.isEmpty) return false;
         setState(() {
           _hubFocus = _HubFocus.books;
-          _librarySelectedIndex = _librarySelectedIndex.clamp(
-            0,
-            visible.length - 1,
-          ).toInt();
+          _librarySelectedIndex = _librarySelectedIndex
+              .clamp(0, visible.length - 1)
+              .toInt();
         });
         _ensureSelectedBookVisible();
         return true;
@@ -1048,12 +1061,13 @@ class LibraryScreenState extends State<LibraryScreen> {
   void _jumpToNextLetter() {
     final visible = _visibleLibraryItems;
     if (visible.isEmpty) return;
-    final letters = visible
-        .map((entry) => _firstLetter(entry.item.title))
-        .where((letter) => letter.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final letters =
+        visible
+            .map((entry) => _firstLetter(entry.item.title))
+            .where((letter) => letter.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     if (letters.isEmpty) return;
 
     final current = _alphabetAnchor;
@@ -1079,12 +1093,13 @@ class LibraryScreenState extends State<LibraryScreen> {
     return RegExp(r'[A-ZÀ-ÖØ-Þ0-9]').hasMatch(first) ? first : '#';
   }
 
-
   RelativeRect _popupPosition() {
     final size = MediaQuery.sizeOf(context);
     final left = 24.r;
     final top = 190.r;
-    final right = (size.width - 360.r).clamp(24.0, size.width - 48.0).toDouble();
+    final right = (size.width - 360.r)
+        .clamp(24.0, size.width - 48.0)
+        .toDouble();
     return RelativeRect.fromLTRB(left, top, right, 0);
   }
 
@@ -1166,12 +1181,13 @@ class LibraryScreenState extends State<LibraryScreen> {
   Future<void> _openIndexMenu() async {
     final visible = _visibleLibraryItems;
     if (visible.isEmpty) return;
-    final letters = visible
-        .map((entry) => _firstLetter(entry.item.title))
-        .where((letter) => letter.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final letters =
+        visible
+            .map((entry) => _firstLetter(entry.item.title))
+            .where((letter) => letter.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     if (letters.isEmpty) return;
 
     final selected = await showMenu<String>(
@@ -1454,7 +1470,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 final value = controller.text.trim();
                 if (value.isNotEmpty) Navigator.of(dialogContext).pop(value);
               },
-              child: Text(AppLocale.libraryAddonInstall.getString(dialogContext)),
+              child: Text(
+                AppLocale.libraryAddonInstall.getString(dialogContext),
+              ),
             ),
           ],
         ),
@@ -1597,10 +1615,11 @@ class LibraryScreenState extends State<LibraryScreen> {
                   SizedBox(height: 10.r),
                   Text(
                     'Tachiyomi/Mihon • ${addon.language ?? 'all'} • iOS metadata',
-                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(dialogContext).colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: Theme.of(dialogContext).textTheme.bodySmall
+                        ?.copyWith(
+                          color: Theme.of(dialogContext).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                   if (addon.androidPackage != null)
                     Text(
@@ -1614,10 +1633,11 @@ class LibraryScreenState extends State<LibraryScreen> {
                     _aidokuNativeService.supports(addon)
                         ? 'Aidoku • ${addon.language ?? 'all'} • catalogue natif NeoStation'
                         : 'Aidoku • ${addon.language ?? 'all'} • métadonnées de source',
-                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(dialogContext).colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: Theme.of(dialogContext).textTheme.bodySmall
+                        ?.copyWith(
+                          color: Theme.of(dialogContext).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                   if (addon.sourceDownloadUrl != null)
                     Text(
@@ -1631,9 +1651,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                 Text(
                   addon.origin,
                   style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(dialogContext)
-                        .colorScheme
-                        .onSurface
+                    color: Theme.of(dialogContext).colorScheme.onSurface
                         .withValues(alpha: 0.6),
                   ),
                 ),
@@ -1666,30 +1684,179 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
-    if (_metadataProviderService.isProviderId(entry.providerId)) {
-      final item = entry.item;
-      if (item.pageUrls.isNotEmpty) {
-        await _showPageReader(item.title, item.pageUrls, subtitle: item.subtitle);
-        return;
-      }
-      if ((item.content?.trim().isNotEmpty ?? false) || item.contentUrl != null) {
-        try {
-          final text = await _catalogService.loadReadableText(item);
-          if (!mounted) return;
-          await _showTextReader(item, text);
-        } on LibraryAddonException catch (error) {
-          _showMessage(error.message);
-        }
-        return;
-      }
+  Future<void> _openMetadataProviderItem(_NativeLibraryEntry entry) async {
+    final item = entry.item;
+    final hasReadable =
+        item.pageUrls.isNotEmpty ||
+        (item.content?.trim().isNotEmpty ?? false) ||
+        item.contentUrl != null;
+    final acquisitions = item.acquisitionLinks;
 
+    if (acquisitions.isEmpty) {
+      if (hasReadable) {
+        await _readProviderItem(item);
+        return;
+      }
       final fr = Localizations.localeOf(context).languageCode == 'fr';
       _showMessage(
         fr
             ? 'Cette source ne fournit pas de pages lisibles pour ce titre.'
             : 'This source does not provide readable pages for this title.',
       );
+      return;
+    }
+
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    const layerId = 'library_provider_acquisition_dialog';
+    GamepadNavigationManager.pushLayer(
+      layerId,
+      onActivate: () {},
+      onDeactivate: () {},
+      modal: true,
+    );
+    String? choice;
+    try {
+      choice = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(item.title),
+          content: Text(
+            fr
+                ? 'Choisis une action proposée directement par la source.'
+                : 'Choose an action supplied directly by the source.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(fr ? 'Fermer' : 'Close'),
+            ),
+            if (hasReadable)
+              FilledButton.icon(
+                onPressed: () => Navigator.of(dialogContext).pop('read'),
+                icon: const Icon(Symbols.menu_book_rounded),
+                label: Text(fr ? 'Lire maintenant' : 'Read now'),
+              ),
+            for (var i = 0; i < acquisitions.length; i++)
+              if (acquisitions[i].isExternalReader)
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop('external:$i'),
+                  icon: const Icon(Symbols.open_in_new_rounded),
+                  label: Text(
+                    fr
+                        ? 'Lire sur ${acquisitions[i].label}'
+                        : 'Read on ${acquisitions[i].label}',
+                  ),
+                )
+              else if (acquisitions[i].canDownload)
+                FilledButton.tonalIcon(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop('download:$i'),
+                  icon: const Icon(Symbols.download_rounded),
+                  label: Text(
+                    '${fr ? 'Télécharger' : 'Download'} ${acquisitions[i].label}',
+                  ),
+                ),
+          ],
+        ),
+      );
+    } finally {
+      GamepadNavigationManager.popLayer(layerId);
+    }
+
+    if (!mounted || choice == null) return;
+    if (choice == 'read') {
+      await _readProviderItem(item);
+      return;
+    }
+    final separator = choice.indexOf(':');
+    if (separator <= 0) return;
+    final index = int.tryParse(choice.substring(separator + 1));
+    if (index == null || index < 0 || index >= acquisitions.length) return;
+    final acquisition = acquisitions[index];
+
+    if (choice.startsWith('external:')) {
+      final uri = Uri.tryParse(acquisition.url);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return;
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (choice.startsWith('download:')) {
+      await _downloadProviderAcquisition(item, acquisition);
+    }
+  }
+
+  Future<void> _readProviderItem(LibraryCatalogItem item) async {
+    if (item.pageUrls.isNotEmpty) {
+      await _showPageReader(item.title, item.pageUrls, subtitle: item.subtitle);
+      return;
+    }
+    try {
+      final text = await _catalogService.loadReadableText(item);
+      if (!mounted) return;
+      await _showTextReader(item, text);
+    } on LibraryAddonException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _downloadProviderAcquisition(
+    LibraryCatalogItem item,
+    LibraryAcquisitionLink acquisition,
+  ) async {
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    _showMessage(fr ? 'Téléchargement en cours…' : 'Downloading…');
+    try {
+      final result = await LibraryDownloadService.download(
+        acquisition: acquisition,
+        title: item.title,
+      );
+      if (!mounted) return;
+
+      if (result.format == 'epub') {
+        try {
+          final text = await _catalogService.loadReadableFile(result.filePath);
+          if (!mounted) return;
+          await _showTextReader(item, text);
+          return;
+        } on LibraryAddonException catch (error) {
+          _showMessage(
+            fr
+                ? '${result.fileName} téléchargé. ${error.message}'
+                : '${result.fileName} downloaded. ${error.message}',
+          );
+          return;
+        }
+      }
+
+      if (result.format == 'pdf') {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => LibraryPdfReaderScreen(
+              filePath: result.filePath,
+              title: item.title,
+            ),
+          ),
+        );
+        return;
+      }
+
+      _showMessage(
+        fr
+            ? '${result.fileName} téléchargé dans Library/Downloads.'
+            : '${result.fileName} downloaded to Library/Downloads.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showMessage(
+        fr ? 'Téléchargement impossible : $error' : 'Download failed: $error',
+      );
+    }
+  }
+
+  Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
+    if (_metadataProviderService.isProviderId(entry.providerId)) {
+      await _openMetadataProviderItem(entry);
       return;
     }
 
@@ -1742,7 +1909,6 @@ class LibraryScreenState extends State<LibraryScreen> {
       ),
     );
   }
-
 
   Future<void> _showPageReader(
     String title,
@@ -1813,7 +1979,10 @@ class LibraryScreenState extends State<LibraryScreen> {
           final theme = Theme.of(dialogContext);
           return Dialog(
             backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(horizontal: 24.r, vertical: 18.r),
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: 24.r,
+              vertical: 18.r,
+            ),
             child: NeoGlass(
               role: GlassSurfaceRole.card,
               borderRadius: BorderRadius.circular(18.r),
@@ -1935,7 +2104,9 @@ class LibraryScreenState extends State<LibraryScreen> {
     }.toList();
 
     _showMessage(
-      localeLanguage == 'fr' ? 'Chargement des chapitres…' : 'Loading chapters…',
+      localeLanguage == 'fr'
+          ? 'Chargement des chapitres…'
+          : 'Loading chapters…',
     );
     List<LibraryMangaDexChapter> chapters;
     try {
@@ -1974,7 +2145,10 @@ class LibraryScreenState extends State<LibraryScreen> {
           final theme = Theme.of(dialogContext);
           return Dialog(
             backgroundColor: Colors.transparent,
-            insetPadding: EdgeInsets.symmetric(horizontal: 24.r, vertical: 18.r),
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: 24.r,
+              vertical: 18.r,
+            ),
             child: NeoGlass(
               role: GlassSurfaceRole.card,
               borderRadius: BorderRadius.circular(18.r),
@@ -2027,8 +2201,10 @@ class LibraryScreenState extends State<LibraryScreen> {
                         itemBuilder: (_, index) {
                           final chapter = chapters[index];
                           final details = <String>[
-                            if (chapter.volume.isNotEmpty) 'Vol. ${chapter.volume}',
-                            if (chapter.chapter.isNotEmpty) 'Ch. ${chapter.chapter}',
+                            if (chapter.volume.isNotEmpty)
+                              'Vol. ${chapter.volume}',
+                            if (chapter.chapter.isNotEmpty)
+                              'Ch. ${chapter.chapter}',
                             if (chapter.language.isNotEmpty)
                               chapter.language.toUpperCase(),
                           ].join(' • ');
@@ -2036,7 +2212,8 @@ class LibraryScreenState extends State<LibraryScreen> {
                             title: Text(chapter.displayTitle),
                             subtitle: details.isEmpty ? null : Text(details),
                             trailing: const Icon(Symbols.menu_book_rounded),
-                            onTap: () => Navigator.of(dialogContext).pop(chapter),
+                            onTap: () =>
+                                Navigator.of(dialogContext).pop(chapter),
                           );
                         },
                       ),
@@ -2112,7 +2289,8 @@ class LibraryScreenState extends State<LibraryScreen> {
           (item) => item.isRepositorySource && item.repositoryOrigin == origin,
         )
         .length;
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (dialogContext) => AlertDialog(
@@ -2169,7 +2347,9 @@ class LibraryScreenState extends State<LibraryScreen> {
             context: context,
             barrierDismissible: false,
             builder: (dialogContext) => AlertDialog(
-              title: Text(AppLocale.libraryAddonRemoveTitle.getString(dialogContext)),
+              title: Text(
+                AppLocale.libraryAddonRemoveTitle.getString(dialogContext),
+              ),
               content: Text(
                 AppLocale.libraryAddonRemoveBody
                     .getString(dialogContext)
@@ -2284,7 +2464,8 @@ class LibraryScreenState extends State<LibraryScreen> {
               Expanded(
                 child: _LibraryEntryCard(
                   selected:
-                      _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 0,
+                      _hubFocus == _HubFocus.shortcuts &&
+                      _hubSelectedIndex == 0,
                   icon: Symbols.extension_rounded,
                   title: AppLocale.libraryAddons.getString(context),
                   subtitle: AppLocale.libraryAddonsSubtitle.getString(context),
@@ -2295,7 +2476,8 @@ class LibraryScreenState extends State<LibraryScreen> {
               Expanded(
                 child: _LibraryEntryCard(
                   selected:
-                      _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 1,
+                      _hubFocus == _HubFocus.shortcuts &&
+                      _hubSelectedIndex == 1,
                   icon: Symbols.folder_open_rounded,
                   title: AppLocale.libraryLocal.getString(context),
                   subtitle: AppLocale.libraryLocalSubtitle.getString(context),
@@ -2306,7 +2488,8 @@ class LibraryScreenState extends State<LibraryScreen> {
               Expanded(
                 child: _LibraryEntryCard(
                   selected:
-                      _hubFocus == _HubFocus.shortcuts && _hubSelectedIndex == 2,
+                      _hubFocus == _HubFocus.shortcuts &&
+                      _hubSelectedIndex == 2,
                   icon: Symbols.manage_accounts_rounded,
                   title: Localizations.localeOf(context).languageCode == 'fr'
                       ? 'Gérer les sources'
@@ -2329,7 +2512,6 @@ class LibraryScreenState extends State<LibraryScreen> {
       ],
     );
   }
-
 
   Widget _buildInlineTitleSearchHub(BuildContext context) {
     final theme = Theme.of(context);
@@ -2415,8 +2597,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                   vertical: 10.r,
                 ),
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.5),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.r),
                   borderSide: BorderSide.none,
@@ -2451,15 +2634,15 @@ class LibraryScreenState extends State<LibraryScreen> {
               color: _titleSearchFiltersExpanded
                   ? theme.colorScheme.primary.withValues(alpha: 0.18)
                   : (activeFilters > 0
-                      ? theme.colorScheme.primary.withValues(alpha: 0.10)
-                      : theme.colorScheme.surface.withValues(alpha: 0.5)),
+                        ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                        : theme.colorScheme.surface.withValues(alpha: 0.5)),
               borderRadius: BorderRadius.circular(12.r),
               border: Border.all(
                 color: _titleSearchFiltersExpanded
                     ? theme.colorScheme.primary
                     : (activeFilters > 0
-                        ? theme.colorScheme.primary.withValues(alpha: 0.5)
-                        : Colors.transparent),
+                          ? theme.colorScheme.primary.withValues(alpha: 0.5)
+                          : Colors.transparent),
                 width: 2.r,
               ),
             ),
@@ -2470,15 +2653,15 @@ class LibraryScreenState extends State<LibraryScreen> {
                 SizedBox(width: 6.r),
                 Text(
                   locale == 'fr' ? 'Filtres' : 'Filters',
-                  style: TextStyle(
-                    fontSize: 13.r,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 13.r, fontWeight: FontWeight.w700),
                 ),
                 if (activeFilters > 0) ...[
                   SizedBox(width: 6.r),
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6.r, vertical: 1.r),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.r,
+                      vertical: 1.r,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary,
                       borderRadius: BorderRadius.circular(8.r),
@@ -2519,11 +2702,11 @@ class LibraryScreenState extends State<LibraryScreen> {
     final visible = _visibleLibraryItems;
     final countLabel = _titleQuery.isNotEmpty
         ? (locale == 'fr'
-            ? '${visible.length} résultat${visible.length > 1 ? 's' : ''}'
-            : '${visible.length} result${visible.length == 1 ? '' : 's'}')
+              ? '${visible.length} résultat${visible.length > 1 ? 's' : ''}'
+              : '${visible.length} result${visible.length == 1 ? '' : 's'}')
         : (locale == 'fr'
-            ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
-            : '${visible.length} title${visible.length == 1 ? '' : 's'}');
+              ? '${visible.length} titre${visible.length > 1 ? 's' : ''}'
+              : '${visible.length} title${visible.length == 1 ? '' : 's'}');
 
     Widget control({
       required int index,
@@ -2536,7 +2719,8 @@ class LibraryScreenState extends State<LibraryScreen> {
         child: SizedBox(
           height: 190.r,
           child: _FilterControl(
-            selected: _hubFocus == _HubFocus.filters && _filterSelectedIndex == index,
+            selected:
+                _hubFocus == _HubFocus.filters && _filterSelectedIndex == index,
             icon: icon,
             label: label,
             value: value,
@@ -2622,7 +2806,9 @@ class LibraryScreenState extends State<LibraryScreen> {
               ),
               SizedBox(width: 7.r),
               Text(
-                locale == 'fr' ? 'Recherche dans les sources…' : 'Searching sources…',
+                locale == 'fr'
+                    ? 'Recherche dans les sources…'
+                    : 'Searching sources…',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               SizedBox(width: 12.r),
@@ -2630,7 +2816,8 @@ class LibraryScreenState extends State<LibraryScreen> {
             Text(
               countLabel,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.58),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.58),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2652,7 +2839,8 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     final visible = _visibleLibraryItems;
     if (visible.isEmpty) {
-      final hasContent = _libraryItems.isNotEmpty || _remoteSearchEntries.isNotEmpty;
+      final hasContent =
+          _libraryItems.isNotEmpty || _remoteSearchEntries.isNotEmpty;
       return SliverToBoxAdapter(
         child: SizedBox(
           height: 220.r,
@@ -2672,13 +2860,13 @@ class LibraryScreenState extends State<LibraryScreen> {
                 Text(
                   _searchingTitles
                       ? (Localizations.localeOf(context).languageCode == 'fr'
-                          ? 'Recherche dans les catalogues…'
-                          : 'Searching catalogs…')
+                            ? 'Recherche dans les catalogues…'
+                            : 'Searching catalogs…')
                       : hasContent
-                          ? (Localizations.localeOf(context).languageCode == 'fr'
-                              ? 'Aucun livre pour ce filtre'
-                              : 'No books match this filter')
-                          : AppLocale.libraryEmptyTitle.getString(context),
+                      ? (Localizations.localeOf(context).languageCode == 'fr'
+                            ? 'Aucun livre pour ce filtre'
+                            : 'No books match this filter')
+                      : AppLocale.libraryEmptyTitle.getString(context),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -2705,7 +2893,8 @@ class LibraryScreenState extends State<LibraryScreen> {
         _libraryColumns = columns;
         final spacing = 12.r;
         final totalSpacing = (columns - 1) * spacing;
-        final cardWidth = (constraints.crossAxisExtent - totalSpacing) / columns;
+        final cardWidth =
+            (constraints.crossAxisExtent - totalSpacing) / columns;
         final cardHeight = cardWidth / 0.68;
         _libraryRowExtent = cardHeight + spacing;
 
@@ -2723,9 +2912,9 @@ class LibraryScreenState extends State<LibraryScreen> {
               final languageLabel = languages.isEmpty
                   ? ''
                   : languages
-                      .map((code) => code.toUpperCase())
-                      .take(2)
-                      .join(' • ');
+                        .map((code) => code.toUpperCase())
+                        .take(2)
+                        .join(' • ');
               return KeyedSubtree(
                 key: _keyForBook(entry),
                 child: _LibraryCatalogCard(
@@ -2757,7 +2946,9 @@ class LibraryScreenState extends State<LibraryScreen> {
     final groups = <String, List<LibraryAddon>>{};
     for (final addon in _addons) {
       if (!addon.isRepositorySource || addon.isBuiltIn) continue;
-      groups.putIfAbsent(addon.repositoryOrigin, () => <LibraryAddon>[]).add(addon);
+      groups
+          .putIfAbsent(addon.repositoryOrigin, () => <LibraryAddon>[])
+          .add(addon);
     }
     return groups;
   }
@@ -2765,7 +2956,9 @@ class LibraryScreenState extends State<LibraryScreen> {
   String _repositoryDisplayName(String origin) {
     final uri = Uri.tryParse(origin);
     if (uri != null && uri.host.isNotEmpty) {
-      final path = uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+      final path = uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .toList();
       if (uri.host == 'github.com' && path.length >= 2) {
         return '${path[0]}/${path[1]}';
       }
@@ -2819,7 +3012,9 @@ class LibraryScreenState extends State<LibraryScreen> {
         SizedBox(height: 18.r),
         Text(
           AppLocale.libraryAddons.getString(context),
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         SizedBox(height: 10.r),
         Row(
@@ -2841,7 +3036,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 selected: _addonSelectedIndex == 1,
                 icon: Symbols.language_rounded,
                 title: AppLocale.libraryAddonAddUrl.getString(context),
-                subtitle: AppLocale.libraryAddonAddUrlSubtitle.getString(context),
+                subtitle: AppLocale.libraryAddonAddUrlSubtitle.getString(
+                  context,
+                ),
                 onTap: () => _tapAddonSelection(1),
               ),
             ),
@@ -2851,7 +3048,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                 selected: _addonSelectedIndex == 2,
                 icon: Symbols.file_open_rounded,
                 title: AppLocale.libraryAddonImportFile.getString(context),
-                subtitle: AppLocale.libraryAddonImportFileSubtitle.getString(context),
+                subtitle: AppLocale.libraryAddonImportFileSubtitle.getString(
+                  context,
+                ),
                 onTap: () => _tapAddonSelection(2),
               ),
             ),
@@ -2876,7 +3075,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                             ),
                             SizedBox(width: 7.r),
                             Text(
-                              locale == 'fr' ? 'Dépôts installés' : 'Installed repositories',
+                              locale == 'fr'
+                                  ? 'Dépôts installés'
+                                  : 'Installed repositories',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -2889,7 +3090,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                               ? 'Un dépôt peut être supprimé entièrement, avec toutes les sources qu’il a ajoutées.'
                               : 'A repository can be removed entirely together with every source it installed.',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.62,
+                            ),
                           ),
                         ),
                         SizedBox(height: 8.r),
@@ -2898,7 +3101,8 @@ class LibraryScreenState extends State<LibraryScreen> {
                             name: _repositoryDisplayName(entry.key),
                             origin: entry.key,
                             sourceCount: entry.value.length,
-                            onDelete: () => _confirmRemoveRepository(entry.value.first),
+                            onDelete: () =>
+                                _confirmRemoveRepository(entry.value.first),
                           ),
                           SizedBox(height: 8.r),
                         ],
@@ -2913,7 +3117,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                           ),
                           SizedBox(width: 7.r),
                           Text(
-                            AppLocale.libraryAddonInstalledSources.getString(context),
+                            AppLocale.libraryAddonInstalledSources.getString(
+                              context,
+                            ),
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -2926,7 +3132,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                             ? 'Chaque source ajoutée peut être retirée individuellement. Les sources natives sont conservées.'
                             : 'Every added source can be removed individually. Built-in sources are kept.',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.62,
+                          ),
                         ),
                       ),
                       SizedBox(height: 8.r),
@@ -2937,13 +3145,19 @@ class LibraryScreenState extends State<LibraryScreen> {
                             child: Text(
                               AppLocale.libraryEmptyTitle.getString(context),
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.62,
+                                ),
                               ),
                             ),
                           ),
                         )
                       else
-                        for (var index = 0; index < _addons.length; index++) ...[
+                        for (
+                          var index = 0;
+                          index < _addons.length;
+                          index++
+                        ) ...[
                           _AddonRow(
                             addon: _addons[index],
                             selected: _addonSelectedIndex == index + 3,
@@ -3015,7 +3229,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                     children: [
                       if (repositoryGroups.isNotEmpty) ...[
                         Text(
-                          locale == 'fr' ? 'Dépôts installés' : 'Installed repositories',
+                          locale == 'fr'
+                              ? 'Dépôts installés'
+                              : 'Installed repositories',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -3026,14 +3242,17 @@ class LibraryScreenState extends State<LibraryScreen> {
                             name: _repositoryDisplayName(entry.key),
                             origin: entry.key,
                             sourceCount: entry.value.length,
-                            onDelete: () => _confirmRemoveRepository(entry.value.first),
+                            onDelete: () =>
+                                _confirmRemoveRepository(entry.value.first),
                           ),
                           SizedBox(height: 8.r),
                         ],
                         SizedBox(height: 10.r),
                       ],
                       Text(
-                        AppLocale.libraryAddonInstalledSources.getString(context),
+                        AppLocale.libraryAddonInstalledSources.getString(
+                          context,
+                        ),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -3046,13 +3265,19 @@ class LibraryScreenState extends State<LibraryScreen> {
                             child: Text(
                               AppLocale.libraryEmptyTitle.getString(context),
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.62,
+                                ),
                               ),
                             ),
                           ),
                         )
                       else
-                        for (var index = 0; index < _addons.length; index++) ...[
+                        for (
+                          var index = 0;
+                          index < _addons.length;
+                          index++
+                        ) ...[
                           _AddonRow(
                             addon: _addons[index],
                             selected: _addonSelectedIndex == index,
@@ -3118,7 +3343,9 @@ class LibraryScreenState extends State<LibraryScreen> {
                       AppLocale.libraryNextStep.getString(context),
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.68,
+                        ),
                       ),
                     ),
                     SizedBox(height: 16.r),
@@ -3213,7 +3440,9 @@ class _LibraryEntryCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.62,
+                        ),
                       ),
                     ),
                   ],
@@ -3324,8 +3553,9 @@ class _FilterControl extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: theme.textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.62),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.62,
+                          ),
                         ),
                       ),
                     ),
@@ -3415,7 +3645,9 @@ class _LibraryCatalogCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(7.r),
                         child: item.coverUrl == null
                             ? ColoredBox(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.10,
+                                ),
                                 child: Icon(
                                   Symbols.menu_book_rounded,
                                   color: theme.colorScheme.primary,
@@ -3481,7 +3713,9 @@ class _LibraryCatalogCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.58,
+                      ),
                     ),
                   ),
                 ],
@@ -3555,7 +3789,9 @@ class _RepositoryManagementRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.58,
+                      ),
                     ),
                   ),
                 ],
@@ -3623,7 +3859,9 @@ class _AddonRow extends StatelessWidget {
           onTap: onTap,
           leading: addon.iconUrl == null
               ? CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  backgroundColor: theme.colorScheme.primary.withValues(
+                    alpha: 0.12,
+                  ),
                   child: Icon(
                     addon.isTachiyomiRepositorySource
                         ? Symbols.extension_rounded
@@ -3648,7 +3886,9 @@ class _AddonRow extends StatelessWidget {
             addon.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           subtitle: Text(
             'v${addon.version} • $location${addon.language == null ? '' : ' • ${addon.language!.toUpperCase()}'}',
@@ -3679,7 +3919,10 @@ class _AddonRow extends StatelessWidget {
                     side: BorderSide(
                       color: theme.colorScheme.error.withValues(alpha: 0.5),
                     ),
-                    padding: EdgeInsets.symmetric(horizontal: 10.r, vertical: 8.r),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10.r,
+                      vertical: 8.r,
+                    ),
                   ),
                 ),
         ),
@@ -3687,4 +3930,3 @@ class _AddonRow extends StatelessWidget {
     );
   }
 }
-
