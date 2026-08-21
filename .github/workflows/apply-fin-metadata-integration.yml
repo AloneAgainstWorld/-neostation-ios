@@ -1,5 +1,6 @@
 name: Apply Fin and metadata integration
 
+# Bootstrap workflow for the Fin + seven-provider Library integration.
 on:
   push:
     branches:
