@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neostation/services/library_metadata_provider_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('parses BnF Dublin Core records into metadata-only items', () {
@@ -39,5 +40,30 @@ void main() {
     expect(item.raw['ark'], 'ark:/12148/cb12345678x');
     expect(item.raw['isbn'], contains('9781234567897'));
     expect(item.coverUrl, contains('recupererImage'));
+  });
+  test('parses the bundled Manga Provider registry format', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    const raw = '''{
+      "schemaVersion": 1,
+      "name": "NeoStation Manga Metadata Providers",
+      "contentPolicy": "metadata-only",
+      "providers": [
+        {
+          "id": "jikan",
+          "name": "Jikan",
+          "kind": "manga_database",
+          "transport": "rest",
+          "baseURL": "https://api.jikan.moe/v4"
+        }
+      ]
+    }''';
+
+    final count = await LibraryMetadataProviderService.instance
+        .importRegistryJsonIfSupported(raw);
+    expect(count, 1);
+    expect(
+      LibraryMetadataProviderService.instance.providerLabels['jikan'],
+      'Jikan',
+    );
   });
 }

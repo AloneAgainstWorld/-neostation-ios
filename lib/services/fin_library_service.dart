@@ -11,6 +11,8 @@ import 'package:neostation/providers/sqlite_database_provider.dart';
 import 'package:neostation/repositories/system_repository.dart';
 import 'package:neostation/services/ios_shortcut_jit_launch_service.dart';
 import 'package:neostation/services/logger_service.dart';
+import 'package:neostation/services/screenscraper_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -88,6 +90,8 @@ class FinLibraryService {
   static const String _prefsKey = 'fin_library_cache_v1';
   static const String _syncCompletedKey = 'fin_library_sync_completed_v1';
   static const String _virtualScheme = 'fin';
+  static const String _gameCubeScreenScraperSystemId = '13';
+  static const String _wiiScreenScraperSystemId = '16';
 
   static const Set<String> _supportedExtensions = <String>{
     '.iso',
@@ -111,11 +115,7 @@ class FinLibraryService {
     '.gcz',
   };
 
-  static const Set<String> _wiiExtensions = <String>{
-    '.ciso',
-    '.wbfs',
-    '.wad',
-  };
+  static const Set<String> _wiiExtensions = <String>{'.ciso', '.wbfs', '.wad'};
 
   static String? _linkedGamesPath;
   static List<FinLibraryGame>? _cache;
@@ -157,7 +157,9 @@ class FinLibraryService {
         _linkedGamesPath = await _normalizeGamesRoot(selected);
       }
     } catch (error) {
-      _log.w('FinLibraryService: could not restore linked Games folder: $error');
+      _log.w(
+        'FinLibraryService: could not restore linked Games folder: $error',
+      );
     }
   }
 
@@ -213,8 +215,16 @@ class FinLibraryService {
     );
     if (selected == null) return null;
 
-    final normalized = await _normalizeGamesRoot(selected);
+    // The picker callback stores a bookmark. Resolve it once before scanning so
+    // the security-scoped grant is active while Dart enumerates Fin/Games.
+    final resolved = await ExternalFolderAccess.resolveBookmarkedFolder(
+      key: bookmarkKey,
+    );
+    final normalized = await _normalizeGamesRoot(resolved ?? selected);
     if (normalized == null) {
+      await _writeDebugFile(
+        'STATE: INVALID_SELECTION\nSelected: $selected\nResolved: $resolved',
+      );
       throw const FormatException(
         'Select Fin/Games (or the Fin folder that contains Games).',
       );
@@ -227,18 +237,22 @@ class FinLibraryService {
   static Future<FinSyncResult> syncLinkedLibrary() async {
     final root = await _resolveLinkedGamesRoot();
     if (root == null) {
+      await _writeDebugFile('STATE: NO_LINKED_FOLDER');
       throw StateError('Fin Games folder is not linked.');
     }
 
-    final discovery = await discoverLibrary(root);
+    await _writeDebugFile('STATE: SCANNING\nGames root: $root');
+    final discovery = await discoverLibrary(root, allowTitleLookup: true);
     final importResult = await _importIntoNeoStation(discovery.games);
     await _replaceCache(discovery.games, skipped: discovery.skipped);
     await _refreshNeoStationUi();
 
-    final gameCubeGames =
-        discovery.games.where((game) => game.systemFolder == 'gc').length;
-    final wiiGames =
-        discovery.games.where((game) => game.systemFolder == 'wii').length;
+    final gameCubeGames = discovery.games
+        .where((game) => game.systemFolder == 'gc')
+        .length;
+    final wiiGames = discovery.games
+        .where((game) => game.systemFolder == 'wii')
+        .length;
 
     _log.i(
       'FinLibraryService: ${discovery.games.length} games '
@@ -247,6 +261,16 @@ class FinLibraryService {
       '${importResult.virtualRows} virtual rows, '
       '${importResult.physicalRows} physical rows, '
       '${importResult.removedRows} stale rows removed.',
+    );
+    await _writeDebugFile(
+      'STATE: IMPORTED\nGames root: $root\n'
+      'Detected: ${discovery.games.length}\n'
+      'GameCube: $gameCubeGames\nWii: $wiiGames\n'
+      'Unclassified: ${discovery.skipped}\n'
+      'Virtual rows: ${importResult.virtualRows}\n'
+      'Physical rows: ${importResult.physicalRows}\n'
+      'Removed rows: ${importResult.removedRows}\n\n'
+      '${discovery.games.map((game) => '${game.systemFolder} | ${game.gameId ?? '-'} | ${game.relativePath}').join('\n')}',
     );
 
     return FinSyncResult(
@@ -265,8 +289,9 @@ class FinLibraryService {
   /// ordinary disc images use the standard Wii/GameCube magic words.
   @visibleForTesting
   static Future<({List<FinLibraryGame> games, int skipped})> discoverLibrary(
-    String gamesRoot,
-  ) async {
+    String gamesRoot, {
+    bool allowTitleLookup = false,
+  }) async {
     final root = Directory(path.normalize(gamesRoot));
     if (!await root.exists()) {
       return (games: const <FinLibraryGame>[], skipped: 0);
@@ -281,21 +306,24 @@ class FinLibraryService {
       final extension = path.extension(entity.path).toLowerCase();
       if (!_supportedExtensions.contains(extension)) continue;
 
-      final info = await detectDiscInfo(
-        entity,
-        visitedPlaylists: visitedPlaylists,
-      );
-      if (info == null) {
-        skipped++;
-        continue;
-      }
-
       var relative = path.relative(entity.path, from: root.path);
       relative = relative.replaceAll('\\', '/');
       final fileName = path.basename(entity.path);
       var title = path.basenameWithoutExtension(fileName);
       if (title.toLowerCase().endsWith('.nkit')) {
         title = title.substring(0, title.length - 5);
+      }
+
+      var info = await detectDiscInfo(
+        entity,
+        visitedPlaylists: visitedPlaylists,
+      );
+      if (info == null && allowTitleLookup) {
+        info = await _classifyByTitle(title, fileName: fileName);
+      }
+      if (info == null) {
+        skipped++;
+        continue;
       }
 
       games.add(
@@ -381,6 +409,8 @@ class FinLibraryService {
       final gameId = _readGameId(bytes, 0x58);
       if (discType == 1) return (systemFolder: 'gc', gameId: gameId);
       if (discType == 2) return (systemFolder: 'wii', gameId: gameId);
+      final idHint = _systemFromNintendoGameId(gameId);
+      if (idHint != null) return (systemFolder: idHint, gameId: gameId);
     }
 
     // Standard optical-disc header magic used by Dolphin.
@@ -398,6 +428,51 @@ class FinLibraryService {
     }
 
     return _pathHint(file.path);
+  }
+
+  static String? _systemFromNintendoGameId(String? gameId) {
+    final value = gameId?.trim().toUpperCase() ?? '';
+    if (value.length != 6) return null;
+    // Fallback only. Primary classification remains the RVZ/WIA disc_type or
+    // the optical-disc magic. Retail GameCube IDs overwhelmingly begin with G,
+    // while Wii retail IDs commonly begin with R or S.
+    if (value.startsWith('G')) return 'gc';
+    if (value.startsWith('R') || value.startsWith('S')) return 'wii';
+    return null;
+  }
+
+  static Future<({String systemFolder, String? gameId})?> _classifyByTitle(
+    String title, {
+    required String fileName,
+  }) async {
+    final pathHint = _pathHint('$title $fileName');
+    if (pathHint != null) return pathHint;
+
+    // Mixed Fin/Games folders are normal. Only use the title database as a
+    // last resort when the disc itself could not be classified. If a title
+    // exists on exactly one of GameCube/Wii, the platform is unambiguous. A
+    // port that exists on both stays unclassified rather than being guessed.
+    try {
+      final gc = await ScreenScraperService.fetchGameInfo(
+        _gameCubeScreenScraperSystemId,
+        fileName,
+        gameName: title,
+      );
+      final wii = await ScreenScraperService.fetchGameInfo(
+        _wiiScreenScraperSystemId,
+        fileName,
+        gameName: title,
+      );
+      final hasGc = gc?['gameInfo'] is Map;
+      final hasWii = wii?['gameInfo'] is Map;
+      if (hasGc && !hasWii) return (systemFolder: 'gc', gameId: null);
+      if (hasWii && !hasGc) return (systemFolder: 'wii', gameId: null);
+    } catch (error) {
+      _log.w(
+        'FinLibraryService: title platform lookup failed for $title: $error',
+      );
+    }
+    return null;
   }
 
   static ({String systemFolder, String? gameId})? _pathHint(String value) {
@@ -434,13 +509,12 @@ class FinLibraryService {
     final gameCube = await SystemRepository.getSystemByFolderName('gc');
     final wii = await SystemRepository.getSystemByFolderName('wii');
     if (gameCube?.id == null || wii?.id == null) {
-      throw StateError('NeoStation GameCube/Wii system definitions were not found.');
+      throw StateError(
+        'NeoStation GameCube/Wii system definitions were not found.',
+      );
     }
 
-    final systems = <String, String>{
-      'gc': gameCube!.id!,
-      'wii': wii!.id!,
-    };
+    final systems = <String, String>{'gc': gameCube!.id!, 'wii': wii!.id!};
     final db = await SqliteService.getDatabase();
     final physicalBySystem = <String, Set<String>>{
       'gc': <String>{},
@@ -455,7 +529,9 @@ class FinLibraryService {
       for (final row in rows) {
         final fileName = row['filename']?.toString().trim();
         final romPath = row['rom_path']?.toString() ?? '';
-        if (fileName == null || fileName.isEmpty || isVirtualLibraryPath(romPath)) {
+        if (fileName == null ||
+            fileName.isEmpty ||
+            isVirtualLibraryPath(romPath)) {
           continue;
         }
         physicalBySystem[entry.key]!.add(fileName.toLowerCase());
@@ -509,13 +585,7 @@ class FinLibraryService {
               THEN excluded.title_name ELSE user_roms.title_name END,
             updated_at = datetime('now')
           ''',
-          [
-            systemId,
-            game.fileName,
-            virtualPath,
-            game.gameId,
-            game.title,
-          ],
+          [systemId, game.fileName, virtualPath, game.gameId, game.title],
         );
         virtualRows++;
       }
@@ -537,7 +607,9 @@ class FinLibraryService {
       await db.transaction((txn) async {
         const batchSize = 100;
         for (var i = 0; i < stale.length; i += batchSize) {
-          final end = (i + batchSize < stale.length) ? i + batchSize : stale.length;
+          final end = (i + batchSize < stale.length)
+              ? i + batchSize
+              : stale.length;
           final batch = stale.sublist(i, end);
           final placeholders = List.filled(batch.length, '?').join(',');
           removedRows += await txn.rawDelete(
@@ -596,7 +668,8 @@ class FinLibraryService {
 
     if (isVirtualLibraryPath(romPath)) {
       final uri = Uri.tryParse(romPath);
-      relativePath = uri?.queryParameters['path'] ?? uri?.queryParameters['game'];
+      relativePath =
+          uri?.queryParameters['path'] ?? uri?.queryParameters['game'];
     } else {
       await loadCachedLibrary();
       final normalized = path.basename(romPath).toLowerCase();
@@ -623,22 +696,26 @@ class FinLibraryService {
   }
 
   static Future<String?> _resolveLinkedGamesRoot() async {
-    final cached = linkedGamesPath;
-    if (cached != null) return cached;
-    if (!Platform.isIOS) return null;
+    if (!Platform.isIOS) return linkedGamesPath;
 
     try {
       final selected = await ExternalFolderAccess.resolveBookmarkedFolder(
         key: bookmarkKey,
       );
-      if (selected == null) return null;
-      final normalized = await _normalizeGamesRoot(selected);
-      if (normalized != null) _linkedGamesPath = normalized;
-      return normalized;
+      if (selected != null) {
+        final normalized = await _normalizeGamesRoot(selected);
+        if (normalized != null) {
+          _linkedGamesPath = normalized;
+          return normalized;
+        }
+      }
     } catch (error) {
       _log.w('FinLibraryService: failed resolving bookmark: $error');
-      return null;
     }
+
+    // Keep a best-effort fallback for an already-active path in the same app
+    // session, but never prefer it over resolving the bookmark first.
+    return linkedGamesPath;
   }
 
   static Future<String?> _normalizeGamesRoot(String selected) async {
@@ -648,7 +725,12 @@ class FinLibraryService {
     final base = path.basename(root.path).toLowerCase();
     if (base == 'games' || base == 'software') return root.path;
 
-    for (final name in const <String>['Games', 'games', 'Software', 'software']) {
+    for (final name in const <String>[
+      'Games',
+      'games',
+      'Software',
+      'software',
+    ]) {
       final child = Directory(path.join(root.path, name));
       if (await child.exists()) return child.path;
     }
@@ -656,12 +738,26 @@ class FinLibraryService {
     try {
       await for (final entity in root.list(followLinks: false)) {
         if (entity is File &&
-            _supportedExtensions.contains(path.extension(entity.path).toLowerCase())) {
+            _supportedExtensions.contains(
+              path.extension(entity.path).toLowerCase(),
+            )) {
           return root.path;
         }
       }
     } catch (_) {}
     return null;
+  }
+
+  static Future<void> _writeDebugFile(String content) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final file = File(path.join(docs.path, 'fin_sync_debug.txt'));
+      await file.writeAsString(
+        '--- ${DateTime.now().toIso8601String()} ---\n$content',
+      );
+    } catch (error) {
+      _log.w('FinLibraryService: could not write sync diagnostics: $error');
+    }
   }
 
   static Future<void> loadCachedLibrary() async {
@@ -687,7 +783,10 @@ class FinLibraryService {
       }
       _cache = rawGames
           .whereType<Map>()
-          .map((value) => FinLibraryGame.fromJson(Map<String, dynamic>.from(value)))
+          .map(
+            (value) =>
+                FinLibraryGame.fromJson(Map<String, dynamic>.from(value)),
+          )
           .where(
             (game) =>
                 game.fileName.isNotEmpty &&

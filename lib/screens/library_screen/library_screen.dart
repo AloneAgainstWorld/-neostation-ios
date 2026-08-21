@@ -1544,8 +1544,29 @@ class LibraryScreenState extends State<LibraryScreen> {
       if (bytes == null) {
         throw const LibraryAddonException('Unable to read selected manifest.');
       }
+      final rawJson = utf8.decode(bytes);
+      final providerCount = await _metadataProviderService
+          .importRegistryJsonIfSupported(rawJson);
+      if (providerCount != null) {
+        if (!mounted) return;
+        setState(() {
+          _sourceFilter = 'all';
+          _librarySelectedIndex = 0;
+        });
+        final fr = Localizations.localeOf(context).languageCode == 'fr';
+        _showMessage(
+          fr
+              ? '$providerCount source(s) Manga Provider intégrée(s).'
+              : '$providerCount Manga Provider source(s) imported.',
+        );
+        if (_titleQuery.trim().isNotEmpty) {
+          unawaited(_runTitleSearch(_titleQuery));
+        }
+        return;
+      }
+
       final install = await _addonService.installDocumentFromJson(
-        utf8.decode(bytes),
+        rawJson,
         origin: 'file:${picked.name}',
       );
       await _loadAddons();

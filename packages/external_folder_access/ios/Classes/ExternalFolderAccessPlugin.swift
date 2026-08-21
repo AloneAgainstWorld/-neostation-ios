@@ -23,6 +23,13 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     private var audioSessionObservers: [NSObjectProtocol] = []
     private var audioSessionKnownActive = false
 
+    /// Security-scoped URLs that must remain active while NeoStation is
+    /// running. The document picker callback used to stop access as soon
+    /// as it returned the path to Dart, which meant a service could see
+    /// the selected directory but fail as soon as it tried to enumerate
+    /// or open its files. Keep one balanced access grant per bookmark key.
+    private var activeSecurityScopedURLs: [String: URL] = [:]
+
     /// Bookmarks are stored per-emulator so several external folders can be
     /// linked side by side (RetroArch's, ARMSX2's, ...) instead of the one
     /// global slot this plugin originally had. The historical key is reused
@@ -153,13 +160,12 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             return
         }
 
-        // Bookmark creation itself needs the resource to be accessible;
-        // wrap it in a matched start/stop pair even though the picker's
-        // returned URL is already scoped for this immediate callback.
+        // Keep the selected folder's security scope alive for the remainder
+        // of this app session. Dart starts enumerating the folder only after this
+        // callback returns, so stopping the scope here makes external app folders
+        // (such as Fin/Games) appear selected but unreadable.
+        let key = pendingBookmarkKey
         let didStart = url.startAccessingSecurityScopedResource()
-        defer {
-            if didStart { url.stopAccessingSecurityScopedResource() }
-        }
 
         do {
             let bookmarkData = try url.bookmarkData(
@@ -169,10 +175,20 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
             )
             UserDefaults.standard.set(
                 bookmarkData,
-                forKey: Self.bookmarkDefaultsKey(for: pendingBookmarkKey)
+                forKey: Self.bookmarkDefaultsKey(for: key)
             )
+
+            if let previous = activeSecurityScopedURLs.removeValue(forKey: key),
+                previous != url
+            {
+                previous.stopAccessingSecurityScopedResource()
+            }
+            if didStart {
+                activeSecurityScopedURLs[key] = url
+            }
             pendingResult?(url.path)
         } catch {
+            if didStart { url.stopAccessingSecurityScopedResource() }
             pendingResult?(
                 FlutterError(
                     code: "BOOKMARK_FAILED",
@@ -197,6 +213,11 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     /// NeoStation needs the folder readable for as long as the app runs, and
     /// iOS releases the scope automatically when the process exits.
     private func resolveBookmarkedFolder(key: String, result: @escaping FlutterResult) {
+        if let active = activeSecurityScopedURLs[key] {
+            result(active.path)
+            return
+        }
+
         guard
             let bookmarkData = UserDefaults.standard.data(
                 forKey: Self.bookmarkDefaultsKey(for: key)
@@ -224,6 +245,7 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
                 )
                 return
             }
+            activeSecurityScopedURLs[key] = url
 
             // Sideload updates/re-signing can make an otherwise resolvable
             // bookmark stale. Refresh it immediately while the security scope
@@ -259,6 +281,9 @@ public class ExternalFolderAccessPlugin: NSObject, FlutterPlugin, UIDocumentPick
     }
 
     private func clearBookmark(key: String, result: @escaping FlutterResult) {
+        if let active = activeSecurityScopedURLs.removeValue(forKey: key) {
+            active.stopAccessingSecurityScopedResource()
+        }
         UserDefaults.standard.removeObject(forKey: Self.bookmarkDefaultsKey(for: key))
         result(nil)
     }

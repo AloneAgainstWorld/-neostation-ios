@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:neostation/services/library_catalog_service.dart';
 import 'package:neostation/services/logger_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xml/xml.dart';
 
 class LibraryMetadataProviderDefinition {
@@ -53,6 +54,8 @@ class LibraryMetadataProviderService {
 
   static final _log = LoggerService.instance;
   static const String manifestAsset = 'assets/data/manga-providers.json';
+  static const String _importedRegistryPrefsKey =
+      'neostation_library_metadata_provider_registry_v1';
   static const Duration _timeout = Duration(seconds: 18);
   static const int _maxBodyBytes = 5 * 1024 * 1024;
   static const String _googleBooksApiKey = String.fromEnvironment(
@@ -80,7 +83,42 @@ class LibraryMetadataProviderService {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    final raw = await rootBundle.loadString(manifestAsset);
+    final prefs = await SharedPreferences.getInstance();
+    final imported = prefs.getString(_importedRegistryPrefsKey);
+    final raw = imported?.trim().isNotEmpty == true
+        ? imported!
+        : await rootBundle.loadString(manifestAsset);
+    _providers = _parseRegistry(raw);
+    _initialized = true;
+  }
+
+  /// Imports NeoStation's Manga Provider registry directly from the Library
+  /// file picker. Returns null for unrelated JSON so the normal add-on parser
+  /// can continue handling NeoStation/Tachiyomi/Aidoku manifests.
+  Future<int?> importRegistryJsonIfSupported(String rawJson) async {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(rawJson);
+    } catch (_) {
+      return null;
+    }
+    if (decoded is! Map) return null;
+    final object = Map<String, dynamic>.from(decoded);
+    if (!object.containsKey('schemaVersion') ||
+        !object.containsKey('contentPolicy') ||
+        !object.containsKey('providers')) {
+      return null;
+    }
+
+    final parsed = _parseRegistry(rawJson);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_importedRegistryPrefsKey, rawJson);
+    _providers = parsed;
+    _initialized = true;
+    return parsed.length;
+  }
+
+  static List<LibraryMetadataProviderDefinition> _parseRegistry(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
       throw const FormatException(
@@ -118,8 +156,12 @@ class LibraryMetadataProviderService {
       }
       parsed.add(definition);
     }
-    _providers = List<LibraryMetadataProviderDefinition>.unmodifiable(parsed);
-    _initialized = true;
+    if (parsed.isEmpty) {
+      throw const FormatException(
+        'Metadata provider registry contains no providers.',
+      );
+    }
+    return List<LibraryMetadataProviderDefinition>.unmodifiable(parsed);
   }
 
   /// Searches every requested provider with a small concurrency cap so one
