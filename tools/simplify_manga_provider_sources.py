@@ -86,4 +86,13 @@ detail = ROOT / "lib/screens/library_screen/library_metadata_detail_dialog.dart"
 if detail.exists():
     detail.unlink()
 
+# The patch and its bootstrap workflow are one-shot implementation helpers.
+for rel in (
+    "tools/simplify_manga_provider_sources.py",
+    ".github/workflows/simplify-manga-provider.yml",
+):
+    candidate = ROOT / rel
+    if candidate.exists():
+        candidate.unlink()
+
 print("Simplified Manga Provider integration: sources only, no Library video UI.")
