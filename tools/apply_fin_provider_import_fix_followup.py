@@ -1,4 +1,5 @@
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -235,4 +236,7 @@ if "SharedPreferences.setMockInitialValues(<String, Object>{});" not in test:
         )
 write(test_path, test)
 
-print("Completed Fin classifier helper and Manga Provider direct-import support.")
+# Apply the native iOS Fin folder scanner after the compatibility patches above.
+runpy.run_path(str(ROOT / "tools/apply_fin_native_scan_fix.py"), run_name="__main__")
+
+print("Completed Fin classifier helper, Manga Provider import, and native Fin scan fixes.")
