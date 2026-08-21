@@ -43,18 +43,23 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Apply source-declared Library acquisitions
+      - name: Apply Library and Fin integration fixes
         run: |
           set -euo pipefail
           python3 tools/apply_library_acquisition_integration.py
           python3 tools/fix_library_acquisition_ci.py
+          python3 tools/apply_fin_provider_import_fix.py
+          python3 tools/apply_fin_provider_import_fix_followup.py
           dart format \
             lib/services/library_catalog_service.dart \
             lib/services/library_metadata_provider_service.dart \
             lib/services/library_download_service.dart \
+            lib/services/fin_library_service.dart \
             lib/screens/library_screen/library_screen.dart \
             lib/screens/library_screen/library_pdf_reader_screen.dart \
-            test/library_acquisition_service_test.dart
+            test/library_acquisition_service_test.dart \
+            test/library_metadata_provider_service_test.dart \
+            test/fin_library_service_test.dart
           git diff --check
 
       - name: Prepare build environment
@@ -125,23 +130,27 @@ jobs:
           set -o pipefail
           flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | tee build/ci/analyze.log
 
-      - name: Commit validated Library acquisition sources
+      - name: Commit validated Library and Fin sources
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
+            packages/external_folder_access/ios/Classes/ExternalFolderAccessPlugin.swift \
             lib/services/library_catalog_service.dart \
             lib/services/library_metadata_provider_service.dart \
             lib/services/library_download_service.dart \
+            lib/services/fin_library_service.dart \
             lib/screens/library_screen/library_screen.dart \
             lib/screens/library_screen/library_pdf_reader_screen.dart \
-            test/library_acquisition_service_test.dart
+            test/library_acquisition_service_test.dart \
+            test/library_metadata_provider_service_test.dart \
+            test/fin_library_service_test.dart
           if ! git diff --cached --quiet; then
-            git commit -m "feat: add source-declared Library downloads"
+            git commit -m "fix: sync Fin folders and import Manga Provider registries"
             git push origin HEAD:feature/library-native
           else
-            echo "Library acquisition sources already committed."
+            echo "Library and Fin sources already committed."
           fi
 
       - name: Scaffold iOS platform if missing
