@@ -125,6 +125,7 @@ class FinLibraryService {
   static String? get linkedGamesPath {
     final value = _linkedGamesPath;
     if (value == null || value.isEmpty) return null;
+    if (Platform.isIOS) return value;
     return Directory(value).existsSync() ? value : null;
   }
 
@@ -176,12 +177,13 @@ class FinLibraryService {
     final root = await _resolveLinkedGamesRoot();
     if (root != null && await Directory(root).exists()) {
       try {
-        final discovery = await discoverLibrary(root);
+        final discovery =
+            await _discoverLibraryNatively(root, allowTitleLookup: false) ??
+            await discoverLibrary(root);
         await _importIntoNeoStation(discovery.games);
         await _replaceCache(discovery.games, skipped: discovery.skipped);
-        await databaseProvider.loadGamesForSystem('gc');
-        await databaseProvider.loadGamesForSystem('wii');
         await configProvider.refreshDetectedSystems();
+        await databaseProvider.loadDatabase();
         _log.i(
           'FinLibraryService: reconciled ${discovery.games.length} live game(s) '
           'after database initialization.',
@@ -196,9 +198,8 @@ class FinLibraryService {
     if (!_syncCompleted || cache == null || cache.isEmpty) return;
     try {
       await _importIntoNeoStation(cache);
-      await databaseProvider.loadGamesForSystem('gc');
-      await databaseProvider.loadGamesForSystem('wii');
       await configProvider.refreshDetectedSystems();
+      await databaseProvider.loadDatabase();
       _log.i('FinLibraryService: restored ${cache.length} cached game(s).');
     } catch (error) {
       _log.e('FinLibraryService: cache restore failed: $error');
@@ -242,7 +243,13 @@ class FinLibraryService {
     }
 
     await _writeDebugFile('STATE: SCANNING\nGames root: $root');
-    final discovery = await discoverLibrary(root, allowTitleLookup: true);
+    final nativeDiscovery = await _discoverLibraryNatively(
+      root,
+      allowTitleLookup: true,
+    );
+    final discovery =
+        nativeDiscovery ?? await discoverLibrary(root, allowTitleLookup: true);
+    final discoveryMode = nativeDiscovery == null ? 'dart' : 'native-ios';
     final importResult = await _importIntoNeoStation(discovery.games);
     await _replaceCache(discovery.games, skipped: discovery.skipped);
     await _refreshNeoStationUi();
@@ -264,6 +271,7 @@ class FinLibraryService {
     );
     await _writeDebugFile(
       'STATE: IMPORTED\nGames root: $root\n'
+      'Discovery mode: $discoveryMode\n'
       'Detected: ${discovery.games.length}\n'
       'GameCube: $gameCubeGames\nWii: $wiiGames\n'
       'Unclassified: ${discovery.skipped}\n'
@@ -282,6 +290,109 @@ class FinLibraryService {
       physicalRows: importResult.physicalRows,
       removedRows: importResult.removedRows,
     );
+  }
+
+  /// iOS-native discovery path. The security-scoped bookmark stays owned
+  /// by the Swift URL while it enumerates the Files-visible Fin directory and
+  /// reads only the first 256 bytes of each candidate image. This avoids the
+  /// provider-backed folder traversal failure that can occur after returning a
+  /// path string to Dart.
+  static Future<({List<FinLibraryGame> games, int skipped})?>
+  _discoverLibraryNatively(
+    String gamesRoot, {
+    required bool allowTitleLookup,
+  }) async {
+    if (!Platform.isIOS) return null;
+
+    final bookmarkedRoot = await ExternalFolderAccess.resolveBookmarkedFolder(
+      key: bookmarkKey,
+    );
+    if (bookmarkedRoot == null || bookmarkedRoot.trim().isEmpty) return null;
+
+    final bookmarkPath = path.normalize(bookmarkedRoot);
+    final normalizedGamesRoot = path.normalize(gamesRoot);
+    String? subdirectory;
+    if (bookmarkPath != normalizedGamesRoot) {
+      final relative = path
+          .relative(normalizedGamesRoot, from: bookmarkPath)
+          .replaceAll('\\', '/');
+      if (relative != '.' &&
+          relative.isNotEmpty &&
+          relative != '..' &&
+          !relative.startsWith('../')) {
+        subdirectory = relative;
+      }
+    }
+
+    final entries = await ExternalFolderAccess.listBookmarkedFiles(
+      key: bookmarkKey,
+      subdirectory: subdirectory,
+      extensions: _supportedExtensions
+          .map((extension) => extension.replaceFirst('.', ''))
+          .toList(growable: false),
+      recursive: true,
+      prefixBytes: 0x100,
+    );
+    if (entries == null) return null;
+
+    final games = <FinLibraryGame>[];
+    var skipped = 0;
+    for (final entry in entries) {
+      final relative =
+          entry['relativePath']?.toString().replaceAll('\\', '/') ?? '';
+      final fileName = entry['fileName']?.toString() ?? path.basename(relative);
+      if (relative.isEmpty || fileName.isEmpty) continue;
+
+      final extension = path.extension(fileName).toLowerCase();
+      if (!_supportedExtensions.contains(extension)) continue;
+
+      final rawPrefix = entry['prefix'];
+      final Uint8List prefix;
+      if (rawPrefix is Uint8List) {
+        prefix = rawPrefix;
+      } else if (rawPrefix is List) {
+        prefix = Uint8List.fromList(
+          rawPrefix.whereType<num>().map((value) => value.toInt()).toList(),
+        );
+      } else {
+        prefix = Uint8List(0);
+      }
+
+      var title = path.basenameWithoutExtension(fileName);
+      if (title.toLowerCase().endsWith('.nkit')) {
+        title = title.substring(0, title.length - 5);
+      }
+
+      var info = detectDiscInfoFromPrefix(
+        prefix,
+        extension: extension,
+        pathHint: relative,
+      );
+      if (info == null && allowTitleLookup) {
+        info = await _classifyByTitle(title, fileName: fileName);
+      }
+      if (info == null) {
+        skipped++;
+        continue;
+      }
+
+      games.add(
+        FinLibraryGame(
+          fileName: fileName,
+          relativePath: relative,
+          systemFolder: info.systemFolder,
+          title: title,
+          gameId: info.gameId,
+        ),
+      );
+    }
+
+    games.sort((a, b) {
+      final systemCompare = a.systemFolder.compareTo(b.systemFolder);
+      if (systemCompare != 0) return systemCompare;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+    return (games: List<FinLibraryGame>.unmodifiable(games), skipped: skipped);
   }
 
   /// Scans the linked Fin folder and classifies formats without relying on
@@ -345,6 +456,51 @@ class FinLibraryService {
     return (games: List<FinLibraryGame>.unmodifiable(games), skipped: skipped);
   }
 
+  /// Classifies a game from the small prefix read by the native iOS
+  /// bookmark scanner. RVZ/WIA stores disc_type and the raw optical-disc header
+  /// in this prefix, so the full multi-gigabyte image never needs to be copied.
+  @visibleForTesting
+  static ({String systemFolder, String? gameId})? detectDiscInfoFromPrefix(
+    Uint8List bytes, {
+    required String extension,
+    String pathHint = '',
+  }) {
+    final normalizedExtension = extension.toLowerCase();
+    if (_gameCubeExtensions.contains(normalizedExtension)) {
+      return (systemFolder: 'gc', gameId: null);
+    }
+    if (_wiiExtensions.contains(normalizedExtension)) {
+      return (systemFolder: 'wii', gameId: null);
+    }
+
+    if (bytes.length >= 0x5e &&
+        (_startsWith(bytes, const <int>[0x52, 0x56, 0x5a, 0x01]) ||
+            _startsWith(bytes, const <int>[0x57, 0x49, 0x41, 0x01]))) {
+      final data = ByteData.sublistView(bytes);
+      final discType = data.getUint32(0x48, Endian.big);
+      final gameId = _readGameId(bytes, 0x58);
+      if (discType == 1) return (systemFolder: 'gc', gameId: gameId);
+      if (discType == 2) return (systemFolder: 'wii', gameId: gameId);
+      final idHint = _systemFromNintendoGameId(gameId);
+      if (idHint != null) return (systemFolder: idHint, gameId: gameId);
+    }
+
+    if (bytes.length >= 0x20) {
+      final data = ByteData.sublistView(bytes);
+      final wiiMagic = data.getUint32(0x18, Endian.big);
+      final gameCubeMagic = data.getUint32(0x1c, Endian.big);
+      final gameId = _readGameId(bytes, 0);
+      if (wiiMagic == 0x5d1c9ea3) {
+        return (systemFolder: 'wii', gameId: gameId);
+      }
+      if (gameCubeMagic == 0xc2339f3d) {
+        return (systemFolder: 'gc', gameId: gameId);
+      }
+    }
+
+    return pathHint.isEmpty ? null : _pathHint(pathHint);
+  }
+
   /// Public only for deterministic unit tests and diagnostics.
   @visibleForTesting
   static Future<({String systemFolder, String? gameId})?> detectDiscInfo(
@@ -399,35 +555,11 @@ class FinLibraryService {
       return _pathHint(file.path);
     }
 
-    // Dolphin RVZ/WIA Header 1 is 0x48 bytes. Header 2 starts with a big-endian
-    // disc_type: 1 = GameCube, 2 = Wii, followed by a 0x80-byte raw disc header.
-    if (bytes.length >= 0x5e &&
-        (_startsWith(bytes, const <int>[0x52, 0x56, 0x5a, 0x01]) ||
-            _startsWith(bytes, const <int>[0x57, 0x49, 0x41, 0x01]))) {
-      final data = ByteData.sublistView(bytes);
-      final discType = data.getUint32(0x48, Endian.big);
-      final gameId = _readGameId(bytes, 0x58);
-      if (discType == 1) return (systemFolder: 'gc', gameId: gameId);
-      if (discType == 2) return (systemFolder: 'wii', gameId: gameId);
-      final idHint = _systemFromNintendoGameId(gameId);
-      if (idHint != null) return (systemFolder: idHint, gameId: gameId);
-    }
-
-    // Standard optical-disc header magic used by Dolphin.
-    if (bytes.length >= 0x20) {
-      final data = ByteData.sublistView(bytes);
-      final wiiMagic = data.getUint32(0x18, Endian.big);
-      final gameCubeMagic = data.getUint32(0x1c, Endian.big);
-      final gameId = _readGameId(bytes, 0);
-      if (wiiMagic == 0x5d1c9ea3) {
-        return (systemFolder: 'wii', gameId: gameId);
-      }
-      if (gameCubeMagic == 0xc2339f3d) {
-        return (systemFolder: 'gc', gameId: gameId);
-      }
-    }
-
-    return _pathHint(file.path);
+    return detectDiscInfoFromPrefix(
+      bytes,
+      extension: extension,
+      pathHint: file.path,
+    );
   }
 
   static String? _systemFromNintendoGameId(String? gameId) {
@@ -506,8 +638,13 @@ class FinLibraryService {
 
   static Future<({int virtualRows, int physicalRows, int removedRows})>
   _importIntoNeoStation(List<FinLibraryGame> games) async {
-    final gameCube = await SystemRepository.getSystemByFolderName('gc');
-    final wii = await SystemRepository.getSystemByFolderName('wii');
+    var gameCube = await SystemRepository.getSystemByFolderName('gc');
+    var wii = await SystemRepository.getSystemByFolderName('wii');
+    if (gameCube?.id == null || wii?.id == null) {
+      await SystemRepository.getAllSystems();
+      gameCube = await SystemRepository.getSystemByFolderName('gc');
+      wii = await SystemRepository.getSystemByFolderName('wii');
+    }
     if (gameCube?.id == null || wii?.id == null) {
       throw StateError(
         'NeoStation GameCube/Wii system definitions were not found.',
@@ -649,12 +786,11 @@ class FinLibraryService {
         context,
         listen: false,
       );
-      await databaseProvider.loadGamesForSystem('gc');
-      await databaseProvider.loadGamesForSystem('wii');
       await Provider.of<SqliteConfigProvider>(
         context,
         listen: false,
       ).refreshDetectedSystems();
+      await databaseProvider.loadDatabase();
     } catch (error) {
       _log.e('FinLibraryService: UI refresh failed: $error');
     }
@@ -719,11 +855,12 @@ class FinLibraryService {
   }
 
   static Future<String?> _normalizeGamesRoot(String selected) async {
-    final root = Directory(path.normalize(selected));
-    if (!await root.exists()) return null;
+    final normalizedPath = path.normalize(selected);
+    final base = path.basename(normalizedPath).toLowerCase();
+    if (base == 'games' || base == 'software') return normalizedPath;
 
-    final base = path.basename(root.path).toLowerCase();
-    if (base == 'games' || base == 'software') return root.path;
+    final root = Directory(normalizedPath);
+    if (!await root.exists()) return null;
 
     for (final name in const <String>[
       'Games',

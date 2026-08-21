@@ -15,6 +15,21 @@ void main() {
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
 
+  test('classifies RVZ prefix returned by native iOS scan', () {
+    final bytes = Uint8List(0x100);
+    bytes.setRange(0, 4, const <int>[0x52, 0x56, 0x5a, 0x01]);
+    ByteData.sublistView(bytes).setUint32(0x48, 2, Endian.big);
+    bytes.setRange(0x58, 0x5e, 'RMCE01'.codeUnits);
+
+    final info = FinLibraryService.detectDiscInfoFromPrefix(
+      bytes,
+      extension: '.rvz',
+      pathHint: 'Mario Kart Wii (Europe).rvz',
+    );
+    expect(info?.systemFolder, 'wii');
+    expect(info?.gameId, 'RMCE01');
+  });
+
   test('reads GameCube disc_type from RVZ header', () async {
     final bytes = Uint8List(0x100);
     bytes.setRange(0, 4, const <int>[0x52, 0x56, 0x5a, 0x01]);
