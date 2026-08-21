@@ -15,11 +15,13 @@ import 'package:neostation/services/library_addon_service.dart';
 import 'package:neostation/services/library_aidoku_native_service.dart';
 import 'package:neostation/services/library_catalog_service.dart';
 import 'package:neostation/services/library_mangadex_service.dart';
+import 'package:neostation/services/library_metadata_provider_service.dart';
 import 'package:neostation/services/sfx_service.dart';
 import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
 
 import 'library_reader_screen.dart';
+import 'library_metadata_detail_dialog.dart';
 
 /// Native reading Library for iOS.
 ///
@@ -66,6 +68,8 @@ class LibraryScreenState extends State<LibraryScreen> {
       LibraryAidokuNativeService.instance;
   final LibraryCatalogService _catalogService = LibraryCatalogService.instance;
   final LibraryMangaDexService _mangaDexService = LibraryMangaDexService.instance;
+  final LibraryMetadataProviderService _metadataProviderService =
+      LibraryMetadataProviderService.instance;
 
   final ScrollController _libraryScrollController = ScrollController();
   final Map<String, GlobalKey> _bookKeys = <String, GlobalKey>{};
@@ -171,6 +175,7 @@ class LibraryScreenState extends State<LibraryScreen> {
     final options = <String, String>{
       'all': 'all',
       LibraryMangaDexService.providerId: 'MangaDex',
+      ..._metadataProviderService.providerLabels,
     };
     for (final addon in _addons) {
       if (addon.isAidokuRepositorySource && _aidokuNativeService.supports(addon)) {
@@ -182,9 +187,10 @@ class LibraryScreenState extends State<LibraryScreen> {
     for (final entry in _libraryItems) {
       final label = entry.isMangaDex
           ? 'MangaDex'
-          : (entry.source?.name.trim().isNotEmpty == true
-              ? entry.source!.name.trim()
-              : entry.providerId);
+          : (_metadataProviderService.labelFor(entry.providerId) ??
+              (entry.source?.name.trim().isNotEmpty == true
+                  ? entry.source!.name.trim()
+                  : entry.providerId));
       options[entry.providerId] = label;
     }
     final pairs = options.entries.where((entry) => entry.key != 'all').toList()
@@ -227,6 +233,12 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _loadAddons() async {
+    try {
+      await _metadataProviderService.initialize();
+    } catch (_) {
+      // The native Library remains usable even if the bundled provider registry
+      // cannot be loaded for some reason.
+    }
     final addons = await _addonService.load();
     if (!mounted) return;
     setState(() {
@@ -486,6 +498,37 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  Future<List<_NativeLibraryEntry>> _searchMetadataProviders(
+    String query,
+  ) async {
+    try {
+      await _metadataProviderService.initialize();
+      Set<String>? providerIds;
+      if (_sourceFilter != 'all') {
+        if (!_metadataProviderService.isProviderId(_sourceFilter)) {
+          return const <_NativeLibraryEntry>[];
+        }
+        providerIds = <String>{_sourceFilter};
+      }
+
+      final groups = await _metadataProviderService.searchAll(
+        query,
+        providerIds: providerIds,
+      );
+      final entries = <_NativeLibraryEntry>[];
+      for (final group in groups.entries) {
+        for (final item in group.value) {
+          entries.add(
+            _NativeLibraryEntry(providerId: group.key, item: item),
+          );
+        }
+      }
+      return entries;
+    } catch (_) {
+      return const <_NativeLibraryEntry>[];
+    }
+  }
+
   Future<void> _runTitleSearch(String rawQuery) async {
     final query = rawQuery.trim();
     final generation = ++_searchGeneration;
@@ -515,6 +558,7 @@ class LibraryScreenState extends State<LibraryScreen> {
           return <_NativeLibraryEntry>[];
         }
       }(),
+      _searchMetadataProviders(query),
       for (final addon in _addons.where(
         (addon) =>
             addon.isAidokuRepositorySource &&
@@ -1624,6 +1668,16 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
+    if (_metadataProviderService.isProviderId(entry.providerId)) {
+      await showLibraryMetadataDetailDialog(
+        context,
+        item: entry.item,
+        providerName:
+            _metadataProviderService.labelFor(entry.providerId) ?? entry.providerId,
+      );
+      return;
+    }
+
     if (entry.source != null && _aidokuNativeService.supports(entry.source!)) {
       await _openAidokuTitle(entry);
       return;

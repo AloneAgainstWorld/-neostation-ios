@@ -174,7 +174,7 @@ class LibraryMetadataProviderService {
     final provider = _providers.where((item) => item.id == providerId).firstOrNull;
     if (provider == null) return const <LibraryCatalogItem>[];
     final safePage = page < 1 ? 1 : page;
-    final safeLimit = limit.clamp(1, 25);
+    final safeLimit = limit.clamp(1, 25).toInt();
 
     return switch (provider.id) {
       'bnf' => _searchBnf(provider, query, safePage, safeLimit),
@@ -341,7 +341,7 @@ class LibraryMetadataProviderService {
     if (base == null || endpointPath == null) return const [];
 
     final response = await _post(
-      Uri.parse(base).resolve(endpointPath),
+      _joinEndpoint(base, endpointPath),
       headers: const <String, String>{
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -426,7 +426,7 @@ class LibraryMetadataProviderService {
     final endpointPath = search?['path']?.toString();
     if (base == null || endpointPath == null) return const [];
     final offset = (page - 1) * limit;
-    final uri = Uri.parse(base).resolve(endpointPath).replace(
+    final uri = _joinEndpoint(base, endpointPath).replace(
       queryParameters: <String, String>{
         'filter[text]': query,
         'page[limit]': '$limit',
@@ -510,7 +510,7 @@ class LibraryMetadataProviderService {
     final search = _asMap(provider.raw['search']);
     final endpointPath = search?['path']?.toString();
     if (base == null || endpointPath == null) return const [];
-    final uri = Uri.parse(base).resolve(endpointPath).replace(
+    final uri = _joinEndpoint(base, endpointPath).replace(
       queryParameters: <String, String>{
         'q': query,
         'page': '$page',
@@ -583,7 +583,7 @@ class LibraryMetadataProviderService {
     final search = _asMap(provider.raw['search']);
     final endpointPath = search?['path']?.toString();
     if (base == null || endpointPath == null) return const [];
-    final uri = Uri.parse(base).resolve(endpointPath).replace(
+    final uri = _joinEndpoint(base, endpointPath).replace(
       queryParameters: <String, String>{
         'q': query,
         'page': '$page',
@@ -681,7 +681,7 @@ class LibraryMetadataProviderService {
     if (_googleBooksApiKey.trim().isNotEmpty) {
       params['key'] = _googleBooksApiKey.trim();
     }
-    final uri = Uri.parse(base).resolve(endpointPath).replace(
+    final uri = _joinEndpoint(base, endpointPath).replace(
       queryParameters: params,
     );
     final response = await _get(uri);
@@ -910,6 +910,15 @@ class LibraryMetadataProviderService {
     return List<LibraryCatalogItem>.unmodifiable(items);
   }
 
+  static Uri _joinEndpoint(String base, String endpoint) {
+    final baseUri = Uri.parse(base);
+    final basePath = baseUri.path.endsWith('/')
+        ? baseUri.path.substring(0, baseUri.path.length - 1)
+        : baseUri.path;
+    final suffix = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    return baseUri.replace(path: '$basePath$suffix');
+  }
+
   static String? _extractArk(List<String> values) {
     final pattern = RegExp(r'ark:/12148/cb[^\s?#]+', caseSensitive: false);
     for (final value in values) {
@@ -1130,4 +1139,8 @@ class LibraryMetadataProviderService {
       throw StateError('${uri.host} returned an unexpectedly large response.');
     }
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

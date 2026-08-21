@@ -437,7 +437,7 @@ class FinLibraryService {
       throw StateError('NeoStation GameCube/Wii system definitions were not found.');
     }
 
-    final systems = <String, int>{
+    final systems = <String, String>{
       'gc': gameCube!.id!,
       'wii': wii!.id!,
     };
