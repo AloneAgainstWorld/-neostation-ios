@@ -69,6 +69,18 @@ if helper_signature not in fin:
 
 """
     fin = fin.replace(anchor, helpers + anchor, 1)
+
+# The primary patch is intentionally usable on older branch snapshots. Once
+# the generated source has already landed, its short RVZ anchor still matches
+# the prefix of the upgraded block and could add the same idHint twice. Collapse
+# any repeated fallback so CI can re-run the patch safely.
+single_id_hint = """      final idHint = _systemFromNintendoGameId(gameId);
+      if (idHint != null) return (systemFolder: idHint, gameId: gameId);
+"""
+double_id_hint = single_id_hint + single_id_hint
+while double_id_hint in fin:
+    fin = fin.replace(double_id_hint, single_id_hint, 1)
+
 write(fin_path, fin)
 
 
