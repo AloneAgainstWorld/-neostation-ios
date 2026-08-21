@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/apply_library_acquisition_integration.py
+          python3 tools/fix_library_acquisition_ci.py
           dart format \
             lib/services/library_catalog_service.dart \
             lib/services/library_metadata_provider_service.dart \
