@@ -21,7 +21,6 @@ import 'package:neostation/themes/chrome_surface.dart';
 import 'package:neostation/widgets/neo_glass.dart';
 
 import 'library_reader_screen.dart';
-import 'library_metadata_detail_dialog.dart';
 
 /// Native reading Library for iOS.
 ///
@@ -1669,11 +1668,27 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _openCatalogItem(_NativeLibraryEntry entry) async {
     if (_metadataProviderService.isProviderId(entry.providerId)) {
-      await showLibraryMetadataDetailDialog(
-        context,
-        item: entry.item,
-        providerName:
-            _metadataProviderService.labelFor(entry.providerId) ?? entry.providerId,
+      final item = entry.item;
+      if (item.pageUrls.isNotEmpty) {
+        await _showPageReader(item.title, item.pageUrls, subtitle: item.subtitle);
+        return;
+      }
+      if ((item.content?.trim().isNotEmpty ?? false) || item.contentUrl != null) {
+        try {
+          final text = await _catalogService.loadReadableText(item);
+          if (!mounted) return;
+          await _showTextReader(item, text);
+        } on LibraryAddonException catch (error) {
+          _showMessage(error.message);
+        }
+        return;
+      }
+
+      final fr = Localizations.localeOf(context).languageCode == 'fr';
+      _showMessage(
+        fr
+            ? 'Cette source ne fournit pas de pages lisibles pour ce titre.'
+            : 'This source does not provide readable pages for this title.',
       );
       return;
     }

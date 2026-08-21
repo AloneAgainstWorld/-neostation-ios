@@ -28,7 +28,6 @@ class LibraryCatalogItem {
     required this.contentUrl,
     required this.pageUrls,
     required this.raw,
-    this.videoUrls = const <String>[],
   });
 
   final String id;
@@ -40,7 +39,6 @@ class LibraryCatalogItem {
   final String? content;
   final String? contentUrl;
   final List<String> pageUrls;
-  final List<String> videoUrls;
   final Map<String, dynamic> raw;
 
   bool get hasReadableContent =>
@@ -97,31 +95,6 @@ class LibraryCatalogItem {
       }
     }
 
-    final videoUrls = <String>[];
-    void addVideo(dynamic value) {
-      if (value is List) {
-        for (final entry in value) {
-          addVideo(entry);
-        }
-        return;
-      }
-      if (value is Map) {
-        for (final key in const ['url', 'videoUrl', 'trailerUrl', 'youtubeUrl']) {
-          if (value.containsKey(key)) addVideo(value[key]);
-        }
-        return;
-      }
-      final resolved = resolveUrl(value);
-      if (resolved != null && !videoUrls.contains(resolved)) {
-        videoUrls.add(resolved);
-      }
-    }
-
-    addVideo(raw['videoUrl']);
-    addVideo(raw['trailerUrl']);
-    addVideo(raw['videos']);
-    addVideo(raw['trailers']);
-
     final inlineContent =
         text(const ['content', 'text', 'body', 'markdown']);
 
@@ -139,7 +112,6 @@ class LibraryCatalogItem {
         raw['contentUrl'] ?? raw['readerUrl'] ?? raw['readUrl'],
       ),
       pageUrls: List.unmodifiable(pageUrls),
-      videoUrls: List.unmodifiable(videoUrls),
       raw: Map<String, dynamic>.unmodifiable(raw),
     );
   }

@@ -43,9 +43,8 @@ class LibraryMetadataProviderDefinition {
 ///
 /// The provider registry is intentionally metadata-only. Results can enrich the
 /// Library with titles, authors, covers, descriptions, identifiers and source
-/// links, but this service never invents chapter/download URLs. Any video or
-/// trailer URL genuinely returned by a provider is preserved in `videoUrls` so
-/// the Library can expose it without changing that policy.
+/// links. The service never invents chapter/download URLs and deliberately
+/// ignores unrelated video/trailer media.
 class LibraryMetadataProviderService {
   LibraryMetadataProviderService._();
 
@@ -780,7 +779,6 @@ class LibraryMetadataProviderService {
       content: null,
       contentUrl: null,
       pageUrls: const <String>[],
-      videoUrls: List<String>.unmodifiable(_extractVideoUrls(raw)),
       raw: Map<String, dynamic>.unmodifiable(<String, dynamic>{
         ...raw,
         'provider': provider.id,
@@ -1050,38 +1048,6 @@ class LibraryMetadataProviderService {
     if (text.isEmpty) return '';
     if (!text.contains('<') || !text.contains('>')) return text;
     return html_parser.parseFragment(text).text.trim();
-  }
-
-  static List<String> _extractVideoUrls(dynamic value) {
-    final urls = <String>{};
-
-    void visit(dynamic node, bool videoContext) {
-      if (node is String) {
-        if (!videoContext) return;
-        final uri = _https(node);
-        if (uri != null) urls.add(uri);
-        return;
-      }
-      if (node is List) {
-        for (final child in node) {
-          visit(child, videoContext);
-        }
-        return;
-      }
-      if (node is Map) {
-        for (final entry in node.entries) {
-          final key = entry.key.toString().toLowerCase();
-          final childContext = videoContext ||
-              key.contains('video') ||
-              key.contains('trailer') ||
-              key.contains('youtube');
-          visit(entry.value, childContext);
-        }
-      }
-    }
-
-    visit(value, false);
-    return urls.toList(growable: false);
   }
 
   static dynamic _decodeJson(http.Response response) {
