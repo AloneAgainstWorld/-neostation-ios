@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:neostation/l10n/app_locale.dart';
+import 'package:neostation/widgets/fin_integration_cards.dart';
 
 /// Section divider used to group settings rows under a labelled heading.
 ///
@@ -15,8 +20,10 @@ class SettingsSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isRomDirectoriesHeader =
+        label == AppLocale.romDirectories.getString(context);
 
-    return Padding(
+    final header = Padding(
       padding: EdgeInsets.only(bottom: 8.r, top: 4.r, left: 2.r),
       child: Row(
         children: [
@@ -41,5 +48,18 @@ class SettingsSectionHeader extends StatelessWidget {
         ],
       ),
     );
+
+    // The Directories screen already places all iOS emulator integration
+    // cards immediately before its ROM Directories section. Inject Fin here
+    // so it lives in the same scrollable group without coupling the shared
+    // Directories controller to Fin-specific state/actions.
+    if (Platform.isIOS && isRomDirectoriesHeader) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [const FinIntegrationCards(), header],
+      );
+    }
+
+    return header;
   }
 }
