@@ -1,5 +1,6 @@
 name: Fast apply Fin integration
 
+# Trigger pass after the workflow already exists on the feature branch.
 on:
   push:
     branches:
