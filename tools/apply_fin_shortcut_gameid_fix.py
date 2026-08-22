@@ -141,9 +141,11 @@ new_launch = """  /// Launches a Fin-backed row through the user-created Apple S
     }
   }
 """
-if old_launch not in text:
+
+if old_launch in text:
+    text = text.replace(old_launch, new_launch, 1)
+elif "NeoStation passes Fin's Nintendo Game ID" not in text:
     raise RuntimeError("Fin launchGameByRomPath anchor not found")
-text = text.replace(old_launch, new_launch, 1)
 
 FIN.write_text(text, encoding="utf-8")
 print("Applied Fin Shortcut Nintendo Game ID launch contract.")
