@@ -1,18 +1,8 @@
 {
   "version": 2,
-  "routes": [
-    { "src": "/manifest\\.plist", "dest": "/api/manifest.js" },
-    { "src": "/app\\.ipa", "dest": "/api/ipa.js" },
-    { "src": "/", "dest": "/api/index.js" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "no-referrer" }
-      ]
-    }
+  "rewrites": [
+    { "source": "/manifest.plist", "destination": "/api/manifest" },
+    { "source": "/app.ipa", "destination": "/api/ipa" },
+    { "source": "/", "destination": "/api/index" }
   ]
 }
